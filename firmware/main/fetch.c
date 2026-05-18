@@ -20,7 +20,7 @@ static int64_t now_ms(void) { return esp_timer_get_time() / 1000; }
 
 static bool do_fetch(const char *url, const char *key, const char *tok)
 {
-    ui_set_status("fetching…");
+    ui_set_status("fetching...");
     static char body[2560];                 // live payload ~450 B; headroom
     size_t bl = 0;
     upstash_status_t us = upstash_get(url, key, tok, body, sizeof body, &bl);
@@ -37,7 +37,7 @@ static bool do_fetch(const char *url, const char *key, const char *tok)
             ui_set_stats(&st, now_ms());
             return true;
         case STATS_PARSE_NO_DATA:
-            ui_set_status("waiting for publisher…");
+            ui_set_status("waiting for publisher...");
             return true;                     // reachable; just no value yet
         default:
             ui_set_status("bad data from store");
@@ -48,7 +48,7 @@ static bool do_fetch(const char *url, const char *key, const char *tok)
 static void reprovision(void)
 {
     ESP_LOGW(TAG, "triple-tap — clearing creds, rebooting to portal");
-    ui_set_status("re-provisioning… rebooting");
+    ui_set_status("re-provisioning... rebooting");
     config_store_clear_provisioning();
     vTaskDelay(pdMS_TO_TICKS(900));
     esp_restart();
@@ -63,7 +63,7 @@ static void fetch_task(void *arg)
     config_store_get_upstash_token(tok, sizeof tok);
 
     while (!net_wifi_is_connected()) {
-        ui_set_status("WiFi: connecting…");
+        ui_set_status("WiFi: connecting...");
         vTaskDelay(pdMS_TO_TICKS(500));
     }
 
@@ -74,7 +74,7 @@ static void fetch_task(void *arg)
     for (;;) {
         if (refresh_now) {
             bool ok = net_wifi_is_connected() ? do_fetch(url, key, tok)
-                                              : (ui_set_status("WiFi: reconnecting…"), false);
+                                              : (ui_set_status("WiFi: reconnecting..."), false);
             refresh_now = false;
             int wait_s = ok ? FETCH_INTERVAL_S : FETCH_RETRY_S;
             int64_t deadline = now_ms() + (int64_t)wait_s * 1000;

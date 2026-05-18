@@ -91,20 +91,25 @@
 // ============================================================================
 #elif defined(CONFIG_BOARD_FREENOVE_S3_28)
 
-// --- Display (ILI9341, 320x240 landscape, full controller RAM, no gap)
+// --- Display (ILI9341, 240x320 portrait, full controller RAM, no gap)
+// The ILI9341 panel is natively portrait (240 wide x 320 tall). Landscape is
+// produced by swapping the X/Y axes (BOARD_LCD_SWAP_XY=1); portrait is the
+// native scan order, so BOARD_LCD_SWAP_XY=0. display.c derives the LVGL canvas
+// + DMA buffers from H_RES/V_RES, and touch.c derives its coordinate swap from
+// BOARD_LCD_SWAP_XY, so both follow this orientation automatically.
 #define BOARD_LCD_DRIVER_ILI9341  1
-#define BOARD_LCD_H_RES          320
-#define BOARD_LCD_V_RES          240
+#define BOARD_LCD_H_RES          240
+#define BOARD_LCD_V_RES          320
 #define BOARD_LCD_PIXEL_CLK_HZ   (40 * 1000 * 1000)
 #define BOARD_LCD_GAP_X          0
 #define BOARD_LCD_GAP_Y          0
 #define BOARD_LCD_INVERT_COLOR   1   // TFT_INVERSION_ON in the reference
-// Orientation/mirror flags are BRING-UP TODO — values below are the most
-// likely landscape configuration (TFT_eSPI setRotation(1) equivalent) but
-// must be confirmed on hardware. If the image is upside-down, flip
-// BOARD_LCD_MIRROR_X and BOARD_LCD_MIRROR_Y together.
-#define BOARD_LCD_SWAP_XY        1
-#define BOARD_LCD_MIRROR_X       0
+// Orientation confirmed on hardware: SWAP_XY=0 gives correct portrait, but
+// the panel's column order is reversed, so MIRROR_X=1 is required (without
+// it the image is left-right mirrored / text backwards). For a 180° flip
+// (USB at top), flip BOTH MIRROR_X and MIRROR_Y relative to these values.
+#define BOARD_LCD_SWAP_XY        0
+#define BOARD_LCD_MIRROR_X       1
 #define BOARD_LCD_MIRROR_Y       0
 // ILI9341 modules vary: some are RGB, some BGR. The fnk0104's panel is BGR —
 // confirmed at bring-up (Clawd rendered blue instead of orange without this).
