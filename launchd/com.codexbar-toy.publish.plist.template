@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Template for the codexbar-toy publish LaunchAgent (Prompt 2 of 3).
+  This file is committed and contains NO secrets - the Upstash write token
+  lives in the macOS Keychain (service "codexbar-toy"), never here.
+
+  codexbar-publish.sh --install fills the placeholders below and writes the
+  result to ~/Library/LaunchAgents/com.codexbar-toy.publish.plist. The
+  codexbar path and PATH are injected because launchd runs with a sparse
+  environment in which a Homebrew-installed codexbar is otherwise unreachable.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.codexbar-toy.publish</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>__SCRIPT__</string>
+    <string>--once</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>__PATH__</string>
+    <key>CODEXBAR_BIN</key>
+    <string>__CODEXBAR_BIN__</string>
+  </dict>
+
+  <key>StartInterval</key>
+  <integer>__INTERVAL__</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+
+  <key>StandardOutPath</key>
+  <string>__LOG__</string>
+  <key>StandardErrorPath</key>
+  <string>__LOG__</string>
+</dict>
+</plist>

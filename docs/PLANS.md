@@ -8,7 +8,7 @@ PR description or a task tool).
 
 | Plan | Goal | Owner | Started |
 |------|------|-------|---------|
-| (none) | — | — | — |
+| [codexbar-publish](exec-plans/active/codexbar-publish.md) | Publish minimal CodexBar usage JSON to Upstash via launchd (Prompt 2 of 3) | — | 2026-05-17 |
 
 See [exec-plans/active/](exec-plans/active/) for full plan documents.
 

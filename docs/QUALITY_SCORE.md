@@ -18,7 +18,9 @@ cleanup and investment.
 
 | Domain            | Grade | Notes                                          | Last reviewed |
 |-------------------|-------|-------------------------------------------------|---------------|
-| <!-- e.g., `auth` --> | <!-- e.g., B+ --> | <!-- e.g., Works, needs integration tests --> | <!-- e.g., 2026-03-30 --> |
+| `codexbar-stats` (read) | A | Verified offline matrix + live ~2s; `--json` whitelist PII-asserted; zero deps | 2026-05-17 |
+| `codexbar-publish` (Upstash) | B+ | Hermetic mock-first verification green; real Upstash round-trip deferred to user provisioning | 2026-05-17 |
+| `esp32-firmware` (Prompt 3) | F | Not started — placeholder | 2026-05-17 |
 
 ## Cross-cutting grades
 

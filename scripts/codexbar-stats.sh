@@ -5,6 +5,8 @@
 # and zsh/coreutils builtins).
 #
 #   ./scripts/codexbar-stats.sh          # enabled providers, parallel, ~2-5s
+#   ./scripts/codexbar-stats.sh --json   # compact non-sensitive JSON for the
+#                                          Prompt 2 publisher (no PII; no $)
 #   ./scripts/codexbar-stats.sh --all    # every provider via one --provider all
 #                                          call (SLOW, ~90s; debugging only)
 #   ./scripts/codexbar-stats.sh --help
@@ -28,11 +30,12 @@ set -u
 
 err() { print -r -- "error: $*" >&2; }
 
-CBAR_SHOW_ALL=0
+CBAR_SHOW_ALL=0; CBAR_WANT_JSON=0
 for a in "$@"; do
   case "$a" in
     --all) CBAR_SHOW_ALL=1 ;;
-    -h|--help) sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --json) CBAR_WANT_JSON=1 ;;
+    -h|--help) awk 'NR>=2 && /^#/{sub(/^# ?/,"");print;next} NR>=2{exit}' "$0"; exit 0 ;;
     *) err "unknown argument: $a (try --help)"; exit 2 ;;
   esac
 done
@@ -145,6 +148,30 @@ if (expected.length){
     eprint("note: "+env('CBAR_CONFIG')+" unreadable; showing only providers that returned data (use --all for everything).");
 }
 if (!anyParsed && expected.length===0){ eprint("error: codexbar returned no usable JSON."); $.exit(1); }
+
+if (env('CBAR_MODE')==='json'){
+  // Whitelisted projection — NEVER emit accountEmail/loginMethod/identity/$.
+  var num=function(n){ if (n==null||isNaN(n)) return null;
+    return (n>=1) ? Math.round(n) : parseFloat(Number(n).toFixed(2)); };
+  var project=function(e){
+    var o={id:e.provider||"?"};
+    if (e.error){ o.ok=false; return o; }
+    var u=e.usage||{}, pr=u.primary, se=u.secondary;
+    if (!pr && !se){ o.ok=false; return o; }
+    o.ok=true;
+    if (pr){ var pp=num(pr.usedPercent); if (pp!=null) o.p=pp;
+      if (pr.resetDescription) o.pr=String(pr.resetDescription); }
+    if (se){ var sp=num(se.usedPercent); if (sp!=null) o.s=sp;
+      if (se.resetDescription) o.sr=String(se.resetDescription); }
+    return o;
+  };
+  var provs=entries.map(project);
+  if (provs.length===0){ eprint("error: no providers to publish (check ~/.codexbar/config.json or try --all)."); $.exit(1); }
+  var real=provs.filter(function(x){return x.ok;}).length;
+  out(JSON.stringify({v:1, ts:new Date().toISOString(), providers:provs}));
+  $.exit(real>0 ? 0 : 3);
+}
+
 entries.forEach(function(e){ var b=block(e); blocks.push(b.text); if (b.real) realCount++; });
 if (blocks.length===0){ eprint("error: no providers to display (check ~/.codexbar/config.json or try --all)."); $.exit(1); }
 out(blocks.join("\n\n")+"\n");
@@ -181,7 +208,8 @@ pkill -P "$dog_pid" 2>/dev/null; kill -TERM "$dog_pid" 2>/dev/null; wait "$dog_p
 if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then export CBAR_COLOR=1; else export CBAR_COLOR=0; fi
 export CBAR_WORKDIR="$WORK"
 
-CBAR_MODE=render osascript -l JavaScript -e "$JXA"
+if (( CBAR_WANT_JSON )); then mode=json; else mode=render; fi
+CBAR_MODE=$mode osascript -l JavaScript -e "$JXA"
 rc=$?
 if (( rc == 3 )); then
   err "no enabled provider returned data within ${TIMEOUT}s (see ERROR lines above)."

@@ -19,7 +19,7 @@ code is structured.
 
 | Spec | Status | Description |
 |------|--------|-------------|
-| (none yet) | — | — |
+| [publish-to-upstash](publish-to-upstash.md) | Implemented (real Upstash round-trip pending user provisioning) | Periodic non-sensitive usage publish to Upstash via launchd |
 
 ## Writing specs
 

@@ -33,6 +33,32 @@ systems that process external input or integrate with third-party services.
 - **No network calls triggered by external data.** If external input contains
   a URL, that URL is displayed or logged — not fetched.
 
+## Project exception: the CodexBar → ESP32 publish path (Prompt 2)
+
+Threat-model rule 2 says "no intermediary services." The desktop-toy roadmap
+*requires* one: the ESP32 is standalone IoT and cannot reach the Mac directly,
+so usage stats transit Upstash Redis. This is a **deliberate, bounded
+exception**, made acceptable by constraining what crosses the boundary:
+
+- **Whitelisted projection only.** `codexbar-stats.sh --json` *builds* the
+  payload field-by-field (`id`, `ok`, usage `%`, reset hint) — it does not
+  filter the raw CodexBar JSON. PII (account emails, `loginMethod`,
+  `identity`, org names) and `$` cost figures and credentials are therefore
+  structurally impossible to leak, not merely stripped. A verification step
+  greps the payload to assert this.
+- **Credentials never transit and never rest in the repo.** The Upstash
+  **write** token lives in the macOS Keychain (service `codexbar-toy`),
+  passed to `curl` via a `0600 -K` config (never argv/log/plist). The device
+  holds a *separate* **read-only** token.
+- **Minimal blast radius.** Only one Redis key of non-sensitive aggregate
+  usage percentages is exposed; a leak reveals "how busy this user's AI
+  plans are," not identity, content, or secrets.
+- **Fail-safe.** A transient local failure must not overwrite the store with
+  empty/all-error data (publish is skipped — the toy keeps last-known-good).
+
+Any change that would widen the payload (e.g. adding `$` spend, account
+identifiers) MUST update this section and re-justify the boundary.
+
 ## Sensitive files
 
 The system should warn (not block) if operations touch:
