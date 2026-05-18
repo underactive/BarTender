@@ -1,0 +1,37 @@
+# --- macOS ---
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+
+# --- Editors / IDEs ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- Secrets / credentials --------------------------------------------------
+# This project deliberately keeps credentials OUT of the repo. CodexBar's
+# ~/.codexbar/config.json already holds a plaintext OpenRouter API key, and
+# Prompt 2 (Upstash/Railway publisher) will add more. Never commit these.
+.env
+.env.*
+*.local
+secrets*
+*.secret
+*.pem
+*-credentials.json
+
+# --- Local run output -------------------------------------------------------
+# scripts/codexbar-stats.sh uses mktemp in $TMPDIR (already outside the repo);
+# these cover any logs/snapshots a user redirects into the tree.
+*.log
+tmp/
+*.tmp
+
+# --- Future stages (documented in docs/PLANS.md roadmap) --------------------
+# Prompt 3 — ESP32 firmware build artifacts (PlatformIO / Ardunio / ESP-IDF):
+.pio/
+build/
+sdkconfig.old
