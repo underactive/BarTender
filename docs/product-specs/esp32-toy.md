@@ -17,6 +17,9 @@ opening anything.
       row per provider: id, a colored bar + % for the primary window.
 - [ ] Providers reported `ok:false` render as a dimmed "off", not blank.
 - [ ] A status line shows link state and "updated Ns ago".
+- [ ] The screen renders in portrait orientation (taller than wide); the
+      provider-row layout adapts to the panel width so bars/percentages are
+      not clipped on either orientation.
 - [ ] Tap → immediate refresh. Triple-tap within 2 s → wipe creds + reboot
       to the captive portal.
 - [ ] Rendered percentages match a `curl GET` of the same Upstash key.

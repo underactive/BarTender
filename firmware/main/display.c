@@ -166,9 +166,10 @@ lv_display_t *display_init(void) {
     ESP_ERROR_CHECK(esp_lcd_panel_invert_color(s_panel, true));
 #endif
 
-    // Landscape orientation — per-board flags (tune during bring-up if wrong).
-    // display_set_flipped(stored) below XORs the mirror flags for the user's
-    // saved 180° preference.
+    // Orientation: BOARD_LCD_SWAP_XY selects the portrait<->landscape axis
+    // (0 = panel-native portrait, 1 = landscape). LCD_H_RES/V_RES above must
+    // match the chosen axis. display_set_flipped(stored) below XORs the mirror
+    // flags for the user's saved 180° preference.
     ESP_ERROR_CHECK(esp_lcd_panel_swap_xy(s_panel, BOARD_LCD_SWAP_XY));
     display_set_flipped(config_store_get_display_flipped());
 
@@ -233,7 +234,8 @@ lv_display_t *display_init(void) {
     ESP_ERROR_CHECK(esp_timer_create(&tick_args, &tick_timer));
     ESP_ERROR_CHECK(esp_timer_start_periodic(tick_timer, LVGL_TICK_MS * 1000));
 
-    ESP_LOGI(TAG, "Display initialized: %dx%d landscape", LCD_H_RES, LCD_V_RES);
+    ESP_LOGI(TAG, "Display initialized: %dx%d %s", LCD_H_RES, LCD_V_RES,
+             LCD_H_RES < LCD_V_RES ? "portrait" : "landscape");
     return display;
 }
 

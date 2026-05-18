@@ -42,6 +42,15 @@ static void build_widgets(void)
     lv_obj_set_style_bg_color(scr, lv_color_hex(0x0b0b0b), 0);
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
 
+    // Width-relative layout so the same UI works in landscape (W=320) and
+    // portrait (W=240). Offsets are chosen so W=320 reproduces the original
+    // hardcoded landscape layout pixel-for-pixel (val_x=268, bar_w=160,
+    // prov_box=300) — zero regression on the old orientation. Read from the
+    // LVGL display, not BOARD_LCD_H_RES, to keep ui.c board-agnostic.
+    const int W = lv_display_get_horizontal_resolution(lv_display_get_default());
+    const int val_x = W - 52;          // right-anchored % column
+    const int bar_w = val_x - 8 - 100; // bar fills id-column end .. value gap
+
     title = lv_label_create(scr);
     lv_obj_set_style_text_color(title, lv_color_hex(0xffffff), 0);
     lv_obj_set_style_text_font(title, &lv_font_montserrat_18, 0);
@@ -51,7 +60,7 @@ static void build_widgets(void)
     status = lv_label_create(scr);
     lv_obj_set_style_text_color(status, lv_color_hex(0x9aa0a6), 0);
     lv_obj_set_style_text_font(status, &lv_font_montserrat_12, 0);
-    lv_label_set_text(status, "starting…");
+    lv_label_set_text(status, "starting...");
     lv_obj_set_pos(status, 8, 28);
 
     for (int i = 0; i < ROWS; i++) {
@@ -63,7 +72,7 @@ static void build_widgets(void)
         lv_obj_set_width(row_id[i], 86);
 
         row_bar[i] = lv_bar_create(scr);
-        lv_obj_set_size(row_bar[i], 160, 14);
+        lv_obj_set_size(row_bar[i], bar_w, 14);
         lv_obj_set_pos(row_bar[i], 100, y + 2);
         lv_bar_set_range(row_bar[i], 0, 100);
         lv_obj_set_style_bg_color(row_bar[i], lv_color_hex(0x222428), 0);
@@ -72,7 +81,7 @@ static void build_widgets(void)
         row_val[i] = lv_label_create(scr);
         lv_obj_set_style_text_color(row_val[i], lv_color_hex(0xffffff), 0);
         lv_obj_set_style_text_font(row_val[i], &lv_font_montserrat_14, 0);
-        lv_obj_set_pos(row_val[i], 268, y);
+        lv_obj_set_pos(row_val[i], val_x, y);
 
         lv_obj_add_flag(row_id[i],  LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(row_bar[i], LV_OBJ_FLAG_HIDDEN);
@@ -83,7 +92,7 @@ static void build_widgets(void)
     lv_obj_set_style_text_color(prov_box, lv_color_hex(0xffffff), 0);
     lv_obj_set_style_text_font(prov_box, &lv_font_montserrat_14, 0);
     lv_label_set_long_mode(prov_box, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(prov_box, 300);
+    lv_obj_set_width(prov_box, W - 20);
     lv_obj_set_pos(prov_box, 10, 50);
     lv_obj_add_flag(prov_box, LV_OBJ_FLAG_HIDDEN);
 }
@@ -114,8 +123,14 @@ static void render(void)   // ui_task only
     if (st.fetched_ms > 0) {
         int age = (int)((esp_timer_get_time() / 1000 - st.fetched_ms) / 1000);
         if (age < 0) age = 0;
-        char line[96];   // st.status(≤63) + " · updated <int>s ago"
-        snprintf(line, sizeof line, "%s · updated %ds ago", st.status, age);
+        char line[96];   // st.status(<=63) + " <bullet> updated <int>s ago"
+        // Audit UI§HIGH: separator must be a glyph compiled into
+        // lv_font_montserrat_12. That font ships with only 0x20-0x7F,
+        // 0xB0, 0x2022 (see lv_font_montserrat_12.c gen opts), so the old
+        // U+00B7 MIDDLE DOT (·) had no glyph and rendered as a tofu box.
+        // LV_SYMBOL_BULLET is U+2022, which *is* in the font.
+        snprintf(line, sizeof line,
+                 "%s " LV_SYMBOL_BULLET " updated %ds ago", st.status, age);
         lv_label_set_text(status, line);
     } else {
         lv_label_set_text(status, st.status);
@@ -181,7 +196,7 @@ void ui_start(void)
 {
     s_mtx = xSemaphoreCreateMutex();
     st.mode = UI_STATS;
-    strlcpy(st.status, "starting…", sizeof st.status);
+    strlcpy(st.status, "starting...", sizeof st.status);
     st.dirty = true;
     xTaskCreate(ui_task, "ui", 8192, NULL, 5, NULL);
 }
