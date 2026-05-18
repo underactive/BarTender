@@ -1,0 +1,14 @@
+# firmware/main/Kconfig.projbuild
+menu "CodexBar Toy"
+
+    # board_config.h (vendored) selects the FNK0104 pin/geometry block on
+    # CONFIG_BOARD_FREENOVE_S3_28. This project supports only that board.
+    config BOARD_FREENOVE_S3_28
+        bool "Freenove ESP32-S3 2.8\" (fnk0104)"
+        default y
+        depends on IDF_TARGET_ESP32S3
+        help
+            ESP32-S3 + 320x240 ILI9341 SPI display, FT6336G capacitive touch,
+            8 MB OPI PSRAM, 16 MB flash. The only supported target.
+
+endmenu

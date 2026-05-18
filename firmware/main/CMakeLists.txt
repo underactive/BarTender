@@ -1,0 +1,20 @@
+# firmware/main/CMakeLists.txt
+idf_component_register(
+    SRCS
+        "main.c"
+        "display.c"      # vendored from clawd-tank — proven on this board
+        "touch.c"        # vendored; event retargeted to APP_EVT_TOUCH
+        "i2c_bus.c"      # vendored as-is
+        "config_store.c" # NVS (pattern from clawd-tank, new keys)
+        "ui.c"
+        "net_wifi.c"
+        "provision.c"
+        "upstash.c"
+        "stats_model.c"
+        "fetch.c"
+    INCLUDE_DIRS "."
+    REQUIRES
+        esp_lcd driver esp_timer nvs_flash freertos json
+        esp_wifi esp_netif esp_event esp_http_client esp-tls
+        esp_http_server mbedtls lwip esp_hw_support esp_system
+)

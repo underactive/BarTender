@@ -8,7 +8,7 @@ PR description or a task tool).
 
 | Plan | Goal | Owner | Started |
 |------|------|-------|---------|
-| [codexbar-publish](exec-plans/active/codexbar-publish.md) | Publish minimal CodexBar usage JSON to Upstash via launchd (Prompt 2 of 3) | — | 2026-05-17 |
+| (none) | — | — | — |
 
 See [exec-plans/active/](exec-plans/active/) for full plan documents.
 
@@ -16,7 +16,8 @@ See [exec-plans/active/](exec-plans/active/) for full plan documents.
 
 | Plan | Goal | Completed |
 |------|------|-----------|
-| (none) | — | — |
+| [codexbar-publish](exec-plans/completed/codexbar-publish.md) | Publish minimal CodexBar usage JSON to Upstash via launchd (Prompt 2 of 3) | 2026-05-18 |
+| [codexbar-firmware](exec-plans/completed/codexbar-firmware.md) | ESP32-S3 firmware: read Upstash, render on ILI9341 (Prompt 3 of 3) — verified on hardware | 2026-05-18 |
 
 See [exec-plans/completed/](exec-plans/completed/) for full plan documents.
 

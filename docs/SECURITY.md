@@ -59,6 +59,25 @@ exception**, made acceptable by constraining what crosses the boundary:
 Any change that would widen the payload (e.g. adding `$` spend, account
 identifiers) MUST update this section and re-justify the boundary.
 
+## Device boundary: the ESP32 toy (Prompt 3)
+
+- **Read-only by capability.** The device is provisioned with the Upstash
+  **read-only** token, never the write token. Extraction from a physically
+  accessible desk object yields only the ability to read data that is
+  already non-sensitive (usage %). It cannot tamper with the store.
+- **No secrets in the firmware or repo.** WiFi creds + URL + read token are
+  entered via the first-boot captive portal and stored in NVS. They are
+  never compiled in, never committed (`firmware/secrets.h` is not used).
+- **NVS is unencrypted.** Threat is physical possession of the board only.
+  Flash/NVS encryption is a documented hardening follow-up, out of POC scope.
+- **SoftAP exposure is bounded.** The provisioning AP is WPA2 (device-unique
+  password shown only on the local TFT), runs only while unprovisioned, and
+  the device reboots out of AP mode immediately on form submit. The captive
+  HTTP form is plaintext but reachable only by a station that already has the
+  WPA2 PSK, on local RF.
+- **TLS trust** uses the bundled Mozilla CA store (`esp_crt_bundle`), not a
+  pinned certificate — robust to Upstash cert rotation without a reflash.
+
 ## Sensitive files
 
 The system should warn (not block) if operations touch:

@@ -11,7 +11,7 @@ Mac directly, so the pipeline is three stages:
 
 1. **Read locally** — `scripts/codexbar-stats.sh` (done)
 2. **Publish to a cloud key** — `scripts/codexbar-publish.sh` → Upstash (done)
-3. **ESP32 reads + displays** it over WiFi (next)
+3. **ESP32 reads + displays** it over WiFi — `firmware/` (done)
 
 Everything macOS-side is zero-third-party-dependency (only `codexbar` itself,
 plus base-macOS `osascript`/`curl`/`security`/`launchctl`).
@@ -63,6 +63,14 @@ never emails/identity/credentials/$ (see [docs/SECURITY.md](docs/SECURITY.md)).
 If there's no fresh data the publish is skipped so the toy keeps its last good
 value. The write token lives in the Keychain; the ESP32 (Prompt 3) gets a
 separate read-only token.
+
+### `firmware/` — ESP32-S3 desk toy
+
+ESP-IDF firmware for the Freenove ESP32-S3 2.8" (FNK0104): joins WiFi, polls
+the Upstash key over HTTPS every 5 min, renders the stats on the ILI9341.
+First boot runs a captive-portal so nothing secret is ever compiled in; tap
+to refresh, triple-tap to re-provision. Board bring-up is vendored from the
+`clawd-tank` project. Build/flash/provisioning: [firmware/README.md](firmware/README.md).
 
 ## Architecture
 

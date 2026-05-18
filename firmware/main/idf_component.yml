@@ -1,0 +1,8 @@
+# firmware/main/idf_component.yml
+# Managed deps — same versions proven on this board in clawd-tank. The linker
+# drops code paths not referenced by the selected board.
+dependencies:
+  lvgl/lvgl: "^9.2"
+  espressif/esp_lcd_ili9341: "^2.0.0"
+  espressif/esp_lcd_touch_ft5x06: "^1.0.6"
+  idf: ">=5.3"

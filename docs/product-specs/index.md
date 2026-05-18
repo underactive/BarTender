@@ -19,7 +19,8 @@ code is structured.
 
 | Spec | Status | Description |
 |------|--------|-------------|
-| [publish-to-upstash](publish-to-upstash.md) | Implemented (real Upstash round-trip pending user provisioning) | Periodic non-sensitive usage publish to Upstash via launchd |
+| [publish-to-upstash](publish-to-upstash.md) | Implemented (live round-trip verified) | Periodic non-sensitive usage publish to Upstash via launchd |
+| [esp32-toy](esp32-toy.md) | Code complete (pending user build+flash) | ESP32-S3 device: reads Upstash, renders stats, captive provisioning |
 
 ## Writing specs
 

@@ -30,8 +30,13 @@ secrets*
 tmp/
 *.tmp
 
-# --- Future stages (documented in docs/PLANS.md roadmap) --------------------
-# Prompt 3 — ESP32 firmware build artifacts (PlatformIO / Ardunio / ESP-IDF):
-.pio/
+# --- ESP-IDF firmware (Prompt 3) -------------------------------------------
+# Build artifacts + auto-generated/auto-fetched files. sdkconfig.defaults*
+# ARE committed (build inputs); the merged `sdkconfig` is generated.
+firmware/build/
+firmware/sdkconfig
+firmware/sdkconfig.old
+firmware/managed_components/
+firmware/dependencies.lock
+firmware/.envrc
 build/
-sdkconfig.old

@@ -57,3 +57,32 @@ process.
 | Upstash **write** token | publish auth; macOS Keychain `codexbar-toy/publish` | Upstash DB tokens (write) |
 | Upstash **read-only** token | ESP32 read auth (Prompt 3) | Upstash DB tokens (read-only) |
 | `~/.codexbar/config.json` | enabled-provider list (read-only) | CodexBar app |
+
+## clawd-tank board layer (vendored)
+
+- **What:** the proven ESP-IDF board bring-up for the Freenove ESP32-S3 2.8"
+  (FNK0104) — ILI9341+LVGL 9, FT6336 touch, shared I2C, NVS pattern.
+- **Loaded via:** **copied verbatim** into `firmware/main/` from
+  `/Users/esison/Development/projects/hardware/clawd-tank/firmware/main/`
+  (`board_config.h`, `i2c_bus.*`, `display.*` byte-identical; `touch.*`
+  retargeted to `APP_EVT_TOUCH`). clawd-tank is NOT a build dependency — this
+  is a vendoring snapshot, not a live link.
+- **Lifecycle:** static source; re-vendor by re-copying if clawd-tank's board
+  layer improves. No runtime coupling.
+- **Env/gating:** ESP-IDF 5.3+, target `esp32s3`, `CONFIG_BOARD_FREENOVE_S3_28`.
+- **Key files:** `firmware/main/board_config.h` (FNK0104 pins/geometry).
+- **Gotchas:** ILI9341 orientation/mirror flags are a clawd-tank bring-up TODO
+  (flip `BOARD_LCD_MIRROR_X/Y` together if the image is rotated). LVGL/
+  esp_lcd_* are managed components (auto-fetched), pinned to clawd-tank's
+  versions in `firmware/main/idf_component.yml`.
+
+## Upstash (device read path — Prompt 3)
+
+- **What:** the ESP32 reads the same key the publisher writes.
+- **Loaded via:** `firmware/main/upstash.c` — `esp_http_client` +
+  `esp_crt_bundle` (Mozilla CA, no pinning); bearer token from NVS
+  (provisioned via captive portal, never in source).
+- **Credential:** the Upstash **read-only** token (distinct from the Mac's
+  write token). Least privilege: cannot modify the store.
+- **Gotchas:** response is the double-encoded `{"result":"<json>"}` envelope —
+  `stats_model.c` parses envelope then inner. Confirmed against live bytes.

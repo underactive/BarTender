@@ -1,0 +1,29 @@
+# firmware/sdkconfig.defaults
+# Board-agnostic defaults. Per-target overlay: sdkconfig.defaults.esp32s3.
+# (No BLE — unlike clawd-tank, this firmware is WiFi-only.)
+
+# SPI LCD host
+CONFIG_LCD_HOST_SPI2=y
+
+# Custom partition table (vendored from clawd-tank: 8 MB app, 24 KB nvs)
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# LVGL
+CONFIG_LV_COLOR_DEPTH_16=y
+CONFIG_LV_FONT_MONTSERRAT_8=y
+CONFIG_LV_FONT_MONTSERRAT_10=y
+CONFIG_LV_FONT_MONTSERRAT_12=y
+CONFIG_LV_FONT_MONTSERRAT_14=y
+CONFIG_LV_FONT_MONTSERRAT_18=y
+
+# FreeRTOS
+CONFIG_FREERTOS_HZ=1000
+
+# HTTPS: trust the bundled Mozilla CA store (no cert pinning — survives
+# Upstash certificate rotation). esp_crt_bundle_attach() relies on this.
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
+
+# Default board (overlay re-affirms this for the esp32s3 target)
+CONFIG_BOARD_FREENOVE_S3_28=y
