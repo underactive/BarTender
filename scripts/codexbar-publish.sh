@@ -129,7 +129,27 @@ render_plist() {
   [[ -r "$TPL" ]] || die "plist template missing at $TPL"
   local cb; cb="${CODEXBAR_BIN:-$(command -v codexbar 2>/dev/null)}"
   [[ -n "$cb" ]] || die "codexbar not found — install it or set CODEXBAR_BIN before --install"
-  local path="/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+  # The codex provider is fetched via `--source cli`, which execs the `codex`
+  # CLI — a Node script that itself needs `node` on PATH. Version managers
+  # (nvm/asdf/volta) install both in a per-version dir that is NEVER on
+  # launchd's sparse PATH, so without this the codex fetch fails under launchd
+  # (env: node: No such file or directory) and the toy shows codex as "off"
+  # while the GUI shows real data. Resolve those dirs from the (interactive)
+  # shell that runs --install — same best-effort `command -v` approach as
+  # CODEXBAR_BIN, not a hardcoded Node version that would rot on upgrade.
+  #
+  # NOTE: this MUST run before `local path=` below. In zsh `path` is tied to
+  # $PATH, so assigning it rewrites the command search path; resolving these
+  # afterwards would search only the sparse list and find nothing.
+  local base="/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+  local extra="" bin dir
+  for bin in "${CODEX_BIN:-$(command -v codex 2>/dev/null)}" "$(command -v node 2>/dev/null)"; do
+    [[ -n "$bin" && -x "$bin" ]] || continue
+    dir="${bin:h}"
+    case ":$extra:$base:" in (*":$dir:"*) ;; (*) extra="${extra:+$extra:}$dir" ;; esac
+  done
+  local path="${extra:+$extra:}$base"
   local t; t="$(<"$TPL")"
   t="${t//__SCRIPT__/$SELF_DIR/codexbar-publish.sh}"
   t="${t//__INTERVAL__/$PUBLISH_INTERVAL}"
