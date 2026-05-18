@@ -159,9 +159,17 @@ static void render(void)   // ui_task only
             lv_bar_set_value(row_bar[i], v, LV_ANIM_OFF);
             lv_obj_set_style_bg_color(row_bar[i], pct_color(p->p), LV_PART_INDICATOR);
             lv_obj_set_style_text_color(row_val[i], lv_color_hex(0xffffff), 0);
-            if (p->p < 1.0f && p->p > 0.0f)
-                lv_label_set_text_fmt(row_val[i], "%.1f%%", p->p);
-            else
+            if (p->p < 1.0f && p->p > 0.0f) {
+                // Audit UI§HIGH: LVGL's built-in sprintf is compiled without
+                // float support (CONFIG_LV_USE_FLOAT unset), so "%.1f" renders
+                // the literal conversion char -> "f%" on screen. Format one
+                // decimal place with integer math. Quotient/remainder (not
+                // "0.%d") so a value that rounds up to 10 tenths, e.g. 0.97,
+                // shows "1.0%" instead of a broken "0.10%".
+                int tenths = (int)(p->p * 10.0f + 0.5f);   // 0.1 -> 1
+                lv_label_set_text_fmt(row_val[i], "%d.%d%%",
+                                      tenths / 10, tenths % 10);
+            } else
                 lv_label_set_text_fmt(row_val[i], "%d%%", v);
         }
     }
