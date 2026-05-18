@@ -20,7 +20,7 @@ cleanup and investment.
 |-------------------|-------|-------------------------------------------------|---------------|
 | `codexbar-stats` (read) | A | Verified offline matrix + live ~2s; `--json` whitelist PII-asserted; zero deps | 2026-05-17 |
 | `codexbar-publish` (Upstash) | B+ | Hermetic mock-first verification green; real Upstash round-trip deferred to user provisioning | 2026-05-17 |
-| `firmware` (ESP32-S3) | B | Built clean + flashed; **verified end-to-end on hardware** (provisioning → STA → HTTPS → live bars/%). Gaps: NVS unencrypted, vendored-touch deprecation warning, no host/CI build | 2026-05-18 |
+| `firmware` (ESP32-S3) | B+ | Hardware-verified end-to-end **and** multi-persona audited: 13 findings fixed (1 CRITICAL, 4 HIGH) + rebuilt clean. Documented deferred debt: no host test harness, reprovision-confirm UI, NVS encryption | 2026-05-18 |
 
 ## Cross-cutting grades
 

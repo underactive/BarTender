@@ -1,7 +1,9 @@
 // firmware/main/upstash.c
 #include "upstash.h"
+#include "config_store.h"      // CFG_*_MAX — keep request buffers in sync
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
+#include "esp_tls.h"           // ESP_ERR_ESP_TLS_BASE for error classification
 #include "esp_log.h"
 #include <string.h>
 #include <stdio.h>
@@ -46,15 +48,20 @@ upstash_status_t upstash_get(const char *url, const char *key,
     if (!url || !*url || !token || !*token || !out || out_sz < 2)
         return UPSTASH_ERR_NET;
 
-    // Build "{url sans trailing '/'}/get/{key}".
-    char full[192];
+    // Build "{url sans trailing '/'}/get/{key}". Buffers derived from
+    // CFG_*_MAX so they can't silently drift if those limits change.
+    // Audit Security§HIGH: check snprintf truncation — a clipped URL could
+    // resolve to a different CA-valid host and replay the bearer token there.
+    char full[CFG_URL_MAX + 8 + CFG_KEY_MAX];
     size_t ulen = strlen(url);
     while (ulen > 0 && url[ulen - 1] == '/') ulen--;
-    snprintf(full, sizeof full, "%.*s/get/%s", (int)ulen, url,
-             (key && *key) ? key : "codexbar");
+    int fn = snprintf(full, sizeof full, "%.*s/get/%s", (int)ulen, url,
+                      (key && *key) ? key : "codexbar");
+    if (fn < 0 || fn >= (int)sizeof full) return UPSTASH_ERR_NET;
 
-    char auth[300];
-    snprintf(auth, sizeof auth, "Bearer %s", token);
+    char auth[CFG_TOKEN_MAX + 8];
+    int an = snprintf(auth, sizeof auth, "Bearer %s", token);
+    if (an < 0 || an >= (int)sizeof auth) return UPSTASH_ERR_AUTH;
 
     sink_t sink = { .buf = out, .cap = out_sz, .len = 0, .overflow = false };
     out[0] = '\0';
@@ -66,7 +73,10 @@ upstash_status_t upstash_get(const char *url, const char *key,
         .user_data = &sink,
         .crt_bundle_attach = esp_crt_bundle_attach,   // Mozilla CA bundle
         .timeout_ms = 12000,
-        .disable_auto_redirect = false,
+        // Audit Security§HIGH: Upstash /get never legitimately 30x's; with
+        // redirects on, a poisoned hop could replay the bearer token to any
+        // CA-valid host. Disable cross-host credential forwarding.
+        .disable_auto_redirect = true,
     };
     esp_http_client_handle_t c = esp_http_client_init(&cfg);
     if (!c) return UPSTASH_ERR_NET;
@@ -75,8 +85,11 @@ upstash_status_t upstash_get(const char *url, const char *key,
     esp_err_t err = esp_http_client_perform(c);
     upstash_status_t rc;
     if (err != ESP_OK) {
-        // esp-tls failures surface as ESP_ERR_ESP_TLS_* — treat distinctly.
-        rc = (err == ESP_ERR_HTTP_CONNECT) ? UPSTASH_ERR_NET : UPSTASH_ERR_TLS;
+        // Audit Contract§MED: classify accurately — only the esp-tls error
+        // range is a real TLS/cert problem; DNS/connect/timeout are network.
+        bool is_tls = (err >= ESP_ERR_ESP_TLS_BASE &&
+                       err <  ESP_ERR_ESP_TLS_BASE + 0x100);
+        rc = is_tls ? UPSTASH_ERR_TLS : UPSTASH_ERR_NET;
         ESP_LOGE(TAG, "perform failed: %s", esp_err_to_name(err));
     } else {
         int status = esp_http_client_get_status_code(c);

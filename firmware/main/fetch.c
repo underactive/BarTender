@@ -89,7 +89,15 @@ static void fetch_task(void *arg)
                     int64_t t = now_ms();
                     taps[0] = taps[1]; taps[1] = taps[2]; taps[2] = t;
                     if (tc < 3) tc++;
-                    if (tc == 3 && (t - taps[0]) <= 2000) {  // 3 taps within 2 s
+                    // Audit QA§MED: require 3 DELIBERATE rapid taps — all
+                    // within 1200 ms AND each consecutive gap ≤ 600 ms — so
+                    // stray FT6336 touch noise over weeks of uptime cannot
+                    // silently factory-reset. touch.c debounces at 200 ms, so
+                    // an intentional triple-tap comfortably fits this window.
+                    if (tc == 3 &&
+                        (t - taps[0]) <= 1200 &&
+                        (taps[1] - taps[0]) <= 600 &&
+                        (taps[2] - taps[1]) <= 600) {
                         reprovision();                        // no return
                     }
                     refresh_now = true;                       // single tap → refresh

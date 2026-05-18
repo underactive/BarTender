@@ -9,6 +9,9 @@
 
 static const char *TAG = "wifi";
 
+// WHY: single-word flag, written only by the WiFi event task, read only by
+// fetch_task — no tearing on Xtensa, so intentionally lock-free (do not add a
+// mutex). Audit State§LOW confirmed this is the one legitimate lock-free var.
 static volatile bool s_connected = false;
 static int s_backoff_idx = 0;
 static const int s_backoff_s[] = { 5, 15, 60 };   // capped reconnect schedule
@@ -27,6 +30,12 @@ static void arm_retry(void)
     if (s_backoff_idx < (int)(sizeof s_backoff_s / sizeof s_backoff_s[0]) - 1)
         s_backoff_idx++;
     ESP_LOGW(TAG, "link down — retry in %ds", s);
+    // Audit QA§LOW: on a flapping AP, repeated STA_DISCONNECTED events would
+    // call start_once on an already-armed timer (ESP_ERR_INVALID_STATE,
+    // silently ignored) while s_backoff_idx kept advancing — decoupling the
+    // backoff schedule from actual retries. Stop first so the latest delay
+    // always takes effect.
+    esp_timer_stop(s_retry_timer);
     esp_timer_start_once(s_retry_timer, (uint64_t)s * 1000000ULL);
 }
 

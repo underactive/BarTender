@@ -107,7 +107,19 @@ static void render(void)   // ui_task only
 
     lv_obj_add_flag(prov_box, LV_OBJ_FLAG_HIDDEN);
     lv_label_set_text(title, "CODEXBAR");
-    lv_label_set_text(status, st.status);
+    // Audit State§HIGH/MED: compose the age suffix HERE from st.fetched_ms
+    // (a local buffer — never mutate shared st.status). This removes the old
+    // save/restore-under-mutex hack and the freshness gap where the counter
+    // froze ~10 s after a fetch.
+    if (st.fetched_ms > 0) {
+        int age = (int)((esp_timer_get_time() / 1000 - st.fetched_ms) / 1000);
+        if (age < 0) age = 0;
+        char line[96];   // st.status(≤63) + " · updated <int>s ago"
+        snprintf(line, sizeof line, "%s · updated %ds ago", st.status, age);
+        lv_label_set_text(status, line);
+    } else {
+        lv_label_set_text(status, st.status);
+    }
 
     for (int i = 0; i < ROWS; i++) {
         if (i >= st.stats.n) {
@@ -144,33 +156,20 @@ static void ui_task(void *arg)
 {
     (void)arg;
     build_widgets();
-    int64_t last_age_ms = 0;
+    int64_t next_age = 0;
     while (1) {
-        if (xSemaphoreTake(s_mtx, 0) == pdTRUE) {
-            // Tick the "updated Ns ago" line even without new data so the
-            // freshness indicator stays trustworthy between 5-min fetches.
+        // Audit State§HIGH: block briefly for the mutex rather than skipping
+        // the render entirely (take(0)) under setter contention.
+        if (xSemaphoreTake(s_mtx, pdMS_TO_TICKS(5)) == pdTRUE) {
             int64_t now = esp_timer_get_time() / 1000;
-            if (st.mode == UI_STATS && st.fetched_ms > 0 &&
-                now - last_age_ms >= 10000) {
-                last_age_ms = now;
+            // Re-render every 10 s in stats mode so the "updated Ns ago"
+            // counter ticks even without new data. render() recomputes the
+            // age from st.fetched_ms, so this is always accurate (no gap).
+            if (st.mode == UI_STATS && st.fetched_ms > 0 && now >= next_age) {
+                next_age = now + 10000;
                 st.dirty = true;
             }
-            if (st.dirty) {
-                // age label refresh every tick when in stats mode
-                if (st.mode == UI_STATS && st.fetched_ms > 0) {
-                    int age = (int)((esp_timer_get_time() / 1000 - st.fetched_ms) / 1000);
-                    char tmp[80];
-                    snprintf(tmp, sizeof tmp, "%.*s · updated %ds ago",
-                             (int)strnlen(st.status, 48), st.status, age);
-                    char saved[64]; strlcpy(saved, st.status, sizeof saved);
-                    strlcpy(st.status, tmp, sizeof st.status);
-                    render();
-                    strlcpy(st.status, saved, sizeof st.status);
-                } else {
-                    render();
-                }
-                st.dirty = false;
-            }
+            if (st.dirty) { render(); st.dirty = false; }
             xSemaphoreGive(s_mtx);
         }
         lv_timer_handler();

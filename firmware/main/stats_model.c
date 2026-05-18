@@ -23,9 +23,16 @@ stats_parse_t stats_model_parse(const char *body, stats_t *out)
     cJSON *env = cJSON_Parse(body);
     if (!env) return STATS_PARSE_BAD;
     cJSON *res = cJSON_GetObjectItemCaseSensitive(env, "result");
-    if (!res || cJSON_IsNull(res) || !cJSON_IsString(res) || !res->valuestring[0]) {
+    // Audit Contract§MED: only "absent" or "null" means not-yet-published.
+    // A present-but-non-string result is a corrupt store value → BAD, so the
+    // UI shows "bad data" instead of a misleading "waiting for publisher".
+    if (!res || cJSON_IsNull(res)) {
         cJSON_Delete(env);
-        return STATS_PARSE_NO_DATA;          // key absent / not published yet
+        return STATS_PARSE_NO_DATA;
+    }
+    if (!cJSON_IsString(res) || !res->valuestring || !res->valuestring[0]) {
+        cJSON_Delete(env);
+        return STATS_PARSE_BAD;
     }
 
     // --- Step 2: inner payload (result is itself a JSON string) ---
@@ -37,6 +44,9 @@ stats_parse_t stats_model_parse(const char *body, stats_t *out)
     const cJSON *ts = cJSON_GetObjectItemCaseSensitive(in, "ts");
     const cJSON *ps = cJSON_GetObjectItemCaseSensitive(in, "providers");
     out->v = cJSON_IsNumber(v) ? (int)v->valuedouble : 0;
+    // Audit Contract§MED: forward-guard. This firmware only understands v==1;
+    // a future schema bump must not be rendered as best-effort garbage.
+    if (out->v != 1) { cJSON_Delete(in); return STATS_PARSE_BAD; }
     cpy(out->ts, sizeof out->ts, ts);
 
     if (cJSON_IsArray(ps)) {

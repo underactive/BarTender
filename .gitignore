@@ -40,3 +40,8 @@ firmware/managed_components/
 firmware/dependencies.lock
 firmware/.envrc
 build/
+
+# clangd / IDE index cache (created when a language server reads the tree)
+.cache/
+.clangd/
+compile_commands.json

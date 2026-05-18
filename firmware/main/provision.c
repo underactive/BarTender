@@ -97,14 +97,28 @@ static esp_err_t h_redirect(httpd_req_t *r)
 
 static void reboot_task(void *a) { (void)a; vTaskDelay(pdMS_TO_TICKS(1500)); esp_restart(); }
 
+// Audit Security§HIGH: read EXACTLY Content-Length so an over-long body is
+// rejected with 413 instead of silently truncated (which previously persisted
+// a corrupted token/url to NVS while replying "Saved"). 1536 B covers all
+// five fields percent-encoded; CFG_*_MAX sum + names + %XX overhead < 1536.
 static esp_err_t h_save(httpd_req_t *r)
 {
-    char buf[640];
-    int total = 0, n;
-    while (total < (int)sizeof(buf) - 1 &&
-           (n = httpd_req_recv(r, buf + total, sizeof(buf) - 1 - total)) > 0)
+    char buf[1536];
+    size_t clen = r->content_len;
+    if (clen == 0 || clen >= sizeof(buf)) {
+        httpd_resp_set_status(r, "413 Payload Too Large");
+        httpd_resp_set_type(r, "text/html");
+        httpd_resp_send(r, "<h3>Form too large or empty — go back.</h3>",
+                        HTTPD_RESP_USE_STRLEN);
+        return ESP_OK;
+    }
+    int total = 0;
+    while ((size_t)total < clen) {
+        int n = httpd_req_recv(r, buf + total, clen - total);
+        if (n == HTTPD_SOCK_ERR_TIMEOUT) continue;     // transient — retry
+        if (n <= 0) { httpd_resp_send_500(r); return ESP_FAIL; }  // hard error
         total += n;
-    if (total <= 0) { httpd_resp_send_500(r); return ESP_FAIL; }
+    }
     buf[total] = '\0';
 
     char ssid[CFG_SSID_MAX], pass[CFG_PASS_MAX], url[CFG_URL_MAX],
@@ -146,19 +160,36 @@ static void dns_task(void *arg)
     while (1) {
         struct sockaddr_in src; socklen_t sl = sizeof src;
         int len = recvfrom(s, pkt, sizeof pkt, 0, (struct sockaddr *)&src, &sl);
+        // Audit Security§CRITICAL: validate the query before forging a reply.
         if (len < 12) continue;
-        pkt[2] |= 0x80; pkt[3] = 0x80;          // QR=1, RA=1 (no error)
-        pkt[6] = 0; pkt[7] = 1;                  // ANCOUNT = 1
-        pkt[8] = pkt[9] = pkt[10] = pkt[11] = 0; // NS/AR = 0
-        if (len + 16 > (int)sizeof pkt) continue;
-        uint8_t *p = pkt + len;
-        *p++ = 0xc0; *p++ = 0x0c;                // name ptr -> question
-        *p++ = 0x00; *p++ = 0x01;                // TYPE A
-        *p++ = 0x00; *p++ = 0x01;                // CLASS IN
-        *p++ = 0; *p++ = 0; *p++ = 0; *p++ = 60; // TTL 60
-        *p++ = 0x00; *p++ = 0x04;                // RDLENGTH 4
-        *p++ = 192; *p++ = 168; *p++ = 4; *p++ = 1;
-        sendto(s, pkt, len + 16, 0, (struct sockaddr *)&src, sl);
+        if (pkt[2] & 0x80) continue;                 // drop responses (no reflection loop)
+        if (pkt[4] != 0 || pkt[5] != 1) continue;    // require exactly one question
+        // Walk QNAME labels to find the true question end (no assumed offset).
+        int q = 12;
+        while (q < len && pkt[q] != 0) {
+            if (pkt[q] & 0xC0) { q = -1; break; }    // compression illegal in a query
+            q += pkt[q] + 1;
+        }
+        if (q < 0 || q + 5 > len) continue;          // malformed / truncated
+        q += 1;                                       // skip the root (zero) label
+        int qtype = (pkt[q] << 8) | pkt[q + 1];
+        int qend  = q + 4;                            // + QTYPE(2) + QCLASS(2)
+        pkt[2] |= 0x80; pkt[3] = 0x80;               // QR=1, RA=1, RCODE=0
+        pkt[6] = 0; pkt[7] = (qtype == 1) ? 1 : 0;   // ANCOUNT: A→1, else 0
+        pkt[8] = pkt[9] = pkt[10] = pkt[11] = 0;      // NS=AR=0 (drop EDNS/extra)
+        int out = qend;                               // truncate trailing records
+        if (qtype == 1) {                             // answer A with 192.168.4.1
+            if (qend + 16 > (int)sizeof pkt) continue;
+            uint8_t *p = pkt + qend;
+            *p++ = 0xC0; *p++ = 0x0C;                // ptr → QNAME at offset 12
+            *p++ = 0x00; *p++ = 0x01;                // TYPE A
+            *p++ = 0x00; *p++ = 0x01;                // CLASS IN
+            *p++ = 0; *p++ = 0; *p++ = 0; *p++ = 60; // TTL 60
+            *p++ = 0x00; *p++ = 0x04;                // RDLENGTH 4
+            *p++ = 192; *p++ = 168; *p++ = 4; *p++ = 1;
+            out = qend + 16;
+        }
+        sendto(s, pkt, out, 0, (struct sockaddr *)&src, sl);
     }
 }
 
@@ -200,6 +231,8 @@ void provision_start(void)
 
     xTaskCreate(dns_task, "captdns", 3072, NULL, 4, NULL);
 
-    ESP_LOGW(TAG, "PROVISIONING: SSID=%s PASS=%s -> http://192.168.4.1/", ssid, pass);
+    // Audit Security§LOW: don't print the AP PSK to the UART log — it's shown
+    // on the device screen for the legitimate user via ui_set_provisioning().
+    ESP_LOGW(TAG, "PROVISIONING AP up: SSID=%s (password on screen) -> http://192.168.4.1/", ssid);
     ui_set_provisioning(ssid, pass);
 }
