@@ -2,6 +2,8 @@
 #include "ui.h"
 #include "provider_icons.h"
 #include "lvgl.h"
+extern const lv_font_t font_lemonmilk_48;
+extern const lv_font_t font_lemonmilk_24;
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
@@ -52,8 +54,8 @@ static lv_obj_t *scr, *title, *status, *prov_box;
 static lv_obj_t *row_id[ROWS], *row_bar[ROWS], *row_val[ROWS], *row_icon[ROWS];
 
 // Cost card
-static lv_obj_t *cost_card, *cost_hdr, *cost_logo, *cost_big, *cost_tok, *cost_30,
-                *cost_bar, *cost_bar_lbl, *cost_na, *cost_cap;
+static lv_obj_t *cost_card, *cost_hdr, *cost_logo, *cost_big, *cost_tok, *cost_tok_unit,
+                *cost_30, *cost_bar, *cost_bar_lbl, *cost_na, *cost_cap;
 static lv_obj_t      *cost_chart;
 static lv_chart_series_t *cost_ser;
 
@@ -312,13 +314,18 @@ static void build_widgets(void)
 
     cost_big = lv_label_create(cost_card);
     lv_obj_set_style_text_color(cost_big, lv_color_hex(0xffffff), 0);
-    lv_obj_set_style_text_font(cost_big, &lv_font_montserrat_48, 0);
+    lv_obj_set_style_text_font(cost_big, &font_lemonmilk_48, 0);
     lv_obj_set_pos(cost_big, 12, 32);
 
     cost_tok = lv_label_create(cost_card);
     lv_obj_set_style_text_color(cost_tok, lv_color_hex(0x9aa0a6), 0);
-    lv_obj_set_style_text_font(cost_tok, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_font(cost_tok, &font_lemonmilk_24, 0);
     lv_obj_set_pos(cost_tok, 12, 88);
+
+    cost_tok_unit = lv_label_create(cost_card);
+    lv_obj_set_style_text_color(cost_tok_unit, lv_color_hex(0x9aa0a6), 0);
+    lv_obj_set_style_text_font(cost_tok_unit, &lv_font_montserrat_14, 0);
+    lv_label_set_text(cost_tok_unit, "tokens");
 
     cost_30 = lv_label_create(cost_card);
     lv_obj_set_style_text_color(cost_30, lv_color_hex(0xe8eaed), 0);
@@ -392,7 +399,7 @@ static void build_widgets(void)
     lv_obj_set_pos(lim_s_lbl, 12, 34);
     lim_s_big = lv_label_create(lim_card);
     lv_obj_set_style_text_color(lim_s_big, lv_color_hex(0xffffff), 0);
-    lv_obj_set_style_text_font(lim_s_big, &lv_font_montserrat_48, 0);
+    lv_obj_set_style_text_font(lim_s_big, &font_lemonmilk_48, 0);
     lv_obj_set_pos(lim_s_big, 12, 48);
     lim_s_bar = lv_bar_create(lim_card);
     lv_obj_set_size(lim_s_bar, W - 24, 9);
@@ -449,7 +456,7 @@ static void build_widgets(void)
     lv_obj_set_pos(lim_w_lbl, 12, w_lbl_y);
     lim_w_big = lv_label_create(lim_card);
     lv_obj_set_style_text_color(lim_w_big, lv_color_hex(0xffffff), 0);
-    lv_obj_set_style_text_font(lim_w_big, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_font(lim_w_big, &font_lemonmilk_24, 0);
     lv_obj_set_pos(lim_w_big, 12, w_big_y);
     lim_w_bar = lv_bar_create(lim_card);
     lv_obj_set_size(lim_w_bar, W - 24, 5);
@@ -597,7 +604,7 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
         lv_obj_clear_flag(cost_card, LV_OBJ_FLAG_HIDDEN);
         render_card_hdr(cost_hdr, cost_logo, p->id, "TODAY");
 
-        lv_obj_t *body[] = { cost_big, cost_tok, cost_30, cost_cap, cost_chart };
+        lv_obj_t *body[] = { cost_big, cost_tok, cost_tok_unit, cost_30, cost_cap, cost_chart };
         if (!p->has_cost) {                       // non-Claude / cache miss
             lv_obj_clear_flag(cost_na, LV_OBJ_FLAG_HIDDEN);
             for (unsigned i = 0; i < sizeof body / sizeof *body; i++)
@@ -612,7 +619,8 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
         fmt_money(m, sizeof m, p->cost_today_c);
         lv_label_set_text(cost_big, m);
         fmt_tokens(tk, sizeof tk, p->tok_today);
-        lv_label_set_text_fmt(cost_tok, "%s TOKENS", tk);
+        lv_label_set_text(cost_tok, tk);
+        lv_obj_align_to(cost_tok_unit, cost_tok, LV_ALIGN_OUT_RIGHT_BOTTOM, 5, 0);
         fmt_money(m30, sizeof m30, p->cost_month_c);
         fmt_tokens(tk30, sizeof tk30, p->tok_month);
         lv_label_set_text_fmt(cost_30, "30 DAYS TOTAL: %s  " LV_SYMBOL_BULLET "  %s Toks",
