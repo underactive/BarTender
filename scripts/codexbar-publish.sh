@@ -15,8 +15,8 @@
 # Security model (see docs/SECURITY.md — RELAXED for a private single-user
 # channel; privacy now rests on Upstash endpoint + token secrecy):
 #   - The payload = `codexbar-stats.sh --json` (usage % + reset hints +
-#     extra-usage $ as cents) PLUS a Claude `cost` block (today/30d $ + tokens
-#     + per-day history) rolled up from CodexBar's LOCAL cost cache.
+#     extra-usage $ as cents) PLUS Claude and Codex `cost` blocks (today/30d
+#     $ + tokens + per-day history) rolled up from CodexBar's LOCAL cost cache.
 #   - The cost cache's `files` map (private project paths) is NEVER read; only
 #     the aggregate `days` map is, and only rolled-up numbers are forwarded.
 #   - Account email / identity / loginMethod are still never projected.
@@ -39,6 +39,7 @@
 #   CBPUB_PCT_HISTORY     CodexBar hourly usage-% history file (default:
 #                         ~/Library/Application Support/com.steipete.codexbar/
 #                         history/claude.json)
+#   (Codex cost reads pi-sessions-v*.json from the same CBPUB_COST_CACHE_DIR)
 #
 # Zero third-party deps: codexbar-stats.sh + base-macOS security/curl/launchctl/
 # osascript/awk/date/mktemp + zsh builtins.
@@ -216,6 +217,99 @@ eprint("merged claude session 24h pct: "+out.length+" pts");
 $.exit(0);
 EOF
 
+# Roll up Codex total spend / tokens / 30-day history from CodexBar's LOCAL
+# cost cache and merge into the v2 payload. Primary: highest pi-sessions-v*.json
+# (costNanos from HTTP cache — authoritative). Supplemental: highest codex-v*.json
+# for days absent from pi-sessions (Cache.db eviction). pi-sessions schema:
+# daysByProvider.codex[date][model].{costNanos,totalTokens}. codex-v schema:
+# days[date][model]=[inp,cached,out] decoded via hardcoded pricing table. Same
+# fail-safe contract as COST_MERGE_JXA: any structural mismatch -> exit non-zero
+# so the caller publishes without Codex cost (never abort, never corrupt).
+read -r -d '' CODEX_COST_MERGE_JXA <<'EOF'
+ObjC.import('Foundation'); ObjC.import('stdlib');
+function env(k){ var v=$.NSProcessInfo.processInfo.environment.objectForKey(k);
+  return (v && v.js!==undefined) ? String(v.js) : ''; }
+function eprint(s){ $.NSFileHandle.fileHandleWithStandardError
+  .writeData($.NSString.alloc.initWithUTF8String("codex-cost-merge: "+s+"\n").dataUsingEncoding(4)); }
+function rf(p){ try { var s=$.NSString.stringWithContentsOfFileEncodingError(p,4,null);
+  return (s && s.js!==undefined) ? s.js : null; } catch(e){ return null; } }
+var jsonPath=env('CBPUB_JSON'); if(!jsonPath){ eprint("no CBPUB_JSON"); $.exit(2); }
+var home=env('HOME'); if(!home){ home=String($.NSHomeDirectory()); }
+var dir=env('CBPUB_COST_CACHE_DIR');
+if(!dir){ dir=home+"/Library/Caches/CodexBar/cost-usage"; }
+var fm=$.NSFileManager.defaultManager;
+var dirNames=fm.contentsOfDirectoryAtPathError(dir,null);
+var dirArr=dirNames?dirNames.js:null;
+if(!dirArr||dirArr.length===undefined){ eprint("cache dir absent/empty: "+dir); $.exit(3); }
+var bestPi=null,bestPiV=-1,bestCdx=null,bestCdxV=-1;
+for(var i=0;i<dirArr.length;i++){
+  var fn=String(dirArr[i].js!==undefined?dirArr[i].js:dirArr[i]),mm;
+  mm=fn.match(/^pi-sessions-v(\d+)\.json$/);
+  if(mm){var v1=parseInt(mm[1],10); if(v1>bestPiV){bestPiV=v1;bestPi=fn;}}
+  mm=fn.match(/^codex-v(\d+)\.json$/);
+  if(mm){var v2=parseInt(mm[1],10); if(v2>bestCdxV){bestCdxV=v2;bestCdx=fn;}} }
+if(!bestPi){ eprint("no pi-sessions-v*.json in "+dir); $.exit(3); }
+var cTxt=rf(dir+"/"+bestPi); if(!cTxt){ eprint("unreadable "+bestPi); $.exit(3); }
+var piCache; try{piCache=JSON.parse(cTxt);}catch(e){ eprint("parse fail "+bestPi); $.exit(3); }
+var dbp=piCache&&piCache.daysByProvider;
+if(!dbp||typeof dbp!=='object'||Array.isArray(dbp)){ eprint("no daysByProvider"); $.exit(3); }
+var piDays=dbp['codex'];
+if(!piDays||typeof piDays!=='object'||Array.isArray(piDays)){ eprint("no codex in daysByProvider"); $.exit(3); }
+function dms(k){var p=k.split('-');return Date.UTC(+p[0],+p[1]-1,+p[2]);}
+function rollPi(o){var c=0,t=0,any=false;
+  for(var mdl in o){var m=o[mdl]; if(!m||typeof m!=='object') continue;
+    var cn=+m.costNanos; if(!isNaN(cn)){c+=cn/1e7; any=true;}
+    var tn=+(m.totalTokens||0); if(!isNaN(tn)) t+=tn;}
+  return any?{c:Math.round(c),t:Math.round(t)}:null;}
+var piDk=Object.keys(piDays).filter(function(k){return /^\d{4}-\d{2}-\d{2}$/.test(k);}).sort();
+if(piDk.length===0){ eprint("empty codex days in pi-sessions"); $.exit(3); }
+var merged={};
+for(var i=0;i<piDk.length;i++){var r=rollPi(piDays[piDk[i]]); if(r) merged[piDk[i]]=r;}
+// supplement: codex-v days absent from pi-sessions (Cache.db eviction drops history)
+// Prices in $/M tokens; cost_cents = ((inp-cached)*i + cached*r + out*o) / 1e4
+var PRICES={'gpt-5.5':{i:5,r:0.5,o:30},'gpt-5.4':{i:2.5,r:0.25,o:15},
+  'gpt-5.4-mini':{i:0.75,r:0.075,o:4.5},'gpt-5.3-codex':{i:1.75,r:0.175,o:14}};
+if(bestCdx){
+  var cTxt2=rf(dir+"/"+bestCdx);
+  if(cTxt2){ var cdxJ; try{cdxJ=JSON.parse(cTxt2);}catch(e){cdxJ=null;}
+    var cdxDays=cdxJ&&cdxJ.days;
+    if(cdxDays&&typeof cdxDays==='object'&&!Array.isArray(cdxDays)){
+      var cdxDk=Object.keys(cdxDays).filter(function(k){return /^\d{4}-\d{2}-\d{2}$/.test(k);});
+      for(var j=0;j<cdxDk.length;j++){var ck=cdxDk[j];
+        if(merged[ck]) continue;
+        var dayModels=cdxDays[ck]; if(!dayModels||typeof dayModels!=='object') continue;
+        var dc=0,dt=0,anyM=false;
+        for(var mdl2 in dayModels){var ta=dayModels[mdl2];
+          if(!Array.isArray(ta)||ta.length<3) continue;
+          var inp=+ta[0],cachedT=+ta[1],out=+ta[2];
+          if(isNaN(inp)||isNaN(cachedT)||isNaN(out)) continue;
+          var pp=PRICES[mdl2]; if(!pp) continue;
+          dc+=((inp-cachedT)*pp.i+cachedT*pp.r+out*pp.o)/1e4; dt+=inp+out; anyM=true;}
+        if(anyM) merged[ck]={c:Math.round(dc),t:Math.round(dt)};}}}}
+var today=piDk[piDk.length-1], tr=merged[today];
+if(!tr){ eprint("today rollup empty"); $.exit(3); }
+var tms=dms(today), cm=0, tm=0;
+var allDk=Object.keys(merged).filter(function(k){return /^\d{4}-\d{2}-\d{2}$/.test(k);}).sort();
+for(var i=0;i<allDk.length;i++){var r=merged[allDk[i]]; if(!r) continue;
+  if((tms-dms(allDk[i]))/86400000<=29){cm+=r.c;tm+=r.t;}}
+var hk=allDk.slice(-31), hist=[];
+for(var i=0;i<hk.length;i++){var r=merged[hk[i]]; hist.push(r?r.c:0);}
+var pTxt=rf(jsonPath); if(!pTxt){ eprint("payload unreadable"); $.exit(2); }
+var pay; try{pay=JSON.parse(pTxt);}catch(e){ eprint("payload parse fail"); $.exit(2); }
+if(!pay||!Array.isArray(pay.providers)){ eprint("payload shape"); $.exit(2); }
+var did=false;
+for(var i=0;i<pay.providers.length;i++){var pv=pay.providers[i];
+  if(pv&&pv.id==='codex'){pv.cost=pv.cost||{};
+    pv.cost.ct=tr.c; pv.cost.cm=cm; pv.cost.tt=tr.t; pv.cost.tm=tm; pv.cost.h=hist;
+    did=true;}}
+if(!did){ eprint("no codex provider in payload — nothing to merge"); $.exit(0); }
+var w=$.NSString.alloc.initWithUTF8String(JSON.stringify(pay))
+  .writeToFileAtomicallyEncodingError(jsonPath,true,4,null);
+if(!w){ eprint("payload writeback failed"); $.exit(2); }
+eprint("merged codex cost: today="+tr.c+"c/"+tr.t+"tok 30d="+cm+"c/"+tm+"tok hist="+hist.length+"d (pi="+piDk.length+"d cdx-supp="+(allDk.length-piDk.length)+"d)");
+$.exit(0);
+EOF
+
 cmd_once() {
   mkdir -p "$LOG_DIR"
   [[ -x "$STATS" ]] || die "sibling codexbar-stats.sh not found/executable at $STATS"
@@ -251,6 +345,14 @@ cmd_once() {
     bytes=$(wc -c <"$json" | tr -d ' ')
   else
     log "note: Claude cost-cache merge skipped (absent/unrecognized) — publishing usage-only"
+  fi
+
+  # Augment Codex with total spend/tokens/30d history from pi-sessions cache.
+  # Same fail-safe contract: any cache problem -> publish without Codex cost.
+  if CBPUB_JSON="$json" osascript -l JavaScript -e "$CODEX_COST_MERGE_JXA" 2>>"$LOG"; then
+    bytes=$(wc -c <"$json" | tr -d ' ')
+  else
+    log "note: Codex cost-cache merge skipped (absent/unrecognized) — publishing usage-only"
   fi
 
   # Add the 24h SESSION usage-% sparkline (`ph`). Independent + fail-safe: a

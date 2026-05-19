@@ -30,8 +30,8 @@ typedef struct {
     bool  has_s;  float s;            // secondary used %
     char  sr[STATS_TXT_MAX];
 
-    // v2 cost block — Claude only this build (has_cost=false otherwise, and for
-    // every provider on a v1 payload). Money is integer CENTS: LVGL's sprintf
+    // v2 cost block — present when publisher merged cost data (has_cost=false
+    // otherwise, and for every provider on a v1 payload). Money is integer CENTS: LVGL's sprintf
     // is compiled without float support, so the UI formats with integer math.
     // Token counts reach billions over 30 days -> 64-bit.
     bool     has_cost;

@@ -627,24 +627,22 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
                               m30, tk30);
 
         int n = p->hist_n;
-        if (n < 1) n = 1;
         if (n > NAV_HIST_PTS) n = NAV_HIST_PTS;
+        int draw_n = (n < 2) ? 2 : n;   // LVGL LINE chart needs >=2 pts; pad with 0 for flatline
         int32_t mx = 1;
-        for (int i = 0; i < n && i < p->hist_n; i++)
-            if (p->hist[i] > mx) mx = p->hist[i];
-        lv_chart_set_point_count(cost_chart, (uint32_t)n);
-        lv_chart_set_range(cost_chart, LV_CHART_AXIS_PRIMARY_Y, 0, mx + mx / 8 + 1);
         for (int i = 0; i < n; i++)
-            lv_chart_set_value_by_id(cost_chart, cost_ser, i,
-                                     (i < p->hist_n) ? p->hist[i] : 0);
+            if (p->hist[i] > mx) mx = p->hist[i];
+        lv_chart_set_point_count(cost_chart, (uint32_t)draw_n);
+        lv_chart_set_range(cost_chart, LV_CHART_AXIS_PRIMARY_Y, 0, mx + mx / 8 + 1);
+        for (int i = 0; i < draw_n; i++)
+            lv_chart_set_value_by_id(cost_chart, cost_ser, i, (i < n) ? p->hist[i] : 0);
         lv_color_t cc;
         lv_chart_set_series_color(cost_chart, cost_ser,
             prov_accent(p->id, &cc) ? cc : lv_color_hex(0xe06c4b));
         lv_chart_refresh(cost_chart);
-
         char cmx[16];
         fmt_money(cmx, sizeof cmx, mx);
-        lv_label_set_text_fmt(cost_cap, "%d DAY SPEND (max): %s", p->hist_n, cmx);
+        lv_label_set_text_fmt(cost_cap, "%d DAY SPEND (max): %s", n, cmx);
         return;
     }
 
@@ -670,6 +668,9 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
     lv_label_set_text(lim_w_rst, rst);
 
     if (p->has_cost && p->extra_limit_c > 0) {
+        lv_obj_clear_flag(lim_x_lbl, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(lim_x_val, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(lim_x_bar, LV_OBJ_FLAG_HIDDEN);
         char a[16], b[16];
         fmt_money(a, sizeof a, p->extra_used_c);
         fmt_money(b, sizeof b, p->extra_limit_c);
@@ -680,9 +681,9 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
         lv_obj_set_style_bg_color(lim_x_bar, bar_color(p, (float)xp),
                                   LV_PART_INDICATOR);
     } else {
-        lv_label_set_text(lim_x_lbl, "EXTRA USAGE");
-        lv_label_set_text(lim_x_val, "n/a");
-        lv_bar_set_value(lim_x_bar, 0, LV_ANIM_OFF);
+        lv_obj_add_flag(lim_x_lbl, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(lim_x_val, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(lim_x_bar, LV_OBJ_FLAG_HIDDEN);
     }
 
     // 24h SESSION usage-% sparkline from `ph` (Claude only; absent elsewhere).
