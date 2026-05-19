@@ -52,16 +52,16 @@ static lv_obj_t *scr, *title, *status, *prov_box;
 static lv_obj_t *row_id[ROWS], *row_bar[ROWS], *row_val[ROWS], *row_icon[ROWS];
 
 // Cost card
-static lv_obj_t *cost_card, *cost_hdr, *cost_big, *cost_tok, *cost_30,
+static lv_obj_t *cost_card, *cost_hdr, *cost_logo, *cost_big, *cost_tok, *cost_30,
                 *cost_bar, *cost_bar_lbl, *cost_na, *cost_cap;
 static lv_obj_t      *cost_chart;
 static lv_chart_series_t *cost_ser;
 
 // Usage-Limits card
-static lv_obj_t *lim_card, *lim_hdr,
+static lv_obj_t *lim_card, *lim_hdr, *lim_logo,
                 *lim_s_lbl, *lim_s_big, *lim_s_bar, *lim_s_rst,
-                *lim_w_lbl, *lim_w_bar, *lim_w_rst,
-                *lim_x_lbl, *lim_x_bar, *lim_cap;
+                *lim_w_lbl, *lim_w_big, *lim_w_bar, *lim_w_rst,
+                *lim_x_lbl, *lim_x_val, *lim_x_bar, *lim_cap;
 static lv_obj_t      *lim_chart;
 static lv_chart_series_t *lim_ser;
 
@@ -133,7 +133,7 @@ static lv_color_t bar_color(const stats_provider_t *p, float v)
 // "headroom remaining"). Flip this default to change it globally; or call
 // ui_set_bar_invert() at runtime (portal/NVS wiring later). Color is keyed on
 // the true usage % elsewhere, so this affects fill only — never the color.
-#define UI_BAR_INVERT_DEFAULT  true
+#define UI_BAR_INVERT_DEFAULT  false
 static bool s_bar_invert = UI_BAR_INVERT_DEFAULT;
 
 // Map a real 0..100 usage % to the bar's fill value, honoring the flag.
@@ -188,7 +188,10 @@ static int summary_hit_test(int y)
 static void fmt_tokens(char *buf, size_t n, int64_t t)
 {
     if (t < 0) t = 0;
-    if (t >= 1000000) {
+    if (t >= 1000000000LL) {
+        int cb = (int)((t + 5000000LL) / 10000000LL);  // centibillions, rounded
+        snprintf(buf, n, "%d.%02dB", cb / 100, cb % 100);
+    } else if (t >= 1000000) {
         int whole = (int)(t / 1000000);
         int frac  = (int)((t / 100000) % 10);
         snprintf(buf, n, "%d.%dM", whole, frac);
@@ -209,6 +212,9 @@ static void fmt_money(char *buf, size_t n, int32_t cents)
     snprintf(buf, n, "$%d.%02d", (int)(cents / 100), (int)(cents % 100));
 }
 
+
+static void create_card_hdr(lv_obj_t *card, lv_obj_t **hdr_out, lv_obj_t **logo_out);
+static void render_card_hdr(lv_obj_t *hdr, lv_obj_t *logo, const char *id, const char *page);
 
 static void build_widgets(void)
 {
@@ -261,7 +267,8 @@ static void build_widgets(void)
         lv_obj_set_size(row_bar[i], val_x - ROW_TXT_X - 8, 7);
         lv_obj_set_pos(row_bar[i], ROW_TXT_X, y + 30);
         lv_bar_set_range(row_bar[i], 0, 100);
-        lv_obj_set_style_bg_color(row_bar[i], lv_color_hex(0x222428), 0);
+        lv_obj_set_style_bg_color(row_bar[i], lv_color_hex(0x3a3a3a), 0);
+        lv_obj_set_style_bg_opa(row_bar[i], LV_OPA_COVER, 0);
         lv_obj_set_style_bg_color(row_bar[i], lv_color_hex(0x30c14e), LV_PART_INDICATOR);
 
         row_val[i] = lv_label_create(scr);
@@ -301,34 +308,31 @@ static void build_widgets(void)
     lv_obj_clear_flag(cost_card, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(cost_card, LV_OBJ_FLAG_HIDDEN);
 
-    cost_hdr = lv_label_create(cost_card);
-    lv_obj_set_style_text_color(cost_hdr, lv_color_hex(0x9aa0a6), 0);
-    lv_obj_set_style_text_font(cost_hdr, &lv_font_montserrat_14, 0);
-    lv_obj_set_pos(cost_hdr, 12, 10);
+    create_card_hdr(cost_card, &cost_hdr, &cost_logo);
 
     cost_big = lv_label_create(cost_card);
     lv_obj_set_style_text_color(cost_big, lv_color_hex(0xffffff), 0);
-    lv_obj_set_style_text_font(cost_big, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_font(cost_big, &lv_font_montserrat_48, 0);
     lv_obj_set_pos(cost_big, 12, 32);
 
     cost_tok = lv_label_create(cost_card);
     lv_obj_set_style_text_color(cost_tok, lv_color_hex(0x9aa0a6), 0);
-    lv_obj_set_style_text_font(cost_tok, &lv_font_montserrat_12, 0);
-    lv_obj_set_pos(cost_tok, 12, 58);
+    lv_obj_set_style_text_font(cost_tok, &lv_font_montserrat_24, 0);
+    lv_obj_set_pos(cost_tok, 12, 88);
 
     cost_30 = lv_label_create(cost_card);
     lv_obj_set_style_text_color(cost_30, lv_color_hex(0xe8eaed), 0);
     lv_obj_set_style_text_font(cost_30, &lv_font_montserrat_12, 0);
-    lv_obj_set_pos(cost_30, 12, 76);
+    lv_obj_set_pos(cost_30, 12, H - 38);
 
     cost_cap = lv_label_create(cost_card);
     lv_obj_set_style_text_color(cost_cap, lv_color_hex(0x9aa0a6), 0);
     lv_obj_set_style_text_font(cost_cap, &lv_font_montserrat_12, 0);
-    lv_obj_set_pos(cost_cap, 12, 90);
+    lv_obj_set_pos(cost_cap, 12, H - 22);
 
     cost_chart = lv_chart_create(cost_card);
-    lv_obj_set_size(cost_chart, W - 24, 96);
-    lv_obj_set_pos(cost_chart, 12, 108);
+    lv_obj_set_size(cost_chart, W - 24, H - 166);
+    lv_obj_set_pos(cost_chart, 12, 120);
     // LINE sparkline of the 30-day daily spend (CodexBar cost cache is
     // day-granular — no hourly $, so this is days, not 24h). point_count is
     // set per-render to the real history length so there are NEVER filler
@@ -350,12 +354,16 @@ static void build_widgets(void)
     lv_obj_set_size(cost_bar, W - 24, 6);   // half-height (was 12)
     lv_obj_set_pos(cost_bar, 12, H - 56);
     lv_bar_set_range(cost_bar, 0, 100);
-    lv_obj_set_style_bg_color(cost_bar, lv_color_hex(0x222428), 0);
+    lv_obj_set_style_bg_color(cost_bar, lv_color_hex(0x3a3a3a), 0);
+    lv_obj_set_style_bg_opa(cost_bar, LV_OPA_COVER, 0);
 
     cost_bar_lbl = lv_label_create(cost_card);
     lv_obj_set_style_text_color(cost_bar_lbl, lv_color_hex(0xe8eaed), 0);
     lv_obj_set_style_text_font(cost_bar_lbl, &lv_font_montserrat_12, 0);
     lv_obj_set_pos(cost_bar_lbl, 12, H - 38);
+
+    lv_obj_add_flag(cost_bar, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(cost_bar_lbl, LV_OBJ_FLAG_HIDDEN);
 
     cost_na = lv_label_create(cost_card);
     lv_obj_set_style_text_color(cost_na, lv_color_hex(0x9aa0a6), 0);
@@ -376,62 +384,54 @@ static void build_widgets(void)
     lv_obj_clear_flag(lim_card, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(lim_card, LV_OBJ_FLAG_HIDDEN);
 
-    lim_hdr = lv_label_create(lim_card);
-    lv_obj_set_style_text_color(lim_hdr, lv_color_hex(0x9aa0a6), 0);
-    lv_obj_set_style_text_font(lim_hdr, &lv_font_montserrat_14, 0);
-    lv_obj_set_pos(lim_hdr, 12, 10);
+    create_card_hdr(lim_card, &lim_hdr, &lim_logo);
 
     lim_s_lbl = lv_label_create(lim_card);
     lv_obj_set_style_text_color(lim_s_lbl, lv_color_hex(0x9aa0a6), 0);
     lv_obj_set_style_text_font(lim_s_lbl, &lv_font_montserrat_12, 0);
-    lv_obj_set_pos(lim_s_lbl, 12, 36);
+    lv_obj_set_pos(lim_s_lbl, 12, 34);
     lim_s_big = lv_label_create(lim_card);
     lv_obj_set_style_text_color(lim_s_big, lv_color_hex(0xffffff), 0);
-    lv_obj_set_style_text_font(lim_s_big, &lv_font_montserrat_18, 0);
-    lv_obj_set_pos(lim_s_big, 12, 52);
+    lv_obj_set_style_text_font(lim_s_big, &lv_font_montserrat_48, 0);
+    lv_obj_set_pos(lim_s_big, 12, 48);
     lim_s_bar = lv_bar_create(lim_card);
-    lv_obj_set_size(lim_s_bar, W - 24, 6);   // half-height (was 12)
-    lv_obj_set_pos(lim_s_bar, 12, 80);
+    lv_obj_set_size(lim_s_bar, W - 24, 9);
+    lv_obj_set_pos(lim_s_bar, 12, 104);
     lv_bar_set_range(lim_s_bar, 0, 100);
-    lv_obj_set_style_bg_color(lim_s_bar, lv_color_hex(0x222428), 0);
+    lv_obj_set_style_bg_color(lim_s_bar, lv_color_hex(0x3a3a3a), 0);
+    lv_obj_set_style_bg_opa(lim_s_bar, LV_OPA_COVER, 0);
     lim_s_rst = lv_label_create(lim_card);
     lv_obj_set_style_text_color(lim_s_rst, lv_color_hex(0x9aa0a6), 0);
     lv_obj_set_style_text_font(lim_s_rst, &lv_font_montserrat_12, 0);
-    lv_obj_set_pos(lim_s_rst, 12, 96);
+    lv_obj_set_pos(lim_s_rst, 12, 116);
 
-    lim_w_lbl = lv_label_create(lim_card);
-    lv_obj_set_style_text_color(lim_w_lbl, lv_color_hex(0x9aa0a6), 0);
-    lv_obj_set_style_text_font(lim_w_lbl, &lv_font_montserrat_12, 0);
-    lv_obj_set_pos(lim_w_lbl, 12, 122);
-    lim_w_bar = lv_bar_create(lim_card);
-    lv_obj_set_size(lim_w_bar, W - 24, 6);   // half-height (was 12)
-    lv_obj_set_pos(lim_w_bar, 12, 140);
-    lv_bar_set_range(lim_w_bar, 0, 100);
-    lv_obj_set_style_bg_color(lim_w_bar, lv_color_hex(0x222428), 0);
-    lim_w_rst = lv_label_create(lim_card);
-    lv_obj_set_style_text_color(lim_w_rst, lv_color_hex(0x9aa0a6), 0);
-    lv_obj_set_style_text_font(lim_w_rst, &lv_font_montserrat_12, 0);
-    lv_obj_set_pos(lim_w_rst, 12, 156);
-
-    lim_x_lbl = lv_label_create(lim_card);
-    lv_obj_set_style_text_color(lim_x_lbl, lv_color_hex(0x9aa0a6), 0);
-    lv_obj_set_style_text_font(lim_x_lbl, &lv_font_montserrat_12, 0);
-    lv_obj_set_pos(lim_x_lbl, 12, 182);
-    lim_x_bar = lv_bar_create(lim_card);
-    lv_obj_set_size(lim_x_bar, W - 24, 6);   // half-height (was 12)
-    lv_obj_set_pos(lim_x_bar, 12, 200);
-    lv_bar_set_range(lim_x_bar, 0, 100);
-    lv_obj_set_style_bg_color(lim_x_bar, lv_color_hex(0x222428), 0);
-
-    // 24h SESSION usage-% sparkline (from payload `ph`; Claude only).
+    // lim_cap (session-24h caption) permanently hidden — line removed from UI.
     lim_cap = lv_label_create(lim_card);
-    lv_obj_set_style_text_color(lim_cap, lv_color_hex(0x9aa0a6), 0);
-    lv_obj_set_style_text_font(lim_cap, &lv_font_montserrat_12, 0);
-    lv_obj_set_pos(lim_cap, 12, 224);
+    lv_obj_add_flag(lim_cap, LV_OBJ_FLAG_HIDDEN);
+
+    // Dynamic layout: compute all lower-card positions from H so the chart
+    // automatically fills every available pixel between the session section
+    // and the weekly section.
+    const int PAD   = 10;   // gap between sections
+    const int S_END = 130;  // bottom of lim_s_rst  (y=116 + font_12 ~14px)
+
+    // Extra usage: pinned to the bottom of the screen.
+    const int x_bar_y = H - 11;           // bar top (h=5 → bottom = H-6)
+    const int x_lbl_y = x_bar_y - 4 - 14; // label above bar
+
+    // Weekly: stacked immediately above the extra usage section.
+    const int w_rst_y = x_lbl_y - PAD - 14;
+    const int w_bar_y = w_rst_y - 4 - 5;
+    const int w_big_y = w_bar_y - 4 - 26;
+    const int w_lbl_y = w_big_y - 4 - 14;
+
+    // Chart: fills the gap between the session section and the weekly section.
+    const int chart_y = S_END + PAD;
+    const int chart_h = (w_lbl_y - PAD) - chart_y;
 
     lim_chart = lv_chart_create(lim_card);
-    lv_obj_set_size(lim_chart, W - 24, 64);
-    lv_obj_set_pos(lim_chart, 12, 240);
+    lv_obj_set_size(lim_chart, W - 24, chart_h > 8 ? chart_h : 8);
+    lv_obj_set_pos(lim_chart, 12, chart_y);
     lv_chart_set_type(lim_chart, LV_CHART_TYPE_LINE);
     lv_chart_set_div_line_count(lim_chart, 0, 0);
     lv_obj_set_style_border_width(lim_chart, 0, 0);
@@ -442,6 +442,42 @@ static void build_widgets(void)
     lv_obj_set_style_height(lim_chart, 0, LV_PART_INDICATOR);
     lim_ser = lv_chart_add_series(lim_chart, lv_color_hex(0x30c14e),
                                   LV_CHART_AXIS_PRIMARY_Y);
+
+    lim_w_lbl = lv_label_create(lim_card);
+    lv_obj_set_style_text_color(lim_w_lbl, lv_color_hex(0x9aa0a6), 0);
+    lv_obj_set_style_text_font(lim_w_lbl, &lv_font_montserrat_12, 0);
+    lv_obj_set_pos(lim_w_lbl, 12, w_lbl_y);
+    lim_w_big = lv_label_create(lim_card);
+    lv_obj_set_style_text_color(lim_w_big, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_text_font(lim_w_big, &lv_font_montserrat_24, 0);
+    lv_obj_set_pos(lim_w_big, 12, w_big_y);
+    lim_w_bar = lv_bar_create(lim_card);
+    lv_obj_set_size(lim_w_bar, W - 24, 5);
+    lv_obj_set_pos(lim_w_bar, 12, w_bar_y);
+    lv_bar_set_range(lim_w_bar, 0, 100);
+    lv_obj_set_style_bg_color(lim_w_bar, lv_color_hex(0x3a3a3a), 0);
+    lv_obj_set_style_bg_opa(lim_w_bar, LV_OPA_COVER, 0);
+    lim_w_rst = lv_label_create(lim_card);
+    lv_obj_set_style_text_color(lim_w_rst, lv_color_hex(0x9aa0a6), 0);
+    lv_obj_set_style_text_font(lim_w_rst, &lv_font_montserrat_12, 0);
+    lv_obj_set_pos(lim_w_rst, 12, w_rst_y);
+
+    lim_x_lbl = lv_label_create(lim_card);
+    lv_obj_set_style_text_color(lim_x_lbl, lv_color_hex(0x9aa0a6), 0);
+    lv_obj_set_style_text_font(lim_x_lbl, &lv_font_montserrat_12, 0);
+    lv_obj_set_pos(lim_x_lbl, 12, x_lbl_y);
+    lim_x_val = lv_label_create(lim_card);
+    lv_obj_set_style_text_color(lim_x_val, lv_color_hex(0x9aa0a6), 0);
+    lv_obj_set_style_text_font(lim_x_val, &lv_font_montserrat_12, 0);
+    lv_obj_set_width(lim_x_val, W - 24);
+    lv_obj_set_pos(lim_x_val, 12, x_lbl_y);
+    lv_obj_set_style_text_align(lim_x_val, LV_TEXT_ALIGN_RIGHT, 0);
+    lim_x_bar = lv_bar_create(lim_card);
+    lv_obj_set_size(lim_x_bar, W - 24, 5);
+    lv_obj_set_pos(lim_x_bar, 12, x_bar_y);
+    lv_bar_set_range(lim_x_bar, 0, 100);
+    lv_obj_set_style_bg_color(lim_x_bar, lv_color_hex(0x3a3a3a), 0);
+    lv_obj_set_style_bg_opa(lim_x_bar, LV_OPA_COVER, 0);
 }
 
 // ---- navigation helpers --------------------------------------------------
@@ -452,6 +488,42 @@ static void up_id(char *dst, size_t n, const char *src)
     for (; src && src[j] && j + 1 < n; j++)
         dst[j] = (char)toupper((unsigned char)src[j]);
     dst[j] = '\0';
+}
+
+static void create_card_hdr(lv_obj_t *card, lv_obj_t **hdr_out, lv_obj_t **logo_out)
+{
+    *logo_out = lv_image_create(card);
+    lv_obj_set_pos(*logo_out, 12, 11);
+    lv_obj_set_style_image_recolor_opa(*logo_out, LV_OPA_COVER, 0);
+    lv_image_set_pivot(*logo_out, 0, 0);
+    lv_image_set_scale(*logo_out, 112);   // 32px * (112/256) ≈ 14px = font_14 height
+    lv_obj_add_flag(*logo_out, LV_OBJ_FLAG_HIDDEN);
+
+    *hdr_out = lv_label_create(card);
+    lv_obj_set_style_text_color(*hdr_out, lv_color_hex(0x9aa0a6), 0);
+    lv_obj_set_style_text_font(*hdr_out, &lv_font_montserrat_14, 0);
+    lv_obj_set_pos(*hdr_out, 12, 10);
+}
+
+static void render_card_hdr(lv_obj_t *hdr, lv_obj_t *logo,
+                             const char *id, const char *page)
+{
+    char up[STATS_ID_MAX];
+    up_id(up, sizeof up, id);
+    lv_label_set_text_fmt(hdr, "%s  %s", up, page);
+
+    lv_color_t tc;
+    const lv_image_dsc_t *ic = provider_icon(id);
+    if (ic) {
+        lv_image_set_src(logo, ic);
+        lv_obj_set_style_image_recolor(logo,
+            prov_accent(id, &tc) ? tc : lv_color_hex(0xe8eaed), 0);
+        lv_obj_clear_flag(logo, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_pos(hdr, 30, 10);
+    } else {
+        lv_obj_add_flag(logo, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_pos(hdr, 12, 10);
+    }
 }
 
 static void hide_cards(void)     // hide the Cost/Limit panels (chrome stays)
@@ -504,21 +576,28 @@ static int extra_pct(const stats_provider_t *p)
     return xp;
 }
 
+// "May 19 at 3:10PM" -> "Resets May 19 3:10PM"  (strips " at ", adds prefix)
+static void fmt_reset(char *dst, size_t n, const char *ts)
+{
+    const char *at = strstr(ts, " at ");
+    if (at)
+        snprintf(dst, n, "Resets %.*s %s", (int)(at - ts), ts, at + 4);
+    else
+        snprintf(dst, n, "Resets %s", ts);
+}
+
 static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
 {
     hide_summary_chrome();
 
     const stats_provider_t *p = &st.stats.p[st.nav_provider];
-    char up[STATS_ID_MAX];
-    up_id(up, sizeof up, p->id);
 
     if (st.nav_card == CARD_COST) {
         lv_obj_add_flag(lim_card, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(cost_card, LV_OBJ_FLAG_HIDDEN);
-        lv_label_set_text_fmt(cost_hdr, "%s  COST", up);
+        render_card_hdr(cost_hdr, cost_logo, p->id, "TODAY");
 
-        lv_obj_t *body[] = { cost_big, cost_tok, cost_30, cost_cap,
-                             cost_chart, cost_bar, cost_bar_lbl };
+        lv_obj_t *body[] = { cost_big, cost_tok, cost_30, cost_cap, cost_chart };
         if (!p->has_cost) {                       // non-Claude / cache miss
             lv_obj_clear_flag(cost_na, LV_OBJ_FLAG_HIDDEN);
             for (unsigned i = 0; i < sizeof body / sizeof *body; i++)
@@ -533,16 +612,12 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
         fmt_money(m, sizeof m, p->cost_today_c);
         lv_label_set_text(cost_big, m);
         fmt_tokens(tk, sizeof tk, p->tok_today);
-        lv_label_set_text_fmt(cost_tok, "%s TOKENS TODAY", tk);
+        lv_label_set_text_fmt(cost_tok, "%s TOKENS", tk);
         fmt_money(m30, sizeof m30, p->cost_month_c);
         fmt_tokens(tk30, sizeof tk30, p->tok_month);
-        lv_label_set_text_fmt(cost_30, "30D  %s  " LV_SYMBOL_BULLET "  %s",
+        lv_label_set_text_fmt(cost_30, "30 DAYS TOTAL: %s  " LV_SYMBOL_BULLET "  %s Toks",
                               m30, tk30);
 
-        // Real 30-day daily-spend line. point_count == the actual history
-        // length (NO filler points: LV_CHART_POINT_NONE==INT32_MAX clamps to
-        // range-max and draws as a full block). CodexBar's cache is
-        // day-granular so this is days, not 24h (exec-plan Decision #3).
         int n = p->hist_n;
         if (n < 1) n = 1;
         if (n > NAV_HIST_PTS) n = NAV_HIST_PTS;
@@ -550,84 +625,72 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
         for (int i = 0; i < n && i < p->hist_n; i++)
             if (p->hist[i] > mx) mx = p->hist[i];
         lv_chart_set_point_count(cost_chart, (uint32_t)n);
-        // +1/8 headroom keeps the peak off the top edge; +1 avoids a
-        // degenerate 0..0 range when all days are zero.
         lv_chart_set_range(cost_chart, LV_CHART_AXIS_PRIMARY_Y, 0, mx + mx / 8 + 1);
         for (int i = 0; i < n; i++)
             lv_chart_set_value_by_id(cost_chart, cost_ser, i,
                                      (i < p->hist_n) ? p->hist[i] : 0);
-        // Series follows the provider's CodexBar brand color.
         lv_color_t cc;
         lv_chart_set_series_color(cost_chart, cost_ser,
             prov_accent(p->id, &cc) ? cc : lv_color_hex(0xe06c4b));
         lv_chart_refresh(cost_chart);
+
         char cmx[16];
         fmt_money(cmx, sizeof cmx, mx);
-        lv_label_set_text_fmt(cost_cap, "%d-DAY SPEND  " LV_SYMBOL_BULLET
-                              "  max %s", p->hist_n, cmx);
-
-        int xp = extra_pct(p);
-        lv_bar_set_value(cost_bar, bar_fill(xp), LV_ANIM_OFF);
-        lv_obj_set_style_bg_color(cost_bar, bar_color(p, (float)xp),
-                                  LV_PART_INDICATOR);
-        char xu[16], xl[16];
-        fmt_money(xu, sizeof xu, p->extra_used_c);
-        fmt_money(xl, sizeof xl, p->extra_limit_c);
-        lv_label_set_text_fmt(cost_bar_lbl, "EXTRA %s / %s", xu, xl);
+        lv_label_set_text_fmt(cost_cap, "%d DAY SPEND (max): %s", p->hist_n, cmx);
         return;
     }
 
     // CARD_LIMITS — works for any provider (uses p/pr/s/sr already on device)
     lv_obj_add_flag(cost_card, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(lim_card, LV_OBJ_FLAG_HIDDEN);
-    lv_label_set_text_fmt(lim_hdr, "%s  LIMITS", up);
+    render_card_hdr(lim_hdr, lim_logo, p->id, "LIMITS");
 
     char pb[12];
     lv_label_set_text(lim_s_lbl, "SESSION");
     fmt_pct(pb, sizeof pb, p->has_p, p->p);
     lv_label_set_text(lim_s_big, pb);
     set_bar(lim_s_bar, p->has_p, p->p, p);
-    lv_label_set_text(lim_s_rst, p->pr);
+    char rst[48];
+    fmt_reset(rst, sizeof rst, p->pr);
+    lv_label_set_text(lim_s_rst, rst);
 
     fmt_pct(pb, sizeof pb, p->has_s, p->s);
-    lv_label_set_text_fmt(lim_w_lbl, "WEEKLY  %s", pb);
+    lv_label_set_text(lim_w_lbl, "WEEKLY");
+    lv_label_set_text(lim_w_big, pb);
     set_bar(lim_w_bar, p->has_s, p->s, p);
-    lv_label_set_text(lim_w_rst, p->sr);
+    fmt_reset(rst, sizeof rst, p->sr);
+    lv_label_set_text(lim_w_rst, rst);
 
     if (p->has_cost && p->extra_limit_c > 0) {
         char a[16], b[16];
         fmt_money(a, sizeof a, p->extra_used_c);
         fmt_money(b, sizeof b, p->extra_limit_c);
-        lv_label_set_text_fmt(lim_x_lbl, "EXTRA USAGE  %s / %s", a, b);
+        lv_label_set_text(lim_x_lbl, "EXTRA USAGE");
+        lv_label_set_text_fmt(lim_x_val, "%s / %s", a, b);
         int xp = extra_pct(p);
         lv_bar_set_value(lim_x_bar, bar_fill(xp), LV_ANIM_OFF);
         lv_obj_set_style_bg_color(lim_x_bar, bar_color(p, (float)xp),
                                   LV_PART_INDICATOR);
     } else {
-        lv_label_set_text(lim_x_lbl, "EXTRA USAGE  n/a");
+        lv_label_set_text(lim_x_lbl, "EXTRA USAGE");
+        lv_label_set_text(lim_x_val, "n/a");
         lv_bar_set_value(lim_x_bar, 0, LV_ANIM_OFF);
     }
 
     // 24h SESSION usage-% sparkline from `ph` (Claude only; absent elsewhere).
     if (p->pct_hist_n > 0) {
-        lv_obj_clear_flag(lim_cap, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(lim_chart, LV_OBJ_FLAG_HIDDEN);
         int n = p->pct_hist_n;
         if (n > STATS_PCT_HIST_MAX) n = STATS_PCT_HIST_MAX;
         lv_chart_set_point_count(lim_chart, (uint32_t)n);
         lv_chart_set_range(lim_chart, LV_CHART_AXIS_PRIMARY_Y, 0, 100);
-        // Match the provider theme (Claude orange) so the limits page is
-        // coherent; default green for un-themed providers.
         lv_color_t lc;
         lv_chart_set_series_color(lim_chart, lim_ser,
             prov_accent(p->id, &lc) ? lc : lv_color_hex(0x30c14e));
         for (int i = 0; i < n; i++)
             lv_chart_set_value_by_id(lim_chart, lim_ser, i, p->pct_hist[i]);
         lv_chart_refresh(lim_chart);
-        lv_label_set_text_fmt(lim_cap, "SESSION 24H  " LV_SYMBOL_BULLET
-                              "  now %d%%", p->pct_hist[n - 1]);
     } else {
-        lv_obj_add_flag(lim_cap, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(lim_chart, LV_OBJ_FLAG_HIDDEN);
     }
 }
