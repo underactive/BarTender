@@ -16,17 +16,13 @@
 #define ROW_ICON_PX  32          // matches scripts/gen-provider-icons.py
 #define ROW_TXT_X    48          // name/bar start (right of the icon column)
 
-// Menu/submenu geometry — used by BOTH build_widgets() and menu_hit_test()
-// so tap coordinates always map to the row that was drawn there.
-#define MENU_ROWS    (STATS_MAX_PROVIDERS + 1)   // "Summary" + up to 12 providers
-#define NAV_TOP      40
-#define NAV_ROW_H    44                          // >= 44 px tap target
 #define NAV_HIST_PTS STATS_HIST_MAX   // chart points == payload schema cap,
                                       // NOT a UI choice (keep them equal)
 
 typedef enum { UI_PROVISION, UI_STATS } ui_mode_t;
-// Sub-state of UI_STATS: where in the swipe menu the user is.
-typedef enum { NAV_SUMMARY, NAV_MENU, NAV_SUBMENU, NAV_CARD } nav_level_t;
+// Sub-state of UI_STATS: the scrollable summary list, or a per-provider page
+// (Cost/Limit, toggled by tap; entered by tapping a summary row).
+typedef enum { NAV_SUMMARY, NAV_PAGE } nav_level_t;
 typedef enum { CARD_COST, CARD_LIMITS } card_kind_t;
 
 // Shared state — written by any task under s_mtx, consumed only by ui_task.
@@ -42,16 +38,16 @@ static struct {
     // Navigation (mutated by ui_handle_input under s_mtx; read by render).
     nav_level_t nav_level;
     int         nav_provider;   // index into stats.p[] of the chosen provider
-    card_kind_t nav_card;
+    char        nav_id[STATS_ID_MAX];  // its id — re-resolved each render so a
+                                // refresh that REORDERS providers can't
+                                // silently swap which one the page shows
+    card_kind_t nav_card;       // which page is showing in NAV_PAGE
+    int         scroll;         // NAV_SUMMARY: index of the top visible row
 } st;
 
 // Widgets (created once, mutated only on ui_task)
 static lv_obj_t *scr, *title, *status, *prov_box;
 static lv_obj_t *row_id[ROWS], *row_bar[ROWS], *row_val[ROWS], *row_icon[ROWS];
-
-// Menu / submenu (reused across both levels)
-static lv_obj_t *menu_title;
-static lv_obj_t *menu_btn[MENU_ROWS], *menu_lbl[MENU_ROWS];
 
 // Cost card
 static lv_obj_t *cost_card, *cost_hdr, *cost_big, *cost_tok, *cost_30,
@@ -146,14 +142,42 @@ static int bar_fill(int pct)
     return s_bar_invert ? 100 - pct : pct;
 }
 
-// Collect indices of providers with usable data (the menu shows only these,
-// per spec: "providers that have stats showing on the summary page").
-static int ok_providers(int *out, int max)
+// ---- scrollable-summary geometry (pure reads of st + cached s_scr_h; safe
+// to call from ui_handle_input off ui_task — no LVGL, mutate only st.scroll
+// under s_mtx, same discipline as the rest of the nav state) ----
+
+// How many provider rows fit on screen below the title/status band.
+static int summary_vis_rows(void)
 {
-    int n = 0;
-    for (int i = 0; i < st.stats.n && i < STATS_MAX_PROVIDERS; i++)
-        if (st.stats.p[i].ok && n < max) out[n++] = i;
-    return n;
+    int r = (s_scr_h - ROW_Y0) / ROW_H;     // 320px: (320-46)/48 = 5
+    if (r < 1)    r = 1;
+    if (r > ROWS) r = ROWS;
+    return r;
+}
+
+// Pin st.scroll into [0, max(0, n - visible)] (closes the list-shrank race).
+static void clamp_scroll(void)
+{
+    int n   = st.stats.n < 0 ? 0 : st.stats.n;
+    int max = n - summary_vis_rows();
+    if (max < 0)          max = 0;
+    if (st.scroll > max)  st.scroll = max;
+    if (st.scroll < 0)    st.scroll = 0;
+}
+
+// Tap y -> provider index (accounting for scroll), or -1 on a miss / the
+// inter-row gap. MUST mirror the summary render geometry (ROW_Y0/ROW_H).
+static int summary_hit_test(int y)
+{
+    if (y < ROW_Y0) return -1;
+    int slot = (y - ROW_Y0) / ROW_H;
+    if (slot < 0 || slot >= summary_vis_rows()) return -1;
+    if ((y - ROW_Y0) % ROW_H > ROW_H - 8) return -1;   // 8 px inter-row gap
+    int idx = st.scroll + slot;
+    // stats_model.c:72 already caps st.stats.n at STATS_MAX_PROVIDERS; the
+    // explicit array-bound check makes the p[] safety local + future-proof.
+    if (idx < 0 || idx >= st.stats.n || idx >= STATS_MAX_PROVIDERS) return -1;
+    return idx;
 }
 
 // tokens -> "123.2M" / "45.6K" / "789" using ONLY integer math (LVGL/newlib
@@ -183,17 +207,6 @@ static void fmt_money(char *buf, size_t n, int32_t cents)
     snprintf(buf, n, "$%d.%02d", (int)(cents / 100), (int)(cents % 100));
 }
 
-// Tap (x,y) -> visible row index in the menu/submenu, or -1 on a miss / the
-// inter-row gap. MUST mirror build_widgets() geometry exactly.
-static int menu_hit_test(int y, int n_items)
-{
-    if (y < NAV_TOP) return -1;
-    int idx = (y - NAV_TOP) / NAV_ROW_H;
-    if (idx < 0 || idx >= n_items) return -1;
-    int within = (y - NAV_TOP) % NAV_ROW_H;
-    if (within > NAV_ROW_H - 8) return -1;   // 8 px inter-row gap
-    return idx;
-}
 
 static void build_widgets(void)
 {
@@ -267,30 +280,8 @@ static void build_widgets(void)
     lv_obj_set_pos(prov_box, 10, 50);
     lv_obj_add_flag(prov_box, LV_OBJ_FLAG_HIDDEN);
 
-    // ---- swipe menu / submenu (one row set, relabelled per level) ----
-    menu_title = lv_label_create(scr);
-    lv_obj_set_style_text_color(menu_title, lv_color_hex(0xffffff), 0);
-    lv_obj_set_style_text_font(menu_title, &lv_font_montserrat_18, 0);
-    lv_obj_set_pos(menu_title, 8, 8);
-    lv_obj_add_flag(menu_title, LV_OBJ_FLAG_HIDDEN);
-
-    for (int i = 0; i < MENU_ROWS; i++) {
-        menu_btn[i] = lv_obj_create(scr);
-        lv_obj_set_size(menu_btn[i], W - 16, NAV_ROW_H - 8);
-        lv_obj_set_pos(menu_btn[i], 8, NAV_TOP + i * NAV_ROW_H);
-        lv_obj_set_style_bg_color(menu_btn[i], lv_color_hex(0x16181c), 0);
-        lv_obj_set_style_bg_opa(menu_btn[i], LV_OPA_COVER, 0);
-        lv_obj_set_style_radius(menu_btn[i], 6, 0);
-        lv_obj_set_style_border_width(menu_btn[i], 0, 0);
-        lv_obj_set_style_pad_all(menu_btn[i], 0, 0);
-        lv_obj_clear_flag(menu_btn[i], LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_add_flag(menu_btn[i], LV_OBJ_FLAG_HIDDEN);
-
-        menu_lbl[i] = lv_label_create(menu_btn[i]);
-        lv_obj_set_style_text_color(menu_lbl[i], lv_color_hex(0xffffff), 0);
-        lv_obj_set_style_text_font(menu_lbl[i], &lv_font_montserrat_18, 0);
-        lv_obj_align(menu_lbl[i], LV_ALIGN_LEFT_MID, 12, 0);
-    }
+    // (The old swipe menu/submenu widgets were removed: the summary list is
+    // now scrolled directly and provider pages are reached by tapping a row.)
 
     // ---- Cost card (full-screen panel; hiding the parent hides children) ----
     cost_card = lv_obj_create(scr);
@@ -451,26 +442,7 @@ static void build_widgets(void)
                                   LV_CHART_AXIS_PRIMARY_Y);
 }
 
-// ---- navigation: row/level helpers --------------------------------------
-
-static int nav_visible_rows(void)   // how many menu rows fit on screen
-{
-    int r = (s_scr_h - NAV_TOP) / NAV_ROW_H;
-    if (r > MENU_ROWS) r = MENU_ROWS;
-    if (r < 1) r = 1;
-    return r;
-}
-
-// Tappable row count for the current level (clamped to what fits). Pure read
-// of `st` — safe to call from ui_handle_input (off ui_task), no LVGL.
-static int menu_item_count(void)
-{
-    if (st.nav_level == NAV_SUBMENU) return 2;
-    int idx[STATS_MAX_PROVIDERS];
-    int n = 1 + ok_providers(idx, STATS_MAX_PROVIDERS);   // +1 = "Summary"
-    int vis = nav_visible_rows();
-    return n < vis ? n : vis;
-}
+// ---- navigation helpers --------------------------------------------------
 
 static void up_id(char *dst, size_t n, const char *src)
 {
@@ -480,16 +452,13 @@ static void up_id(char *dst, size_t n, const char *src)
     dst[j] = '\0';
 }
 
-static void nav_hide_all(void)   // hide every menu/card widget
+static void hide_cards(void)     // hide the Cost/Limit panels (chrome stays)
 {
-    lv_obj_add_flag(menu_title, LV_OBJ_FLAG_HIDDEN);
-    for (int i = 0; i < MENU_ROWS; i++)
-        lv_obj_add_flag(menu_btn[i], LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(cost_card, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(lim_card,  LV_OBJ_FLAG_HIDDEN);
 }
 
-static void summary_hide(void)   // hide summary chrome + provider rows
+static void hide_summary_chrome(void)  // hide title/status/rows before a card
 {
     lv_obj_add_flag(title,    LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(status,   LV_OBJ_FLAG_HIDDEN);
@@ -499,40 +468,6 @@ static void summary_hide(void)   // hide summary chrome + provider rows
         lv_obj_add_flag(row_bar[i],  LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(row_val[i],  LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(row_icon[i], LV_OBJ_FLAG_HIDDEN);
-    }
-}
-
-static void render_menu(void)   // ui_task only
-{
-    summary_hide();
-    lv_obj_add_flag(cost_card, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(lim_card,  LV_OBJ_FLAG_HIDDEN);
-    lv_obj_clear_flag(menu_title, LV_OBJ_FLAG_HIDDEN);
-
-    int n_items, idx[STATS_MAX_PROVIDERS];
-    if (st.nav_level == NAV_SUBMENU) {
-        char up[STATS_ID_MAX];
-        up_id(up, sizeof up, st.stats.p[st.nav_provider].id);
-        lv_label_set_text(menu_title, up);
-        n_items = 2;
-    } else {
-        ok_providers(idx, STATS_MAX_PROVIDERS);
-        lv_label_set_text(menu_title, "MENU");
-        n_items = menu_item_count();
-    }
-
-    for (int i = 0; i < MENU_ROWS; i++) {
-        if (i >= n_items) { lv_obj_add_flag(menu_btn[i], LV_OBJ_FLAG_HIDDEN); continue; }
-        lv_obj_clear_flag(menu_btn[i], LV_OBJ_FLAG_HIDDEN);
-        if (st.nav_level == NAV_SUBMENU)
-            lv_label_set_text(menu_lbl[i], i == 0 ? "COST" : "USAGE LIMITS");
-        else if (i == 0)
-            lv_label_set_text(menu_lbl[0], "SUMMARY");
-        else {
-            char up[STATS_ID_MAX];
-            up_id(up, sizeof up, st.stats.p[idx[i - 1]].id);
-            lv_label_set_text(menu_lbl[i], up);
-        }
     }
 }
 
@@ -567,12 +502,9 @@ static int extra_pct(const stats_provider_t *p)
     return xp;
 }
 
-static void render_card(void)   // ui_task only
+static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
 {
-    summary_hide();
-    lv_obj_add_flag(menu_title, LV_OBJ_FLAG_HIDDEN);
-    for (int i = 0; i < MENU_ROWS; i++)
-        lv_obj_add_flag(menu_btn[i], LV_OBJ_FLAG_HIDDEN);
+    hide_summary_chrome();
 
     const stats_provider_t *p = &st.stats.p[st.nav_provider];
     char up[STATS_ID_MAX];
@@ -701,7 +633,7 @@ static void render_card(void)   // ui_task only
 static void render(void)   // ui_task only
 {
     if (st.mode == UI_PROVISION) {
-        nav_hide_all();
+        hide_cards();
         lv_obj_clear_flag(title,  LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(status, LV_OBJ_FLAG_HIDDEN);
         for (int i = 0; i < ROWS; i++) {
@@ -722,27 +654,45 @@ static void render(void)   // ui_task only
     }
 
     // ---- UI_STATS: dispatch on the navigation level --------------------
-    // A stats refresh may have dropped / !ok'd the provider we drilled into.
-    if ((st.nav_level == NAV_SUBMENU || st.nav_level == NAV_CARD) &&
-        (st.nav_provider < 0 || st.nav_provider >= st.stats.n ||
-         !st.stats.p[st.nav_provider].ok))
-        st.nav_level = NAV_MENU;
-
-    if (st.nav_level == NAV_MENU || st.nav_level == NAV_SUBMENU) {
-        render_menu();
-        return;
+    // A stats refresh may have dropped OR REORDERED the provider we drilled
+    // into. Re-resolve the page by stored id (not by stale index) on ui_task
+    // under s_mtx, before any read of nav_provider: a reorder that keeps the
+    // same count must not silently swap which provider the page shows; a
+    // drop-out falls back to the summary. (Audit QA§P1-2.) A transient
+    // ok:false is NOT ejected — the Limits page still renders and the Cost
+    // page shows its placeholder, so don't bounce the user out.
+    if (st.nav_level == NAV_PAGE) {
+        int j = -1;
+        for (int i = 0; i < st.stats.n && i < STATS_MAX_PROVIDERS; i++)
+            if (strcmp(st.stats.p[i].id, st.nav_id) == 0) { j = i; break; }
+        if (j < 0) st.nav_level = NAV_SUMMARY;   // provider gone
+        else       st.nav_provider = j;          // follow reorder by identity
     }
-    if (st.nav_level == NAV_CARD) {
+    clamp_scroll();
+
+    if (st.nav_level == NAV_PAGE) {
         render_card();
         return;
     }
 
-    // NAV_SUMMARY — original behaviour
-    nav_hide_all();
+    // NAV_SUMMARY — scrollable provider list
+    hide_cards();
     lv_obj_clear_flag(title,  LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(status, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(prov_box, LV_OBJ_FLAG_HIDDEN);
     lv_label_set_text(title, "CODEXBAR");
+
+    // Scrollable window: `vis` rows fit; st.scroll is the top provider index.
+    // ASCII-only " +N more" hint (font ships 0x20-0x7F + 0xB0 + 0x2022 only)
+    // when the list is longer than the screen, so it never looks truncated.
+    int vis  = summary_vis_rows();
+    int more = st.stats.n - (st.scroll + vis);   // rows hidden BELOW the
+    if (more < 0) more = 0;                       // current window (Audit§P1-3)
+    char hint[24];   // "  +" + up to 11-digit %d + " more" + NUL (-Werror
+                      // format-truncation is static; size for the worst %d)
+    hint[0] = '\0';
+    if (more > 0) snprintf(hint, sizeof hint, "  +%d more", more);
+
     // Audit State§HIGH/MED: compose the age suffix HERE from st.fetched_ms
     // (a local buffer — never mutate shared st.status). This removes the old
     // save/restore-under-mutex hack and the freshness gap where the counter
@@ -750,28 +700,34 @@ static void render(void)   // ui_task only
     if (st.fetched_ms > 0) {
         int age = (int)((esp_timer_get_time() / 1000 - st.fetched_ms) / 1000);
         if (age < 0) age = 0;
-        char line[96];   // st.status(<=63) + " <bullet> updated <int>s ago"
+        char line[128];  // st.status(<=63) + " • updated <int>s ago" + hint
         // Audit UI§HIGH: separator must be a glyph compiled into
         // lv_font_montserrat_12. That font ships with only 0x20-0x7F,
         // 0xB0, 0x2022 (see lv_font_montserrat_12.c gen opts), so the old
         // U+00B7 MIDDLE DOT (·) had no glyph and rendered as a tofu box.
         // LV_SYMBOL_BULLET is U+2022, which *is* in the font.
         snprintf(line, sizeof line,
-                 "%s " LV_SYMBOL_BULLET " updated %ds ago", st.status, age);
+                 "%s " LV_SYMBOL_BULLET " updated %ds ago%s",
+                 st.status, age, hint);
+        lv_label_set_text(status, line);
+    } else if (more > 0) {
+        char line[96];   // st.status(<=63) + hint(<=23) + NUL
+        snprintf(line, sizeof line, "%s%s", st.status, hint);
         lv_label_set_text(status, line);
     } else {
         lv_label_set_text(status, st.status);
     }
 
     for (int i = 0; i < ROWS; i++) {
-        if (i >= st.stats.n) {
+        int pi = st.scroll + i;                 // i = visual slot, pi = provider
+        if (i >= vis || pi >= st.stats.n) {
             lv_obj_add_flag(row_id[i],   LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(row_bar[i],  LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(row_val[i],  LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(row_icon[i], LV_OBJ_FLAG_HIDDEN);
             continue;
         }
-        const stats_provider_t *p = &st.stats.p[i];
+        const stats_provider_t *p = &st.stats.p[pi];
         lv_obj_clear_flag(row_id[i],  LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(row_val[i], LV_OBJ_FLAG_HIDDEN);
         lv_label_set_text(row_id[i], p->id);
@@ -898,73 +854,57 @@ void ui_set_stats(const stats_t *s, int64_t fetched_uptime_ms)
 
 // Navigation state machine (ARCHITECTURE.md decision #9: nav lives in ui.c).
 // Runs on the CALLER's task (fetch_task), mutating only `st` under s_mtx —
-// exactly like the setters above; no LVGL call here
-// (menu_item_count/menu_hit_test are pure reads of `st` + the cached height).
-// Returns UI_INPUT_PASS only for a TAP on the summary screen, so fetch.c's
-// refresh + triple-tap-reprovision keep working there and ONLY there.
+// exactly like the setters above; no LVGL call here (summary_hit_test /
+// clamp_scroll are pure reads/writes of `st` + the cached height).
+// Returns UI_INPUT_PASS ONLY for a LONG_PRESS on the summary (→ fetch.c
+// opens the add-network portal) or any event in provisioning mode. Every
+// other event is consumed by the nav machine.
 ui_input_result_t ui_handle_input(const app_evt_t *ev)
 {
     if (!ev) return UI_INPUT_PASS;
     ui_input_result_t r = UI_INPUT_CONSUMED;
     xSemaphoreTake(s_mtx, portMAX_DELAY);
 
-    if (st.mode != UI_STATS) {           // provisioning: legacy behaviour
+    if (st.mode != UI_STATS) {           // provisioning: passthrough
         r = UI_INPUT_PASS;
         goto out;
     }
 
     switch (st.nav_level) {
     case NAV_SUMMARY:
-        if (ev->type == APP_EVT_SWIPE_DOWN) {
-            st.nav_level = NAV_MENU;
+        if (ev->type == APP_EVT_SWIPE_UP) {           // page down the list
+            st.scroll += summary_vis_rows();
+            clamp_scroll();
             st.dirty = true;
-        } else if (ev->type == APP_EVT_SWIPE_UP) {
-            /* already at root — swallow so it can't reach fetch */
-        } else {
-            r = UI_INPUT_PASS;           // TAP -> refresh / triple-tap
+        } else if (ev->type == APP_EVT_SWIPE_DOWN) {  // page up the list
+            st.scroll -= summary_vis_rows();
+            clamp_scroll();
+            st.dirty = true;
+        } else if (ev->type == APP_EVT_TAP) {
+            int pi = summary_hit_test(ev->y);
+            if (pi >= 0) {                             // open provider page
+                st.nav_provider = pi;
+                strlcpy(st.nav_id, st.stats.p[pi].id, sizeof st.nav_id);
+                st.nav_card     = CARD_COST;
+                st.nav_level    = NAV_PAGE;
+                st.dirty = true;
+            }
+        } else if (ev->type == APP_EVT_LONG_PRESS) {
+            r = UI_INPUT_PASS;                         // → enter_portal()
         }
+        /* SWIPE_LEFT at the root: swallow (CONSUMED, no-op) */
         break;
 
-    case NAV_MENU:
-        if (ev->type == APP_EVT_SWIPE_UP) {
+    case NAV_PAGE:
+        if (ev->type == APP_EVT_TAP) {                 // cycle Cost ↔ Limit
+            st.nav_card = (st.nav_card == CARD_COST) ? CARD_LIMITS
+                                                     : CARD_COST;
+            st.dirty = true;
+        } else if (ev->type == APP_EVT_SWIPE_LEFT) {   // back to the list
             st.nav_level = NAV_SUMMARY;
             st.dirty = true;
-        } else if (ev->type == APP_EVT_TAP) {
-            int hit = menu_hit_test(ev->y, menu_item_count());
-            if (hit == 0) {                          // "Summary"
-                st.nav_level = NAV_SUMMARY;
-                st.dirty = true;
-            } else if (hit > 0) {
-                int idx[STATS_MAX_PROVIDERS];
-                int nok = ok_providers(idx, STATS_MAX_PROVIDERS);
-                if (hit - 1 < nok) {
-                    st.nav_provider = idx[hit - 1];
-                    st.nav_level = NAV_SUBMENU;
-                    st.dirty = true;
-                }
-            }
         }
-        break;
-
-    case NAV_SUBMENU:
-        if (ev->type == APP_EVT_SWIPE_UP) {
-            st.nav_level = NAV_MENU;
-            st.dirty = true;
-        } else if (ev->type == APP_EVT_TAP) {
-            int hit = menu_hit_test(ev->y, 2);
-            if (hit == 0 || hit == 1) {
-                st.nav_card  = (hit == 0) ? CARD_COST : CARD_LIMITS;
-                st.nav_level = NAV_CARD;
-                st.dirty = true;
-            }
-        }
-        break;
-
-    case NAV_CARD:
-        if (ev->type == APP_EVT_SWIPE_UP) {
-            st.nav_level = NAV_SUBMENU;
-            st.dirty = true;
-        }
+        /* swipe up/down/long-press on a page: swallowed (CONSUMED) */
         break;
     }
 

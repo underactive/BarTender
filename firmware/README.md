@@ -34,7 +34,7 @@ starts a WPA2 SoftAP and shows the join info **on its own screen**:
    automatically (or browse `http://192.168.4.1/`).
 3. **Full form** (Upstash not yet set): home WiFi SSID/password, Upstash
    REST URL, Redis key (default `codexbar`), and the **read-only** token.
-   **WiFi-only form** (Upstash already set — e.g. you triple-tapped to add
+   **WiFi-only form** (Upstash already set — e.g. you long-pressed to add
    a network): just the new WiFi SSID/password. You never re-enter Upstash,
    and the token is never sent back to the browser.
 4. Submit → saved to NVS → device reboots and runs.
@@ -61,12 +61,19 @@ Nothing secret is ever compiled into the binary or committed to the repo.
   (Mozilla CA bundle — no cert pinning).
 - Renders one row per provider: id, a colored bar + % for the primary
   window; `off` (dimmed) when that provider is `ok:false`. A status line
-  shows link state and "updated Ns ago".
-- **Tap** the screen → immediate refresh.
-- **Triple-tap within 2 s** → open the captive portal to **add a WiFi
-  network** (the FNK0104 has no BOOT button). **Non-destructive:** all
-  remembered networks **and** Upstash are kept. Honored **even before WiFi
-  has ever associated**, so a relocated device can still be set up by hand.
+  shows link state, "updated Ns ago", and ` +N more` when the list is
+  longer than the screen.
+- **Swipe up / down** → scroll the provider list (page at a time).
+- **Tap a provider row** → its **Cost** page. **Tap again** → **Usage
+  Limits** page. Tap again → Cost (tapping cycles the two). Non-Claude
+  Cost pages show "COST DATA NOT AVAILABLE YET".
+- **Swipe right→left** → back to the summary list.
+- Refresh is automatic (the 300 s poll); there is no tap-to-refresh.
+- **Long-press (~1.5 s) on the summary** → open the captive portal to
+  **add a WiFi network** (the FNK0104 has no BOOT button). **Non-
+  destructive:** all remembered networks **and** Upstash are kept. Honored
+  **even before WiFi has ever associated**, so a relocated device can still
+  be set up by hand.
 - **Self-heal:** if a fresh boot finds **no remembered network in range**
   for `CONNECT_GRACE_S` (180 s, confirmed by ≥2 empty scan sweeps) it opens
   that same add-network portal on its own — also non-destructive. Once

@@ -10,10 +10,11 @@
 // UX. If power draw becomes a concern, the INT pin can be swapped in later
 // as a wakeup source.
 //
-// Each debounced tap posts APP_EVT_TOUCH to the shared event queue. The
-// CodexBar toy uses this to force an immediate stats refresh; a triple-tap
-// (detected in fetch.c) opens the captive portal to ADD a WiFi network —
-// non-destructive: all remembered networks + Upstash are kept.
+// A debounced press is classified into one APP_EVT per touch: TAP (open /
+// cycle a page), SWIPE_UP / SWIPE_DOWN (scroll the summary list), SWIPE_LEFT
+// (nav "back"), or LONG_PRESS (~1.5 s hold → non-destructive add-network
+// portal, handled in fetch.c). Exactly one event fires per press; the bands
+// are deliberately disjoint (see the gesture-constant block below).
 
 #include "touch.h"
 #include "board_config.h"
@@ -34,9 +35,10 @@
 static const char *TAG = "touch";
 
 #define POLL_PERIOD_MS  20      // 50 Hz
-#define DEBOUNCE_US     200000  // 200 ms between accepted TAPS — UNCHANGED:
-                                // fetch.c's triple-tap timing math depends on
-                                // this exact inter-tap floor. Do not retune.
+#define DEBOUNCE_US     200000  // 200 ms minimum between accepted TAPS
+                                // (contact-bounce floor; the old triple-tap
+                                // detector that depended on this exact value
+                                // was removed with the nav redesign).
 
 // Gesture classification. Bands are deliberately DISJOINT with a dead-zone:
 // a tap is small+short; a swipe is long+fast+vertical; 12..40 px of travel is
@@ -49,14 +51,18 @@ static const char *TAG = "touch";
 #define GESTURE_DEBOUNCE_US 400000   // one press => at most one swipe
 #define RELEASE_GRACE       2        // polls of no-touch before commit (FT6336G
                                      // drops a sample mid-glide; 40 ms grace)
+#define LONG_PRESS_US     1500000    // held >= 1.5 s within TAP_SLOP => the
+                                     // add-network portal gesture (> TAP_MAX_US
+                                     // so it can never also read as a tap)
 
 static QueueHandle_t s_queue;
 static esp_lcd_touch_handle_t s_touch;
-static int64_t s_last_press_us;      // last accepted TAP (debounce / triple-tap)
+static int64_t s_last_press_us;      // last accepted TAP (contact-bounce floor)
 static int64_t s_last_gesture_us;    // last accepted SWIPE
 static int64_t s_press_us;           // current press-down timestamp
 static bool    s_in_press;
-static bool    s_gesture_fired;      // a swipe already emitted this press
+static bool    s_gesture_fired;      // a swipe/long-press already this press
+                                     // (also suppresses the release-TAP)
 static int     s_press_x, s_press_y; // coords at press-down
 static int     s_last_x, s_last_y;   // most recent coords while held
 static int     s_release_misses;
@@ -86,14 +92,41 @@ static void touch_task(void *arg)
                     s_press_x = s_last_x = x[0];
                     s_press_y = s_last_y = y[0];
                 } else {
-                    // held: update, and fire a swipe on threshold crossing
-                    // (don't wait for release — better felt latency)
+                    // held: fire long-press / swipe on threshold crossing
+                    // (don't wait for release — better felt latency).
+                    // Strict precedence so exactly one gesture fires per
+                    // press; bands stay disjoint (tap <=12px, swipe >=40px,
+                    // 12..40 inert), long-press needs sustained low travel.
                     s_last_x = x[0];
                     s_last_y = y[0];
                     if (!s_gesture_fired) {
                         int dx = s_last_x - s_press_x;
                         int dy = s_last_y - s_press_y;
-                        if (iabs_(dy) >= SWIPE_DIST_PX &&
+                        // 1) long-press: still within slop after 1.5 s. Sets
+                        //    s_gesture_fired so the release can't also TAP
+                        //    (and LONG_PRESS_US > TAP_MAX_US anyway).
+                        if (iabs_(dx) <= TAP_SLOP_PX &&
+                            iabs_(dy) <= TAP_SLOP_PX &&
+                            (now - s_press_us) >= LONG_PRESS_US) {
+                            app_evt_t e = { .type = APP_EVT_LONG_PRESS,
+                                            .x = (int16_t)s_press_x,
+                                            .y = (int16_t)s_press_y };
+                            // Audit R&C§P1-1: the queue (depth 8, timeout-0
+                            // sends) is frozen during a blocking do_fetch, so
+                            // a burst of nav events could fill it and DROP
+                            // this — the only on-device recovery gesture. The
+                            // portal intent supersedes any queued scroll/tap,
+                            // so on a full queue, flush and re-send.
+                            if (xQueueSend(s_queue, &e, 0) != pdTRUE) {
+                                xQueueReset(s_queue);
+                                xQueueSend(s_queue, &e, 0);
+                            }
+                            s_gesture_fired = true;   // blocks re-fire + tap
+                            s_last_gesture_us = now;
+                            ESP_LOGD(TAG, "long-press (%d, %d)",
+                                     s_press_x, s_press_y);
+                        // 2) vertical swipe (unchanged).
+                        } else if (iabs_(dy) >= SWIPE_DIST_PX &&
                             iabs_(dy) > iabs_(dx) &&            // vertical-dominant
                             (now - s_press_us) <= SWIPE_MAX_US &&
                             (now - s_last_gesture_us) >= GESTURE_DEBOUNCE_US) {
@@ -107,6 +140,18 @@ static void touch_task(void *arg)
                             s_last_gesture_us = now;
                             ESP_LOGD(TAG, "swipe %s",
                                      dy > 0 ? "down" : "up");
+                        // 3) horizontal swipe, right->left only (nav "back").
+                        } else if (iabs_(dx) >= SWIPE_DIST_PX &&
+                            iabs_(dx) > iabs_(dy) &&            // horizontal-dominant
+                            dx < 0 &&                           // right -> left
+                            (now - s_press_us) <= SWIPE_MAX_US &&
+                            (now - s_last_gesture_us) >= GESTURE_DEBOUNCE_US) {
+                            app_evt_t e = { .type = APP_EVT_SWIPE_LEFT,
+                                            .x = 0, .y = 0 };
+                            xQueueSend(s_queue, &e, 0);
+                            s_gesture_fired = true;
+                            s_last_gesture_us = now;
+                            ESP_LOGD(TAG, "swipe left");
                         }
                     }
                 }

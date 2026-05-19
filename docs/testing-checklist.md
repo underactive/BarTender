@@ -22,32 +22,40 @@ Freenove ESP32-S3 (FNK0104); host items are off-device where a seam exists.
       freezes for ~10 s after new data arrives.
 - [ ] **Reconnect backoff escalates** 5 → 15 → 60 s when the AP flaps
       (previously could stay at the first delay).
-- [ ] **Re-provision gesture is deliberate.** 3 fast taps (within ~1.2 s)
-      still wipe creds + reboot to the portal; slow or occasional taps only
-      force a refresh and never reset.
+- [ ] **Re-provision gesture is deliberate.** A ~1.5 s long-press on the
+      summary opens the add-network portal (non-destructive — keeps the ≤5
+      networks + Upstash); a quick tap opens a provider page and never
+      re-provisions; nothing on-device wipes credentials.
 - [ ] **No secrets on the wire/log.** UART log during provisioning shows the
       SoftAP SSID but NOT its password; the Upstash token never appears in
       any log line.
 
-## Firmware — v2 cost menu / swipe nav (2026-05-18)
+## Firmware — scrollable summary + tap-cycle pages (2026-05-18, nav redesign)
 
-Gesture regression (highest risk — the factory-reset gesture must not move):
+Gesture regression (highest risk — input FSM + recovery gesture):
 
-- [ ] **Summary single tap still refreshes** (status flips "fetching…"); no
-      menu opens.
-- [ ] **Summary triple-tap still reprovisions** (3 fast taps ≤1.2 s → wipe +
-      reboot); slow/occasional taps only refresh, never reset.
-- [ ] **Swipe down on summary opens the menu** and does NOT trigger a refresh.
-- [ ] **Menu/submenu taps select** and NEVER refresh or reprovision — even
-      rapid triple-taps inside the menu do nothing destructive.
-- [ ] **Swipe up backs out exactly one level**: card → submenu → menu →
-      summary.
-- [ ] **Ambiguous ~25 px drag does nothing**; a horizontal swipe does nothing.
+- [ ] **Summary vertical swipe scrolls** the provider list a page at a time;
+      over-scroll at either end is a no-op; the ` +N more` status hint shows
+      the count hidden BELOW the current window (0 at the bottom).
+- [ ] **Tap a provider row → its Cost page**; **tap again → Usage Limits**;
+      tap again → Cost (cycles). The tap maps to the row under the finger
+      using the live scroll offset.
+- [ ] **Swipe right→left returns to the summary** with scroll preserved;
+      left→right is inert; swipe-left on the summary itself is inert.
+- [ ] **Long-press (~1.5 s) on the summary** opens the add-network portal
+      (non-destructive). A quick tap never opens it; 3 fast taps just cycle
+      pages (the triple-tap detector is gone).
+- [ ] **Exactly one gesture per press**: a ~200 ms tap never long-presses;
+      a hold that then moves >40 px swipes (no long-press); the 12–40 px
+      drag dead-zone is still inert.
+- [ ] **Long-press is never lost** even if spammed during a blocking fetch
+      (the queue is flushed + the long-press re-sent on a full queue).
 
 Rendering:
 
-- [ ] **Menu** lists "SUMMARY" + each `ok` provider (uppercased); tapping
-      "SUMMARY" returns to the summary screen.
+- [ ] **Summary** shows the windowed provider rows for the current scroll
+      offset; tapping a row opens that provider's page (no menu screen
+      exists anymore).
 - [ ] **Claude Cost card**: `$X.XX` today (no `f%` artifact), `<n>M TOKENS
       TODAY`, `30D $… • …`, a **labeled 30-day spend line sparkline** with
       side margins (NOT a full-bleed block — regression for the v9

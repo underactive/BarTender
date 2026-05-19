@@ -20,6 +20,7 @@ See [exec-plans/active/](exec-plans/active/) for full plan documents.
 | [codexbar-firmware](exec-plans/completed/codexbar-firmware.md) | ESP32-S3 firmware: read Upstash, render on ILI9341 (Prompt 3 of 3) — verified on hardware | 2026-05-18 |
 | [claude-cost-menu](exec-plans/completed/claude-cost-menu.md) | Swipe-nav menu + Claude Cost/Usage-Limits cards; payload v2 from CodexBar cost cache (build + 7-persona audit; on-device pending user flash) | 2026-05-18 |
 | [wifi-lru-persistent-upstash](exec-plans/completed/wifi-lru-persistent-upstash.md) | Decouple Upstash from WiFi; remember ≤5 WiFi nets (LRU) + scan/autoconnect when relocated; non-destructive triple-tap (build + 4-reviewer audit; on-device pending user flash) | 2026-05-18 |
+| [nav-scroll-tap-pages](exec-plans/completed/nav-scroll-tap-pages.md) | Scrollable summary + tap-cycle Cost/Limit pages; swipe-left back; long-press re-provision (replaces 4-level swipe menu + triple-tap; build -Werror + 3-reviewer audit; on-device pending user flash) | 2026-05-18 |
 
 See [exec-plans/completed/](exec-plans/completed/) for full plan documents.
 

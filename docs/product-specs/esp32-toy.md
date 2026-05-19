@@ -32,16 +32,14 @@ opening anything.
 - [ ] The screen renders in portrait orientation (taller than wide); the
       provider-row layout adapts to the panel width so bars/percentages are
       not clipped on either orientation.
-- [ ] On the **summary screen**: tap → immediate refresh; triple-tap within
-      2 s → open the captive portal to **add a network**, NON-destructively
-      (all remembered networks + Upstash are kept). (Inside the swipe menu
-      these gestures select/navigate instead — see
-      [claude-cost-menu](claude-cost-menu.md).)
-- [ ] The triple-tap add-network gesture is honored **even before WiFi has
+- [ ] On the **summary screen**: vertical swipe scrolls the provider list;
+      tap a provider row opens its Cost page (tap again cycles Cost↔Limit;
+      swipe right→left returns). A **long-press (~1.5 s)** opens the captive
+      portal to **add a network**, NON-destructively (all remembered networks
+      + Upstash are kept). Full nav: [claude-cost-menu](claude-cost-menu.md).
+- [ ] The long-press add-network gesture is honored **even before WiFi has
       ever associated** (e.g. relocated where no remembered SSID is in
       range), not only once connected. Nothing on-device wipes credentials.
-- [ ] Swipe down on the summary opens the provider menu; swipe up backs out
-      one level. Full behavior: [claude-cost-menu](claude-cost-menu.md).
 - [ ] Rendered percentages match a `curl GET` of the same Upstash key.
 - [ ] No secret is compiled into the firmware or committed to the repo.
 
@@ -51,7 +49,7 @@ opening anything.
 |----------|-------------------|
 | WiFi drops (after connecting once this boot) | Rescans and autoconnects to any remembered network now in range (capped 5→15→60 s between sweeps); last data stays on screen. Never self-reprovisions and never wipes — a transient blip must not discard creds |
 | Relocated where a *different* remembered network is present | Scans, finds it, autoconnects, promotes it to MRU — zero interaction |
-| Relocated where NO remembered network is in range | "WiFi: no known network"; triple-tap still opens the add-network portal, and after `CONNECT_GRACE_S` (180 s) AND ≥2 empty scan sweeps it auto-opens that portal **non-destructively** (keeps the ≤5 list + Upstash) |
+| Relocated where NO remembered network is in range | "WiFi: no known network"; a long-press still opens the add-network portal, and after `CONNECT_GRACE_S` (180 s) AND ≥2 empty scan sweeps it auto-opens that portal **non-destructively** (keeps the ≤5 list + Upstash) |
 | A remembered SSID's password was changed at that location | "WiFi: wrong password &lt;ssid&gt;"; that SSID is skipped for the sweep and others are tried; recover by re-adding it via the portal |
 | Open / WPA2-Enterprise / web-login venue WiFi | Not associated (WPA2-PSK only, by design); device shows "no known network" rather than hanging — out of scope |
 | Hidden SSID | Best-effort: one direct connect attempt to the MRU entry per empty sweep; a fully-cloaked AP may not autoconnect |

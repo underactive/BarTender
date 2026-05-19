@@ -1,79 +1,88 @@
-# Spec: Swipe-navigated provider menu with Claude Cost & Usage-Limits cards
+# Spec: Scrollable summary + tap-cycle Claude Cost & Usage-Limits pages
 
 ## User story
 
-As the owner of the CodexBar toy, I want to swipe down on the summary screen to
-open a menu of my providers, drill into Claude, and see its real cost (today,
-30-day, tokens, 30-day history) and usage limits (session %, weekly %,
-extra-usage $) on dedicated cards, so the desk toy is a glanceable spend +
-limits monitor, not just a usage-% bar list.
+As the owner of the CodexBar toy, I want to scroll a provider list that is
+longer than the screen, tap a provider to see its real cost (today, 30-day,
+tokens, 30-day history) and usage limits (session %, weekly %, extra-usage $)
+on dedicated pages, and tap again to flip between Cost and Limit — so the desk
+toy is a glanceable spend + limits monitor, not just a clipped usage-% list.
 
 ## Acceptance criteria
 
-- [ ] **Swipe down on the summary opens the menu.** Row 0 = "SUMMARY"
-      (hardcoded); the rest = one row per provider that has stats on the
-      summary screen (`ok` providers), uppercased, with ≥44 px tap targets.
-- [ ] **Tap a provider → submenu** "COST" / "USAGE LIMITS". Tap one → its card.
-- [ ] **Swipe up goes back exactly one level** (card → submenu → menu →
-      summary). Tap selects the row under the finger. Swipe down on the
-      summary is the only way in.
-- [ ] **Legacy gestures are summary-only.** A tap on the summary still forces a
-      refresh; a deliberate triple-tap still factory-resets. Inside the
-      menu/cards, taps select and NEVER refresh or factory-reset.
-- [ ] **Claude Cost card** shows: header `CLAUDE COST`; today `$` big number;
+- [ ] **The summary scrolls.** Vertical swipe pages the provider list
+      (swipe up → later providers, swipe down → earlier), clamped at both
+      ends. A ` +N more` ASCII hint on the status line shows when the list is
+      longer than the screen. There is no swipe-down menu anymore.
+- [ ] **Tap a provider row → its Cost page.** The tap hit-tests the row
+      under the finger using the live scroll offset (≥ ~40 px row targets).
+- [ ] **Tap again cycles Cost ↔ Limit.** Tap on a page toggles between the
+      Cost page and the Usage-Limits page for that provider (Cost first).
+- [ ] **Swipe right→left returns to the summary** (scroll position
+      preserved). Swipe-left on the summary itself is inert (it is the root).
+- [ ] **Long-press (~1.5 s) on the summary** opens the captive portal to
+      ADD a WiFi network — non-destructive (keeps the ≤5 networks + Upstash;
+      see [esp32-toy](esp32-toy.md)). Honored even before WiFi associates.
+      A quick tap opens a page; it never opens the portal.
+- [ ] **Gestures off the summary never reach fetch.** Only a summary
+      long-press returns `UI_INPUT_PASS`; taps/swipes/page interactions are
+      all consumed by the nav machine.
+- [ ] **Claude Cost page** shows: header `CLAUDE COST`; today `$` big number;
       `<tokens> TOKENS TODAY`; `30D $<m> • <tokens>`; a labeled 30-day
       daily-spend **line sparkline** ("N-DAY SPEND • max $X", side margins,
       point_count == real history length); and an `EXTRA <used> / <limit>`
       bar (extra-usage overage).
-- [ ] **Claude Usage-Limits card** shows: `SESSION` + big % + bar + reset;
+- [ ] **Claude Usage-Limits page** shows: `SESSION` + big % + bar + reset;
       `WEEKLY <%>` + bar + reset; `EXTRA USAGE <used> / <limit>` + bar; and a
       labeled **24h SESSION usage-% line sparkline** ("SESSION 24H • now N%",
       from payload `ph`, Claude only — hidden when absent).
 - [ ] **Bars show headroom (inverted default).** Every progress bar (summary
-      rows + both cards) fills 0% → full, 100% → empty. Bar color still tracks
+      rows + both pages) fills 0% → full, 100% → empty. Bar color still tracks
       true usage % (green low → red high). Switchable via
       `UI_BAR_INVERT_DEFAULT` / `ui_set_bar_invert()` (future portal setting).
 - [ ] **Provider color theme.** Each provider's bars + charts use that
-      provider's **CodexBar brand color** (mirrored from CodexBar's
-      `WidgetColors.color(for:)` — e.g. Claude `0xCC7C5E`, Codex `0x49A3B0`,
-      Cursor `0x00BFA5`, OpenRouter `0x6F42C1`). Unknown providers fall back
-      to the green/amber/red usage ramp. Bar color is independent of fill.
+      provider's **CodexBar brand color** (e.g. Claude `0xCC7C5E`, Codex
+      `0x49A3B0`, Cursor `0x00BFA5`, OpenRouter `0x6F42C1`). Unknown providers
+      fall back to the green/amber/red usage ramp. Color is independent of fill.
 - [ ] **Provider logo on summary rows.** Each summary row shows the
       provider's CodexBar logo (A8 silhouette, accent-tinted) in the left
       margin, spanning the two-line row. Source: `scripts/assets/codexbar-logos/`
-      (vendored from CodexBar) → `scripts/gen-provider-icons.py` →
-      `firmware/main/provider_icons.c`. Providers without a bundled icon
-      render text-only.
+      → `scripts/gen-provider-icons.py` → `firmware/main/provider_icons.c`.
+      Providers without a bundled icon render text-only.
 - [ ] **Cost numbers match CodexBar.** Today/30-day `$` and tokens equal the
       rollup of `~/Library/Caches/CodexBar/cost-usage/claude-v*.json` `days`
       aggregates; verifiable via `curl GET` of the Upstash key.
-- [ ] **Non-Claude Cost cards show a placeholder** ("COST DATA NOT AVAILABLE
-      YET"); their Usage-Limits cards still render real session/weekly % from
-      the existing `p`/`s` fields.
+- [ ] **Every provider gets both pages.** Non-Claude Cost pages show a
+      placeholder ("COST DATA NOT AVAILABLE YET"); their Limit pages render
+      real session/weekly % from `p`/`s`. Tapping still cycles both pages.
 - [ ] **Money/tokens render correctly** (no `f%` artifact): `$12.47`,
-      `123.2M TOKENS`. All text is ASCII (no tofu glyphs).
+      `123.2M TOKENS`. All text is ASCII (no tofu glyphs), including the
+      ` +N more` scroll hint.
 
 ## Edge cases
 
 | Scenario | Expected behavior |
 |----------|-------------------|
-| CodexBar cost cache absent / schema churned | Publisher publishes usage-only; Cost card shows "COST DATA NOT AVAILABLE YET" |
-| Provider drilled into disappears on refresh | Nav falls back to the menu level (no stale/garbage card) |
-| Ambiguous drag (12–40 px) | Dead-zone: no event (neither tap nor swipe) |
-| Horizontal swipe | Ignored (only vertical swipes navigate) |
+| Provider list longer than the screen | Scrolls; ` +N more` hint; page-step per swipe; clamped at both ends (over-scroll = no-op) |
+| Provider drilled into disappears on refresh | Nav falls back to the summary (no stale/garbage page); scroll re-clamped if the list shrank |
+| Provider on a page goes `ok:false` on refresh | Stays on the page — Limit still renders, Cost shows its placeholder (not ejected on a transient blip) |
+| CodexBar cost cache absent / schema churned | Publisher publishes usage-only; Cost page shows "COST DATA NOT AVAILABLE YET" |
+| Ambiguous drag (12–40 px) | Dead-zone: no event (neither tap nor swipe nor long-press) |
+| Left→right horizontal swipe | Ignored (only right→left = "back") |
+| Hold then move > 40 px before 1.5 s | Swipe wins; no long-press (one gesture per press) |
 | FT6336G drops a sample mid-swipe | 40 ms release grace absorbs it (no false tap/release) |
-| Menu has more providers than rows that fit | Displayed rows capped to what fits; remainder not shown (documented) |
-| v1 payload on a v2 device | Parses fine; `has_cost=false` → Cost card placeholder |
+| v1 payload on a v2 device | Parses fine; `has_cost=false` → Cost-page placeholder |
 
 ## Not in scope
 
 - 24h *hourly* **cost** sparkline — CodexBar's cost cache is day-granular; the
-  Cost-card "24h" view is the TODAY big number + the real 30-day daily chart
+  Cost-page "24h" view is the TODAY big number + the real 30-day daily chart
   (deviation from the original mock, see exec-plan `claude-cost-menu`
-  Decision #3). NOTE: a 24h *usage-%* sparkline IS now shipped on the
-  Usage-Limits card (`ph`, hourly data from a different CodexBar file).
+  Decision #3). A 24h *usage-%* sparkline IS shipped on the Limit page.
 - Per-model (Opus/Sonnet/Haiku) `$` breakdown — data exists in the cache but
   is intentionally deferred to a follow-up.
 - Cost/history for Codex/Cursor/OpenRouter (placeholder this build).
-- Scrolling a menu longer than the screen.
+- Manual refresh gesture — refresh is purely the 300 s poll now that tap is
+  reassigned to navigation (long-press on a *page* is reserved/free for a
+  future manual refresh).
 - Writing anything back to Upstash (device stays read-only).

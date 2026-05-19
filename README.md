@@ -78,11 +78,12 @@ A captive-portal handles setup so nothing secret is ever compiled in. It
 remembers up to **5 WiFi networks** and autoconnects to whichever is in range
 (home / work / café — no re-setup when you move); Upstash is stored
 separately so changing WiFi never re-prompts for the token. On the summary
-screen: tap to refresh, triple-tap to add a WiFi network (non-destructive —
-keeps everything). **Swipe down** to
-open a provider menu → tap a provider → **Cost** / **Usage Limits** cards
-(Claude shows real spend, tokens, and a 30-day history chart); **swipe up**
-backs out one level. Board bring-up is vendored from the `clawd-tank` project.
+screen: **swipe up/down** to scroll the provider list, **tap a provider** to
+open its **Cost** page, **tap again** to flip to **Usage Limits** (tapping
+cycles the two; Claude shows real spend, tokens, and a 30-day history chart),
+**swipe right→left** to go back. A **long-press (~1.5 s)** adds a WiFi network
+(non-destructive — keeps everything). Board bring-up is vendored from the
+`clawd-tank` project.
 Build/flash/provisioning: [firmware/README.md](firmware/README.md). Full
 behavior: [docs/product-specs/claude-cost-menu.md](docs/product-specs/claude-cost-menu.md).
 

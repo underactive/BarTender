@@ -57,7 +57,7 @@ via a shared interface. Domains should not import cross-cutting code directly.
 |-------------------|---------------------------------------------------|-------------|
 | `codexbar-stats` (`scripts/codexbar-stats.sh`) | Read CodexBar locally; text report + `--json` v2 (usage % + extra-usage $) | Implemented |
 | `codexbar-publish` (`scripts/codexbar-publish.sh`) | Merge Claude cost from CodexBar's local cost cache; publish v2 to Upstash on a launchd schedule | Implemented |
-| `firmware` (`firmware/`) | ESP32-S3 reads Upstash, swipe-nav menu + Cost/Usage cards on ILI9341; captive provisioning; remembers ≤5 WiFi nets (LRU) and scans+autoconnects when relocated, Upstash decoupled from WiFi | Implemented (POC, user-flashed) |
+| `firmware` (`firmware/`) | ESP32-S3 reads Upstash, scrollable summary + tap-cycle Cost/Usage pages on ILI9341; captive provisioning; remembers ≤5 WiFi nets (LRU) and scans+autoconnects when relocated, Upstash decoupled from WiFi | Implemented (POC, user-flashed) |
 
 ## Key design decisions
 
@@ -94,11 +94,17 @@ via a shared interface. Domains should not import cross-cutting code directly.
    CodexBar's nested, version-churning `usage.*` JSON; the publisher normalizes
    to the firmware-owned v2 contract. v2 ⊃ v1, so the version guard is
    trivially safe (old payloads parse; unknown future `v` is rejected loudly).
-9. **UI navigation state lives in `ui.c`.** The swipe menu/submenu/card state
-   machine is mutex-protected `st`, mutated via `ui_handle_input()` (called on
-   the fetch task). `fetch.c` runs legacy refresh/triple-tap ONLY when that
-   returns PASS (summary screen) — chosen over a separate nav module to keep
-   all LVGL calls on `ui_task`.
+9. **UI navigation state lives in `ui.c`.** The nav state machine is
+   mutex-protected `st`, mutated via `ui_handle_input()` (called on the fetch
+   task) — chosen over a separate nav module to keep all LVGL calls on
+   `ui_task`. *(Superseded at the nav redesign: the original 4-level swipe
+   menu→submenu→card was replaced by a 2-state machine — a **scrollable
+   summary** ⇄ a per-provider **page**. Vertical swipe page-scrolls the
+   fixed `row_*[]` slots through an `st.scroll` offset; tap a row opens its
+   Cost page; tap cycles Cost↔Limit; swipe-left returns. `fetch.c` acts ONLY
+   when `ui_handle_input` returns PASS, which now means a LONG-PRESS on the
+   summary → open the add-network portal. Tap-to-refresh was dropped as a
+   deliberate consequence; the 300 s poll keeps pages live.)*
 10. **Upstash and WiFi are decoupled; WiFi is an MRU ≤5-network roaming
    store.** WiFi creds live in one versioned NVS blob (`cbtoy/wnets`,
    `wifi_creds_t`), written with a single `nvs_set_blob`+commit so an LRU
@@ -112,7 +118,8 @@ via a shared interface. Domains should not import cross-cutting code directly.
    produces a real disconnect → scan) and the WiFi event handler is a **pure
    signaller** — this is what preserves the lock-free `s_connected`
    single-writer invariant (#net_wifi.c:12-15) while adding scan/select/MRU
-   state. Triple-tap and the 180 s self-heal are **non-destructive**: they
-   set a one-shot `fprov` flag (consumed clear-before-act ⇒ no boot-loop)
-   that opens an *add-network* portal keeping all creds. WPA2-PSK only by
-   user decision (open/Enterprise/web-login venues out of scope).
+   state. The summary long-press and the 180 s self-heal are
+   **non-destructive**: they set a one-shot `fprov` flag (consumed
+   clear-before-act ⇒ no boot-loop) that opens an *add-network* portal
+   keeping all creds. WPA2-PSK only by user decision (open/Enterprise/
+   web-login venues out of scope).

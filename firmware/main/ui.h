@@ -22,18 +22,21 @@ void ui_set_bar_invert(bool on);
 
 // --- input / navigation ---
 //
-// The swipe menu/submenu/card state machine lives here (mutex-protected `st`,
-// mutated on the caller's task — same discipline as the setters below; no LVGL
-// call ever runs off ui_task). fetch_task forwards EVERY input event here
-// first and uses the result to decide whether its legacy behaviour runs.
+// The 2-state nav machine (NAV_SUMMARY ⇄ NAV_PAGE) lives here (mutex-protected
+// `st`, mutated on the caller's task — same discipline as the setters below;
+// no LVGL call ever runs off ui_task). fetch_task forwards EVERY input event
+// here first and only acts (enter_portal) when the result is PASS.
+//   summary: swipe up/down = scroll; tap a row = open its Cost page;
+//            long-press = PASS (add-network portal); swipe-left = no-op.
+//   page:    tap = cycle Cost↔Limit; swipe-left = back to summary.
 typedef enum {
-    UI_INPUT_PASS = 0,   // not consumed: caller may run refresh / triple-tap
+    UI_INPUT_PASS = 0,   // not consumed: caller may run enter_portal()
     UI_INPUT_CONSUMED,   // nav handled it: caller must ignore this event
 } ui_input_result_t;
 
-// Process one touch/swipe event. Returns UI_INPUT_PASS only on the summary
-// screen for a TAP (so refresh + triple-tap-reprovision keep working exactly
-// as before); every menu/card interaction returns UI_INPUT_CONSUMED.
+// Process one touch event. Returns UI_INPUT_PASS ONLY for a LONG_PRESS on the
+// summary screen, or any event while in provisioning mode; everything else is
+// CONSUMED by the nav machine.
 ui_input_result_t ui_handle_input(const app_evt_t *ev);
 
 // --- thread-safe state setters (call from any task) ---

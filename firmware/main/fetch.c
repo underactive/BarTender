@@ -16,13 +16,6 @@
 static const char *TAG = "fetch";
 static QueueHandle_t s_q;
 
-// Triple-tap detector state. File-scope (not function-local as before) so the
-// SAME detector is fed by both the connect-wait and the steady-state loop —
-// the re-provision gesture must survive a boot that never associates.
-// Single producer/consumer (the one fetch task), like net_wifi.c's s_connected.
-static int64_t s_taps[3];
-static int     s_tc;
-
 static int64_t now_ms(void) { return esp_timer_get_time() / 1000; }
 
 static bool do_fetch(const char *url, const char *key, const char *tok)
@@ -63,10 +56,10 @@ static bool do_fetch(const char *url, const char *key, const char *tok)
 // erased.) Replaces the old reprovision() that wiped every credential.
 static void enter_portal(void)
 {
-    // Audit QA§P2-3: a triple-tap inside the 900 ms pre-restart window would
-    // re-enter this (note_tap calls it again); the guard makes it idempotent
-    // so the request/delay/restart isn't stacked. fetch_task is the only
-    // caller, so a plain static is sufficient (no concurrency here).
+    // Audit QA§P2-3: a second long-press inside the 900 ms pre-restart window
+    // would re-enter this; the guard makes it idempotent so the request/
+    // delay/restart isn't stacked. fetch_task is the only caller, so a plain
+    // static is sufficient (no concurrency here).
     static bool s_porting;
     if (s_porting) return;
     s_porting = true;
@@ -77,36 +70,17 @@ static void enter_portal(void)
     esp_restart();
 }
 
-// Feed one accepted TAP into the triple-tap detector. On a deliberate 3-tap
-// burst — all within 1200 ms AND each consecutive gap <= 600 ms, so stray
-// FT6336 noise over weeks of uptime can't trigger it (touch.c debounces at
-// 200 ms, so an intentional triple-tap comfortably fits) — it opens the
-// add-network portal (NEVER returns). Audit QA§MED timing preserved verbatim;
-// only the action changed (non-destructive) and the call site widened.
-static void note_tap(void)
-{
-    int64_t t = now_ms();
-    s_taps[0] = s_taps[1]; s_taps[1] = s_taps[2]; s_taps[2] = t;
-    if (s_tc < 3) s_tc++;
-    if (s_tc == 3 &&
-        (t - s_taps[0]) <= 1200 &&
-        (s_taps[1] - s_taps[0]) <= 600 &&
-        (s_taps[2] - s_taps[1]) <= 600) {
-        enter_portal();                               // no return
-    }
-}
-
 // Block until the first association, BUT keep servicing the event queue so the
-// triple-tap add-network gesture works even when no remembered SSID is in
+// long-press add-network gesture works even when no remembered SSID is in
 // range. Audit Reliability§HIGH: the OLD code spun in a bare `while(!connected)
-// vTaskDelay` here, so the queue was never drained — taps piled up unread and
+// vTaskDelay` here, so the queue was never drained — input piled up unread and
 // the ONLY on-device recovery was unreachable behind the very failure it
-// recovers from. Self-heal: a relocated toy nobody is there to tap auto-opens
-// the add-network portal — but ONLY once net_wifi has confirmed (>= 2 scan
-// sweeps) that ZERO remembered networks are in range, AND the grace period
-// elapsed. That gate stops a slow multi-network sweep or a wrong-password
-// auth-retry loop from spuriously popping the portal. It is now NON-
-// destructive (config_store_request_portal keeps all WiFi + Upstash), and
+// recovers from. Self-heal: a relocated toy nobody is there to long-press
+// auto-opens the add-network portal — but ONLY once net_wifi has confirmed
+// (>= 2 scan sweeps) that ZERO remembered networks are in range, AND the
+// grace period elapsed. That gate stops a slow multi-network sweep or a
+// wrong-password auth-retry loop from spuriously popping the portal. It is
+// NON-destructive (config_store_request_portal keeps all WiFi + Upstash), and
 // scoped to the INITIAL connect only — once associated, a later outage just
 // rescans (net_wifi handles roaming; nothing is ever wiped).
 static void wait_for_first_link(void)
@@ -122,10 +96,11 @@ static void wait_for_first_link(void)
         app_evt_t ev;
         if (xQueueReceive(s_q, &ev, pdMS_TO_TICKS(500)) != pdTRUE)
             continue;                                 // 500 ms status/deadline tick
-        if (ui_handle_input(&ev) == UI_INPUT_CONSUMED)
-            continue;                                 // menu/swipe owns it first
-        if (ev.type == APP_EVT_TAP)
-            note_tap();                               // triple-tap → no return
+        // Nav owns every event; only a LONG_PRESS on the summary pierces
+        // through (PASS) → open the add-network portal (never returns).
+        if (ui_handle_input(&ev) == UI_INPUT_PASS &&
+            ev.type == APP_EVT_LONG_PRESS)
+            enter_portal();
     }
 }
 
@@ -149,7 +124,13 @@ static void fetch_task(void *arg)
             int wait_s = ok ? FETCH_INTERVAL_S : FETCH_RETRY_S;
             int64_t deadline = now_ms() + (int64_t)wait_s * 1000;
 
-            // Wait for the deadline, but wake early on a tap.
+            // Wait out the fetch interval, servicing input meanwhile so the
+            // nav stays responsive between polls (scroll / open page / cycle
+            // Cost↔Limit / back are all handled inside ui_handle_input, which
+            // flags its own redraw). Refresh is now purely deadline-driven —
+            // the nav consumes taps, so there is no tap-to-refresh anymore;
+            // only a summary LONG_PRESS pierces through (PASS) to open the
+            // add-network portal (never returns).
             while (!refresh_now) {
                 int64_t rem = deadline - now_ms();
                 if (rem <= 0) { refresh_now = true; break; }
@@ -157,16 +138,9 @@ static void fetch_task(void *arg)
                 TickType_t to = pdMS_TO_TICKS(rem > 1000 ? 1000 : (int)rem);
                 if (xQueueReceive(s_q, &ev, to) != pdTRUE)
                     continue;
-                // Nav owns the event first. CONSUMED => menu/card/swipe handled
-                // it: no refresh, and (critically) it never reaches the
-                // triple-tap counter, so menu taps can't factory-reset.
-                if (ui_handle_input(&ev) == UI_INPUT_CONSUMED)
-                    continue;
-                // PASS: summary screen. Only a TAP gets here.
-                if (ev.type == APP_EVT_TAP) {
-                    note_tap();                               // triple-tap → no return
-                    refresh_now = true;                       // single tap → refresh
-                }
+                if (ui_handle_input(&ev) == UI_INPUT_PASS &&
+                    ev.type == APP_EVT_LONG_PRESS)
+                    enter_portal();                           // no return
             }
         }
     }
