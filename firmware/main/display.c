@@ -1,6 +1,7 @@
 // firmware/main/display.c
 #include "display.h"
 #include "touch.h"
+#include <string.h>
 #include "board_config.h"
 #include "config_store.h"
 #include "esp_lcd_panel_io.h"
@@ -29,6 +30,13 @@ static esp_lcd_panel_handle_t s_panel = NULL;
  * Guards the runtime invalidate in display_set_flipped so the boot-time call
  * (before lv_init) skips the LVGL side. */
 static lv_display_t *s_lv_display = NULL;
+
+/* Shadow framebuffer: one RGB565-LE pixel per tile cell, built up in
+ * lvgl_flush_cb (after saturation, before the byte-swap that the display
+ * needs). display_get_shadow_fb() lets screenshot.c read a complete image
+ * after ui_capture_screenshot() has forced a full re-render. Only allocated
+ * when PSRAM is present; NULL otherwise. */
+static uint8_t *s_shadow = NULL;
 
 // Display config
 #define LCD_HOST        SPI2_HOST
@@ -84,6 +92,16 @@ static void lvgl_flush_cb(lv_display_t *disp, const lv_area_t *area,
     /* Apply saturation in native RGB565 order, BEFORE the SPI byte-swap. */
     saturate_rgb565_span((uint16_t *)px_map, w * h);
 #endif
+
+    /* Shadow copy: after saturation, before byte-swap → clean RGB565-LE that
+     * matches what the display actually shows. Tile-by-tile updates mean the
+     * buffer is complete only after a full re-render (ui_capture_screenshot). */
+    if (s_shadow) {
+        for (int row = 0; row < h; row++) {
+            memcpy(s_shadow + ((area->y1 + row) * LCD_H_RES + area->x1) * 2,
+                   px_map + row * w * 2, (size_t)w * 2);
+        }
+    }
 
     lv_draw_sw_rgb565_swap(px_map, w * h);
 
@@ -235,6 +253,14 @@ lv_display_t *display_init(void) {
     ESP_ERROR_CHECK(esp_timer_create(&tick_args, &tick_timer));
     ESP_ERROR_CHECK(esp_timer_start_periodic(tick_timer, LVGL_TICK_MS * 1000));
 
+#if BOARD_HAS_PSRAM
+    s_shadow = heap_caps_malloc((size_t)LCD_H_RES * LCD_V_RES * 2,
+                                MALLOC_CAP_SPIRAM);
+    if (!s_shadow) {
+        ESP_LOGW(TAG, "shadow fb alloc failed — screenshots unavailable");
+    }
+#endif
+
     ESP_LOGI(TAG, "Display initialized: %dx%d %s", LCD_H_RES, LCD_V_RES,
              LCD_H_RES < LCD_V_RES ? "portrait" : "landscape");
     return display;
@@ -245,6 +271,13 @@ void display_set_brightness(uint8_t duty)
     ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, duty);
     ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
     ESP_LOGI(TAG, "Brightness set to %u", duty);
+}
+
+const uint8_t *display_get_shadow_fb(int *w, int *h)
+{
+    if (w) *w = LCD_H_RES;
+    if (h) *h = LCD_V_RES;
+    return s_shadow;
 }
 
 void display_set_flipped(bool flipped)

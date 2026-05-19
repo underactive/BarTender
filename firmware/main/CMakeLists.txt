@@ -13,6 +13,7 @@ idf_component_register(
         "upstash.c"
         "stats_model.c"
         "fetch.c"
+        "screenshot.c"
     INCLUDE_DIRS "."
     REQUIRES
         esp_lcd driver esp_timer nvs_flash freertos json

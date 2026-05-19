@@ -27,6 +27,7 @@ typedef enum { CARD_COST, CARD_LIMITS } card_kind_t;
 
 // Shared state — written by any task under s_mtx, consumed only by ui_task.
 static SemaphoreHandle_t s_mtx;
+static SemaphoreHandle_t s_shot_sem;  // binary; given by ui_task after snapshot render
 static struct {
     ui_mode_t mode;
     char ssid[33], pass[64];
@@ -35,6 +36,7 @@ static struct {
     stats_t stats;
     int64_t fetched_ms;
     bool dirty;
+    bool shot_req;                // screenshot: signal ui_task to force full re-render
     // Navigation (mutated by ui_handle_input under s_mtx; read by render).
     nav_level_t nav_level;
     int         nav_provider;   // index into stats.p[] of the chosen provider
@@ -781,6 +783,7 @@ static void ui_task(void *arg)
     build_widgets();
     int64_t next_age = 0;
     while (1) {
+        bool do_shot = false;
         // Audit State§HIGH: block briefly for the mutex rather than skipping
         // the render entirely (take(0)) under setter contention.
         if (xSemaphoreTake(s_mtx, pdMS_TO_TICKS(5)) == pdTRUE) {
@@ -793,21 +796,41 @@ static void ui_task(void *arg)
                 st.dirty = true;
             }
             if (st.dirty) { render(); st.dirty = false; }
+            do_shot = st.shot_req;
+            if (do_shot) st.shot_req = false;
             xSemaphoreGive(s_mtx);
         }
         lv_timer_handler();
+        if (do_shot && scr) {
+            // Force a full synchronous re-render so the shadow framebuffer in
+            // display.c has a complete, up-to-date copy of every pixel.
+            lv_obj_invalidate(scr);
+            lv_refr_now(lv_display_get_default());
+            xSemaphoreGive(s_shot_sem);
+        }
         vTaskDelay(pdMS_TO_TICKS(5));
     }
 }
 
 void ui_start(void)
 {
-    s_mtx = xSemaphoreCreateMutex();
+    s_mtx     = xSemaphoreCreateMutex();
+    s_shot_sem = xSemaphoreCreateBinary();
     st.mode = UI_STATS;
     st.nav_level = NAV_SUMMARY;
     strlcpy(st.status, "starting...", sizeof st.status);
     st.dirty = true;
     xTaskCreate(ui_task, "ui", 8192, NULL, 5, NULL);
+}
+
+bool ui_capture_screenshot(void)
+{
+    if (!s_shot_sem) return false;
+    xSemaphoreTake(s_mtx, portMAX_DELAY);
+    st.shot_req = true;
+    xSemaphoreGive(s_mtx);
+    // Block until the ui_task completes its forced full re-render (≤ ~50 ms).
+    return xSemaphoreTake(s_shot_sem, pdMS_TO_TICKS(2000)) == pdTRUE;
 }
 
 static void mark(void) { st.dirty = true; }

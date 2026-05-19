@@ -52,3 +52,8 @@ void ui_set_status(const char *text);
 // Render the latest stats. `fetched_uptime_ms` = esp_timer ms at fetch, used
 // for the "updated Ns ago" label (no NTP needed).
 void ui_set_stats(const stats_t *s, int64_t fetched_uptime_ms);
+
+// Force a full synchronous re-render so the display shadow framebuffer is
+// complete, then signal the caller. Returns true on success, false on timeout.
+// Blocks up to 2 s; call from screenshot_task only.
+bool ui_capture_screenshot(void);

@@ -17,6 +17,7 @@
 #include "net_wifi.h"
 #include "fetch.h"
 #include "provision.h"
+#include "screenshot.h"
 #if BOARD_HAS_TOUCH
 #include "touch.h"
 #endif
@@ -36,6 +37,7 @@ void app_main(void)
     config_store_init();   // before display_init (brightness/flip)
     display_init();        // SPI + ILI9341 + LVGL (vendored, proven)
     ui_start();            // LVGL UI task
+    screenshot_start();    // USB-serial screenshot listener ("screenshot\n")
 
     // Upstash and WiFi are now independent. Open the captive portal if either
     // is missing, OR if a non-destructive triple-tap / self-heal asked for it

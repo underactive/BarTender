@@ -17,4 +17,11 @@ void display_set_brightness(uint8_t duty);
 // to call before display_init() returns (no-op until the panel handle exists).
 void display_set_flipped(bool flipped);
 
+// Returns a pointer to the shadow framebuffer (LCD_H_RES × LCD_V_RES, RGB565-LE).
+// Populated tile-by-tile during each LVGL flush. Contents represent the full
+// screen only after ui_capture_screenshot() has forced a synchronous re-render.
+// Returns NULL if PSRAM is unavailable. The buffer is owned by display.c — do
+// not free it.
+const uint8_t *display_get_shadow_fb(int *w, int *h);
+
 #endif // DISPLAY_H
