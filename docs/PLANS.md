@@ -18,6 +18,7 @@ See [exec-plans/active/](exec-plans/active/) for full plan documents.
 |------|------|-----------|
 | [codexbar-publish](exec-plans/completed/codexbar-publish.md) | Publish minimal CodexBar usage JSON to Upstash via launchd (Prompt 2 of 3) | 2026-05-18 |
 | [codexbar-firmware](exec-plans/completed/codexbar-firmware.md) | ESP32-S3 firmware: read Upstash, render on ILI9341 (Prompt 3 of 3) — verified on hardware | 2026-05-18 |
+| [claude-cost-menu](exec-plans/completed/claude-cost-menu.md) | Swipe-nav menu + Claude Cost/Usage-Limits cards; payload v2 from CodexBar cost cache (build + 7-persona audit; on-device pending user flash) | 2026-05-18 |
 
 See [exec-plans/completed/](exec-plans/completed/) for full plan documents.
 

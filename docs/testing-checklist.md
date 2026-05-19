@@ -29,11 +29,61 @@ Freenove ESP32-S3 (FNK0104); host items are off-device where a seam exists.
       SoftAP SSID but NOT its password; the Upstash token never appears in
       any log line.
 
+## Firmware — v2 cost menu / swipe nav (2026-05-18)
+
+Gesture regression (highest risk — the factory-reset gesture must not move):
+
+- [ ] **Summary single tap still refreshes** (status flips "fetching…"); no
+      menu opens.
+- [ ] **Summary triple-tap still reprovisions** (3 fast taps ≤1.2 s → wipe +
+      reboot); slow/occasional taps only refresh, never reset.
+- [ ] **Swipe down on summary opens the menu** and does NOT trigger a refresh.
+- [ ] **Menu/submenu taps select** and NEVER refresh or reprovision — even
+      rapid triple-taps inside the menu do nothing destructive.
+- [ ] **Swipe up backs out exactly one level**: card → submenu → menu →
+      summary.
+- [ ] **Ambiguous ~25 px drag does nothing**; a horizontal swipe does nothing.
+
+Rendering:
+
+- [ ] **Menu** lists "SUMMARY" + each `ok` provider (uppercased); tapping
+      "SUMMARY" returns to the summary screen.
+- [ ] **Claude Cost card**: `$X.XX` today (no `f%` artifact), `<n>M TOKENS
+      TODAY`, `30D $… • …`, a **labeled 30-day spend line sparkline** with
+      side margins (NOT a full-bleed block — regression for the v9
+      POINT_NONE==INT32_MAX bar bug), `EXTRA $a / $b` bar.
+- [ ] **Claude Usage-Limits card**: session % == the summary row's `p`;
+      weekly % == `s`; reset hints == `pr`/`sr`; plus a **24h SESSION
+      usage-% line sparkline** ("SESSION 24H • now N%") with side margins.
+- [ ] **Codex/Cursor/OpenRouter Cost card** shows "COST DATA NOT AVAILABLE
+      YET"; their Usage-Limits card still shows real session/weekly % and
+      **hides** the 24h sparkline (no `ph` for them).
+- [ ] **Bars read as "headroom" (inverted default).** A low usage % draws a
+      NEARLY-FULL bar; a high usage % draws a NEARLY-EMPTY bar — on the
+      summary rows AND both cards. Bar COLOR still follows true usage
+      (green low → red high), independent of fill. "off"/no-data bars stay
+      empty. (`ui_set_bar_invert(false)` / flip `UI_BAR_INVERT_DEFAULT`
+      restores the classic used-fill direction.)
+- [ ] **Summary rows show the provider's CodexBar logo** in the left margin,
+      tinted with that provider's accent (light grey if un-themed), spanning
+      the name + bar lines (two-line row). A provider with no bundled icon
+      shows text only (no broken/empty box). Icons regenerate via
+      `python3 scripts/gen-provider-icons.py` from the vendored SVGs.
+- [ ] **No tofu glyphs** anywhere (ASCII-only); layout not clipped in the
+      live 240×320 orientation.
+- [ ] **End-to-end**: `curl GET {url}/get/{key}` → device Cost numbers +
+      chart shape match the payload's `cost` block.
+
 ## Host (deferred — recipe, not yet built)
 
-- [ ] `stats_model_parse` table tests (valid; `result` null → NO_DATA;
-      `result` non-string → BAD; bad inner JSON → BAD; `v`≠1 → BAD;
-      >12 providers capped; `ok:false` minimal entry; float `p`).
+- [ ] `stats_model_parse` table tests (valid v1 & v2; `result` null →
+      NO_DATA; `result` non-string → BAD; bad inner JSON → BAD; `v`∉{1,2} →
+      BAD; v2 `cost` block parsed (ct/cm/tt/tm/xu/xl/h); v1 → `has_cost`
+      false; `hist` capped at `STATS_HIST_MAX`; >12 providers capped;
+      `ok:false` minimal entry; float `p`).
+- [ ] Publisher cost-merge JXA vs a mock cost-cache dir: rollup math, churn
+      fallback (no `days` → usage-only, exit 3), `files` map never read.
+- [ ] `provision.c` `urldecode`/`field` tests (`+`→space, `%XX`, malformed
 - [ ] `provision.c` `urldecode`/`field` tests (`+`→space, `%XX`, malformed
       `%`, prefix-collision `a` vs `ab`, missing field, over-length clamp).
 

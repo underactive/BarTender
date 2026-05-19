@@ -5,8 +5,16 @@
 # and zsh/coreutils builtins).
 #
 #   ./scripts/codexbar-stats.sh          # enabled providers, parallel, ~2-5s
-#   ./scripts/codexbar-stats.sh --json   # compact non-sensitive JSON for the
-#                                          Prompt 2 publisher (no PII; no $)
+#   ./scripts/codexbar-stats.sh --json   # compact v2 JSON for the Prompt 2
+#                                          publisher: usage % + extra-usage $
+#                                          (cents). Total spend/tokens/history
+#                                          are added by the publisher from
+#                                          CodexBar's local cost cache. PII
+#                                          (email/identity/loginMethod) is
+#                                          structurally never projected here;
+#                                          the relaxed privacy model for the
+#                                          private single-user channel is
+#                                          documented in docs/SECURITY.md.
 #   ./scripts/codexbar-stats.sh --all    # every provider via one --provider all
 #                                          call (SLOW, ~90s; debugging only)
 #   ./scripts/codexbar-stats.sh --help
@@ -150,9 +158,16 @@ if (expected.length){
 if (!anyParsed && expected.length===0){ eprint("error: codexbar returned no usable JSON."); $.exit(1); }
 
 if (env('CBAR_MODE')==='json'){
-  // Whitelisted projection — NEVER emit accountEmail/loginMethod/identity/$.
+  // v2 projection. PII (accountEmail/loginMethod/identity) is structurally
+  // never read here. `p/pr/s/sr` are usage %; the optional `cost` object
+  // carries only the extra-usage OVERAGE (providerCost: a $used/$limit figure,
+  // NOT total spend) as integer cents. Total spend/tokens and the per-day
+  // history are merged in by codexbar-publish.sh from CodexBar's local cost
+  // cache. Relaxed single-user privacy model: docs/SECURITY.md.
   var num=function(n){ if (n==null||isNaN(n)) return null;
     return (n>=1) ? Math.round(n) : parseFloat(Number(n).toFixed(2)); };
+  var cents=function(n){ if (n==null||isNaN(n)) return null;
+    return Math.round(Number(n)*100); };
   var project=function(e){
     var o={id:e.provider||"?"};
     if (e.error){ o.ok=false; return o; }
@@ -163,12 +178,17 @@ if (env('CBAR_MODE')==='json'){
       if (pr.resetDescription) o.pr=String(pr.resetDescription); }
     if (se){ var sp=num(se.usedPercent); if (sp!=null) o.s=sp;
       if (se.resetDescription) o.sr=String(se.resetDescription); }
+    var co=u.providerCost;
+    if (co){ var cobj={}, xu=cents(co.used), xl=cents(co.limit);
+      if (xu!=null) cobj.xu=xu;
+      if (xl!=null) cobj.xl=xl;
+      if (cobj.xu!=null || cobj.xl!=null) o.cost=cobj; }
     return o;
   };
   var provs=entries.map(project);
   if (provs.length===0){ eprint("error: no providers to publish (check ~/.codexbar/config.json or try --all)."); $.exit(1); }
   var real=provs.filter(function(x){return x.ok;}).length;
-  out(JSON.stringify({v:1, ts:new Date().toISOString(), providers:provs}));
+  out(JSON.stringify({v:2, ts:new Date().toISOString(), providers:provs}));
   $.exit(real>0 ? 0 : 3);
 }
 

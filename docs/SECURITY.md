@@ -38,26 +38,64 @@ systems that process external input or integrate with third-party services.
 Threat-model rule 2 says "no intermediary services." The desktop-toy roadmap
 *requires* one: the ESP32 is standalone IoT and cannot reach the Mac directly,
 so usage stats transit Upstash Redis. This is a **deliberate, bounded
-exception**, made acceptable by constraining what crosses the boundary:
+exception**.
 
-- **Whitelisted projection only.** `codexbar-stats.sh --json` *builds* the
-  payload field-by-field (`id`, `ok`, usage `%`, reset hint) — it does not
-  filter the raw CodexBar JSON. PII (account emails, `loginMethod`,
-  `identity`, org names) and `$` cost figures and credentials are therefore
-  structurally impossible to leak, not merely stripped. A verification step
-  greps the payload to assert this.
+### v1 (historical): structural minimization
+
+`codexbar-stats.sh --json` built the payload field-by-field (`id`, `ok`,
+usage `%`, reset hint). PII and `$` were *structurally impossible* to leak.
+This is the model `ARCHITECTURE.md` decision #2 describes; it is **superseded
+at v2** but retained here for context.
+
+### v2 (current): deliberately RELAXED single-user channel
+
+The owner explicitly chose to put **real cost data** on the toy. The privacy
+model changed from "structural minimization" to **"the Upstash endpoint and
+read token are private to one user."** This was an informed decision for a
+personal desk object, recorded here as the mandated re-justification.
+
+**What now crosses the boundary (v2 payload):** usage `%` + reset hints,
+extra-usage `$` (cents), and — for Claude — total spend today/30-day, token
+counts, and a 30-day per-day spend history. Account email / `identity` /
+`loginMethod` are still **not projected** (`codexbar-stats.sh` simply never
+reads them; they are absent by construction, not by redaction).
+
+**Why this is acceptable here, and only here:**
+
+- **Single-user, private intermediary.** One Upstash database, one Redis key,
+  a read token held only by the owner's own device. The channel's
+  confidentiality now rests on **endpoint + token secrecy**, not on the
+  payload being non-sensitive. A leak of the endpoint+token would reveal this
+  user's AI spend and rough 30-day spend shape — accepted by the owner.
+- **The cost cache `files` map never leaves the Mac.** Cost is rolled up by
+  `codexbar-publish.sh` from CodexBar's local cache
+  (`~/Library/Caches/CodexBar/cost-usage/claude-v*.json`). That cache's
+  `files` map enumerates ~2000 **private project paths** (highly sensitive).
+  The publisher reads **only** the aggregate `days` map and forwards
+  rolled-up numbers; `files` is structurally never touched. This is the one
+  hard, non-negotiable minimization that remains.
+- **Cache-format churn is fail-safe.** The cache schema version churns
+  (`claude-v1/-v2/...`). On any unrecognized shape the publisher omits the
+  cost block and publishes usage-only — it never aborts and never emits a
+  half-parsed/garbage cost figure.
 - **Credentials never transit and never rest in the repo.** The Upstash
   **write** token lives in the macOS Keychain (service `codexbar-toy`),
   passed to `curl` via a `0600 -K` config (never argv/log/plist). The device
-  holds a *separate* **read-only** token.
-- **Minimal blast radius.** Only one Redis key of non-sensitive aggregate
-  usage percentages is exposed; a leak reveals "how busy this user's AI
-  plans are," not identity, content, or secrets.
+  holds a *separate* **read-only** token. The capture fixtures under
+  `docs/references/` (account email, spend) are `.gitignore`d — they must
+  never be committed if this repo is ever versioned.
 - **Fail-safe.** A transient local failure must not overwrite the store with
-  empty/all-error data (publish is skipped — the toy keeps last-known-good).
+  empty/all-error data (publish is skipped — the toy keeps last-known-good);
+  a single-flight lock prevents overlapping cycles.
 
-Any change that would widen the payload (e.g. adding `$` spend, account
-identifiers) MUST update this section and re-justify the boundary.
+**Residual risk (accepted, with mitigation owed):** the device NVS is
+unencrypted (see below). Under v1 a stolen device leaked only "how busy."
+Under v2 it leaks the owner's identity-adjacent **spend and 30-day spend
+shape**. NVS encryption is therefore upgraded from "nice-to-have" to a
+**tracked hardening item** (`docs/exec-plans/tech-debt-tracker.md`).
+
+Any FURTHER widening (e.g. per-model breakdown, the cache `files` map,
+account identifiers) MUST update this section and re-justify again.
 
 ## Device boundary: the ESP32 toy (Prompt 3)
 
@@ -69,7 +107,10 @@ identifiers) MUST update this section and re-justify the boundary.
   entered via the first-boot captive portal and stored in NVS. They are
   never compiled in, never committed (`firmware/secrets.h` is not used).
 - **NVS is unencrypted.** Threat is physical possession of the board only.
-  Flash/NVS encryption is a documented hardening follow-up, out of POC scope.
+  **Risk elevated at payload v2:** the toy now also caches the owner's Claude
+  spend + 30-day spend shape, so physical theft leaks more than "how busy."
+  Flash/NVS encryption is now a **tracked** hardening item
+  (`docs/exec-plans/tech-debt-tracker.md`), not just a vague follow-up.
 - **SoftAP exposure is bounded.** The provisioning AP is WPA2 (device-unique
   password shown only on the local TFT), runs only while unprovisioned, and
   the device reboots out of AP mode immediately on form submit. The captive

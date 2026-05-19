@@ -1,47 +1,25 @@
-# --- macOS ---
+# ---- macOS ----
 .DS_Store
-.AppleDouble
-.LSOverride
-Icon?
-
-# --- Editors / IDEs ---
-.vscode/
-.idea/
 *.swp
-*.swo
 *~
 
-# --- Secrets / credentials --------------------------------------------------
-# This project deliberately keeps credentials OUT of the repo. CodexBar's
-# ~/.codexbar/config.json already holds a plaintext OpenRouter API key, and
-# Prompt 2 (Upstash/Railway publisher) will add more. Never commit these.
-.env
-.env.*
-*.local
-secrets*
-*.secret
-*.pem
-*-credentials.json
-
-# --- Local run output -------------------------------------------------------
-# scripts/codexbar-stats.sh uses mktemp in $TMPDIR (already outside the repo);
-# these cover any logs/snapshots a user redirects into the tree.
-*.log
-tmp/
-*.tmp
-
-# --- ESP-IDF firmware (Prompt 3) -------------------------------------------
-# Build artifacts + auto-generated/auto-fetched files. sdkconfig.defaults*
-# ARE committed (build inputs); the merged `sdkconfig` is generated.
+# ---- ESP-IDF firmware (generated / fetched — reproducible from source) ----
+# build output
 firmware/build/
+# clangd / IDE index cache
+firmware/.cache/
+# managed components are re-fetched from dependencies.lock on `idf.py build`.
+# dependencies.lock IS committed (pins exact versions) — do NOT ignore it.
+firmware/managed_components/
+# sdkconfig is machine-local + regenerated from sdkconfig.defaults*.
+# The sdkconfig.defaults* files ARE committed.
 firmware/sdkconfig
 firmware/sdkconfig.old
-firmware/managed_components/
-firmware/dependencies.lock
-firmware/.envrc
-build/
 
-# clangd / IDE index cache (created when a language server reads the tree)
-.cache/
-.clangd/
-compile_commands.json
+# ---- Local-only capture fixtures (SECURITY-CRITICAL — never commit) ----
+# These contain the account email / spend aggregates / private project paths.
+# docs/SECURITY.md treats the publish path as a private single-user channel;
+# these must never enter version control. (See §"Project exception".)
+docs/references/codexbar-usage-claude.sample.json
+docs/references/codexbar-cost-cache-claude.sample.json
+docs/references/codexbar-raw-claude.sample.json

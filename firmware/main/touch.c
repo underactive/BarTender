@@ -32,13 +32,35 @@
 
 static const char *TAG = "touch";
 
-#define POLL_PERIOD_MS  20     // 50 Hz
-#define DEBOUNCE_US     200000 // 200 ms between accepted taps
+#define POLL_PERIOD_MS  20      // 50 Hz
+#define DEBOUNCE_US     200000  // 200 ms between accepted TAPS — UNCHANGED:
+                                // fetch.c's triple-tap timing math depends on
+                                // this exact inter-tap floor. Do not retune.
+
+// Gesture classification. Bands are deliberately DISJOINT with a dead-zone:
+// a tap is small+short; a swipe is long+fast+vertical; 12..40 px of travel is
+// inert (ambiguous => no event, never a misfire). Tuned for the 20 ms poll,
+// ~240x320 panel, and FT6336G jitter (~3-5 px).
+#define SWIPE_DIST_PX       40
+#define SWIPE_MAX_US        600000   // a flick is fast; rejects slow drags
+#define TAP_SLOP_PX         12       // contact wobble; < SWIPE_DIST_PX (no overlap)
+#define TAP_MAX_US          700000   // rejects a long rest-press as a tap
+#define GESTURE_DEBOUNCE_US 400000   // one press => at most one swipe
+#define RELEASE_GRACE       2        // polls of no-touch before commit (FT6336G
+                                     // drops a sample mid-glide; 40 ms grace)
 
 static QueueHandle_t s_queue;
 static esp_lcd_touch_handle_t s_touch;
-static int64_t s_last_press_us;
-static bool s_was_touching;
+static int64_t s_last_press_us;      // last accepted TAP (debounce / triple-tap)
+static int64_t s_last_gesture_us;    // last accepted SWIPE
+static int64_t s_press_us;           // current press-down timestamp
+static bool    s_in_press;
+static bool    s_gesture_fired;      // a swipe already emitted this press
+static int     s_press_x, s_press_y; // coords at press-down
+static int     s_last_x, s_last_y;   // most recent coords while held
+static int     s_release_misses;
+
+static inline int iabs_(int v) { return v < 0 ? -v : v; }
 
 static void touch_task(void *arg)
 {
@@ -49,19 +71,69 @@ static void touch_task(void *arg)
             uint16_t y[1] = {0};
             uint16_t strength[1] = {0};
             uint8_t count = 0;
-            bool pressed = esp_lcd_touch_get_coordinates(s_touch, x, y, strength, &count, 1);
+            bool pressed = esp_lcd_touch_get_coordinates(s_touch, x, y, strength,
+                                                         &count, 1) && count > 0;
+            int64_t now = esp_timer_get_time();
 
-            /* Fire on edge: idle → touching. Ignore continued hold and release. */
-            if (pressed && count > 0 && !s_was_touching) {
-                int64_t now = esp_timer_get_time();
-                if (now - s_last_press_us >= DEBOUNCE_US) {
-                    s_last_press_us = now;
-                    app_evt_t evt = { .type = APP_EVT_TOUCH };
-                    xQueueSend(s_queue, &evt, 0);
-                    ESP_LOGD(TAG, "Tap at (%u, %u)", x[0], y[0]);
+            if (pressed) {
+                s_release_misses = 0;
+                if (!s_in_press) {
+                    // idle -> press: start tracking the gesture
+                    s_in_press = true;
+                    s_gesture_fired = false;
+                    s_press_us = now;
+                    s_press_x = s_last_x = x[0];
+                    s_press_y = s_last_y = y[0];
+                } else {
+                    // held: update, and fire a swipe on threshold crossing
+                    // (don't wait for release — better felt latency)
+                    s_last_x = x[0];
+                    s_last_y = y[0];
+                    if (!s_gesture_fired) {
+                        int dx = s_last_x - s_press_x;
+                        int dy = s_last_y - s_press_y;
+                        if (iabs_(dy) >= SWIPE_DIST_PX &&
+                            iabs_(dy) > iabs_(dx) &&            // vertical-dominant
+                            (now - s_press_us) <= SWIPE_MAX_US &&
+                            (now - s_last_gesture_us) >= GESTURE_DEBOUNCE_US) {
+                            app_evt_t e = {
+                                .type = (dy > 0) ? APP_EVT_SWIPE_DOWN
+                                                 : APP_EVT_SWIPE_UP,
+                                .x = 0, .y = 0,
+                            };
+                            xQueueSend(s_queue, &e, 0);
+                            s_gesture_fired = true;
+                            s_last_gesture_us = now;
+                            ESP_LOGD(TAG, "swipe %s",
+                                     dy > 0 ? "down" : "up");
+                        }
+                    }
+                }
+            } else if (s_in_press) {
+                // FT6336G can drop one sample mid-glide; only commit the
+                // release after RELEASE_GRACE consecutive no-touch polls.
+                if (++s_release_misses >= RELEASE_GRACE) {
+                    s_in_press = false;
+                    if (!s_gesture_fired) {
+                        int dx = s_last_x - s_press_x;
+                        int dy = s_last_y - s_press_y;
+                        if (iabs_(dx) <= TAP_SLOP_PX &&
+                            iabs_(dy) <= TAP_SLOP_PX &&
+                            (now - s_press_us) <= TAP_MAX_US &&
+                            (now - s_last_press_us) >= DEBOUNCE_US) {
+                            s_last_press_us = now;
+                            app_evt_t e = {
+                                .type = APP_EVT_TAP,
+                                .x = (int16_t)s_press_x,
+                                .y = (int16_t)s_press_y,
+                            };
+                            xQueueSend(s_queue, &e, 0);
+                            ESP_LOGD(TAG, "tap (%d, %d)",
+                                     s_press_x, s_press_y);
+                        }
+                    }
                 }
             }
-            s_was_touching = (pressed && count > 0);
         }
         vTaskDelay(pdMS_TO_TICKS(POLL_PERIOD_MS));
     }
@@ -71,7 +143,10 @@ void touch_init(QueueHandle_t evt_queue)
 {
     s_queue = evt_queue;
     s_last_press_us = 0;
-    s_was_touching = false;
+    s_last_gesture_us = 0;
+    s_in_press = false;
+    s_gesture_fired = false;
+    s_release_misses = 0;
 
     /* Shared I2C master bus — also used by the ES8311 codec (sound.c). */
     i2c_master_bus_handle_t bus = i2c_bus_get();

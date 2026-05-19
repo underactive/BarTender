@@ -21,6 +21,7 @@ code is structured.
 |------|--------|-------------|
 | [publish-to-upstash](publish-to-upstash.md) | Implemented (live round-trip verified) | Periodic non-sensitive usage publish to Upstash via launchd |
 | [esp32-toy](esp32-toy.md) | Code complete (pending user build+flash) | ESP32-S3 device: reads Upstash, renders stats, captive provisioning |
+| [claude-cost-menu](claude-cost-menu.md) | Code complete, build-clean (pending user flash) | Swipe-nav menu → Claude Cost & Usage-Limits cards (real spend/tokens/30-day history via v2 payload) |
 
 ## Writing specs
 

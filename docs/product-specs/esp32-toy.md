@@ -20,8 +20,12 @@ opening anything.
 - [ ] The screen renders in portrait orientation (taller than wide); the
       provider-row layout adapts to the panel width so bars/percentages are
       not clipped on either orientation.
-- [ ] Tap → immediate refresh. Triple-tap within 2 s → wipe creds + reboot
-      to the captive portal.
+- [ ] On the **summary screen**: tap → immediate refresh; triple-tap within
+      2 s → wipe creds + reboot to the captive portal. (Inside the swipe menu
+      these gestures select/navigate instead — see
+      [claude-cost-menu](claude-cost-menu.md).)
+- [ ] Swipe down on the summary opens the provider menu; swipe up backs out
+      one level. Full behavior: [claude-cost-menu](claude-cost-menu.md).
 - [ ] Rendered percentages match a `curl GET` of the same Upstash key.
 - [ ] No secret is compiled into the firmware or committed to the repo.
 
@@ -33,12 +37,16 @@ opening anything.
 | Bad/expired token | "fetch error: auth (token?)" banner; retry every 20 s |
 | Key absent / publisher not run yet | "waiting for publisher…" (reachable, no value) |
 | Malformed JSON | "bad data from store" banner |
-| Response larger than buffer | "response too big" (defensive; payload is ~450 B) |
+| Response larger than buffer | "response too big" (defensive; v2 payload ~0.6–2 KB, `body[4096]`) |
 | Display image rotated | Documented bring-up flag flip (`BOARD_LCD_MIRROR_X/Y`) |
 
 ## Not in scope
 
 - Pushing/writing anything back to Upstash (device is read-only).
 - On-screen text entry (provisioning is via the phone/laptop captive form).
-- Historical graphs, sound, animation, battery operation.
-- NVS/flash encryption (documented hardening follow-up).
+- Sound, animation, battery operation.
+- Historical graphs **on the summary screen** — but a 30-day Claude cost
+  history chart now exists on the Cost card; see
+  [claude-cost-menu](claude-cost-menu.md).
+- NVS/flash encryption — now a **tracked** hardening item (risk elevated at
+  payload v2; see `docs/SECURITY.md` and the tech-debt tracker).

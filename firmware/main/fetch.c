@@ -21,7 +21,10 @@ static int64_t now_ms(void) { return esp_timer_get_time() / 1000; }
 static bool do_fetch(const char *url, const char *key, const char *tok)
 {
     ui_set_status("fetching...");
-    static char body[2560];                 // live payload ~450 B; headroom
+    // v2 payload (Claude cost block + ~31-day history) is ~1-2 KB escaped vs
+    // the old ~450 B; size generously. Oversize still fails safe via
+    // upstash.c's response-too-big guard -> "bad data from store".
+    static char body[4096];
     size_t bl = 0;
     upstash_status_t us = upstash_get(url, key, tok, body, sizeof body, &bl);
     if (us != UPSTASH_OK) {
@@ -30,7 +33,9 @@ static bool do_fetch(const char *url, const char *key, const char *tok)
         ui_set_status(m);
         return false;
     }
-    stats_t st;
+    // static: stats_t grew ~1.9 KB with the v2 cost block; keep it off the
+    // 6 KB fetch-task stack. Single fetch task, copied into ui.c under mutex.
+    static stats_t st;
     switch (stats_model_parse(body, &st)) {
         case STATS_PARSE_OK:
             ui_set_status("WiFi OK");
@@ -85,7 +90,15 @@ static void fetch_task(void *arg)
                 if (rem <= 0) { refresh_now = true; break; }
                 app_evt_t ev;
                 TickType_t to = pdMS_TO_TICKS(rem > 1000 ? 1000 : (int)rem);
-                if (xQueueReceive(s_q, &ev, to) == pdTRUE && ev.type == APP_EVT_TOUCH) {
+                if (xQueueReceive(s_q, &ev, to) != pdTRUE)
+                    continue;
+                // Nav owns the event first. CONSUMED => menu/card/swipe handled
+                // it: no refresh, and (critically) it never reaches the
+                // triple-tap counter, so menu taps can't factory-reset.
+                if (ui_handle_input(&ev) == UI_INPUT_CONSUMED)
+                    continue;
+                // PASS: summary screen. Only a TAP gets here.
+                if (ev.type == APP_EVT_TAP) {
                     int64_t t = now_ms();
                     taps[0] = taps[1]; taps[1] = taps[2]; taps[2] = t;
                     if (tc < 3) tc++;

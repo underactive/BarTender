@@ -7,7 +7,7 @@ code or hand-maintained to document the shape of key data types.
 
 | Name | Source | Purpose |
 |------|--------|---------|
-| <!-- e.g., `user.schema.json` --> | <!-- e.g., `src/types/user.ts` --> | <!-- e.g., User profile data contract --> |
+| `codexbar-payload.schema.json` | `scripts/codexbar-stats.sh` + `scripts/codexbar-publish.sh`; consumed by `firmware/main/stats_model.{h,c}` | Upstash payload contract (v2: usage % + extra-usage $ + Claude cost/tokens/30-day history). v1 superset. |
 
 ## Keeping schemas in sync
 

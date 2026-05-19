@@ -44,7 +44,7 @@ printf 'UPSTASH_REST_URL=https://<db>.upstash.io\nUPSTASH_KEY=codexbar\n' \
 | Command | Effect |
 |---------|--------|
 | `codexbar-stats.sh` | Detailed report for enabled providers (~2s, parallel) |
-| `codexbar-stats.sh --json` | Compact, **non-sensitive** JSON (no PII/$) for the publisher |
+| `codexbar-stats.sh --json` | Compact **v2** JSON for the publisher (usage % + extra-usage $ in cents; PII never projected) |
 | `codexbar-stats.sh --all` | Every provider via one slow `--provider all` call (~90s; debug) |
 | `codexbar-stats.sh --help` | Full options + env vars |
 
@@ -58,19 +58,29 @@ printf 'UPSTASH_REST_URL=https://<db>.upstash.io\nUPSTASH_KEY=codexbar\n' \
 | `codexbar-publish.sh --status` | Job state, target, token readiness, recent log |
 | `codexbar-publish.sh --print-plist` | Preview the launchd plist that `--install` would write |
 
-Published payload is a whitelisted projection — usage % and reset hints only,
-never emails/identity/credentials/$ (see [docs/SECURITY.md](docs/SECURITY.md)).
-If there's no fresh data the publish is skipped so the toy keeps its last good
-value. The write token lives in the Keychain; the ESP32 (Prompt 3) gets a
-separate read-only token.
+The **v2** payload carries usage % + reset hints + extra-usage $, and — for
+Claude — total spend (today / 30-day), token counts, and a 30-day per-day
+spend history rolled up from CodexBar's **local** cost cache. This is a
+**deliberately relaxed, private single-user channel**: account email /
+identity are never projected, and CodexBar's per-project paths never leave the
+Mac, but real spend now transits Upstash, so its endpoint + token must be kept
+private (full rationale + residual NVS risk in
+[docs/SECURITY.md](docs/SECURITY.md)). If there's no fresh data — or the cost
+cache is absent/format-churned — the publish is skipped or falls back to
+usage-only, so the toy keeps its last good value. The write token lives in the
+Keychain; the ESP32 (Prompt 3) gets a separate read-only token.
 
 ### `firmware/` — ESP32-S3 desk toy
 
 ESP-IDF firmware for the Freenove ESP32-S3 2.8" (FNK0104): joins WiFi, polls
 the Upstash key over HTTPS every 5 min, renders the stats on the ILI9341.
-First boot runs a captive-portal so nothing secret is ever compiled in; tap
-to refresh, triple-tap to re-provision. Board bring-up is vendored from the
-`clawd-tank` project. Build/flash/provisioning: [firmware/README.md](firmware/README.md).
+First boot runs a captive-portal so nothing secret is ever compiled in. On the
+summary screen: tap to refresh, triple-tap to re-provision. **Swipe down** to
+open a provider menu → tap a provider → **Cost** / **Usage Limits** cards
+(Claude shows real spend, tokens, and a 30-day history chart); **swipe up**
+backs out one level. Board bring-up is vendored from the `clawd-tank` project.
+Build/flash/provisioning: [firmware/README.md](firmware/README.md). Full
+behavior: [docs/product-specs/claude-cost-menu.md](docs/product-specs/claude-cost-menu.md).
 
 ## Architecture
 

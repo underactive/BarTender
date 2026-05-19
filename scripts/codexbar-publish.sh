@@ -12,14 +12,20 @@
 #   codexbar-publish.sh --print-plist   # render the launchd plist to stdout
 #   codexbar-publish.sh --help
 #
-# Security model (see docs/SECURITY.md):
-#   - Only the whitelisted `codexbar-stats.sh --json` payload leaves the Mac
-#     (usage % + reset hints; NEVER emails/identity/credentials/$).
+# Security model (see docs/SECURITY.md — RELAXED for a private single-user
+# channel; privacy now rests on Upstash endpoint + token secrecy):
+#   - The payload = `codexbar-stats.sh --json` (usage % + reset hints +
+#     extra-usage $ as cents) PLUS a Claude `cost` block (today/30d $ + tokens
+#     + per-day history) rolled up from CodexBar's LOCAL cost cache.
+#   - The cost cache's `files` map (private project paths) is NEVER read; only
+#     the aggregate `days` map is, and only rolled-up numbers are forwarded.
+#   - Account email / identity / loginMethod are still never projected.
 #   - Write token lives in the macOS Keychain, never in argv/log/plist.
 #   - curl auth header is passed via a 0600 temp -K config, not the command
 #     line (no secret in `ps`).
 #   - If there is no fresh data, the publish is SKIPPED (the store keeps its
 #     last good value — a transient local failure must not blank the toy).
+#   - A single-flight lock prevents overlapping cycles.
 #
 # Non-secret config: ~/.config/codexbar-toy/config  (KEY=VALUE lines)
 #   UPSTASH_REST_URL=https://<db>.upstash.io
@@ -27,8 +33,15 @@
 #   PUBLISH_INTERVAL=300            # launchd seconds (default: 300)
 #   MOCK_SINK_URL=                  # test override; if set, used instead of Upstash
 #
+# Test hooks (env, default to real user paths — never modify CodexBar state):
+#   CBPUB_COST_CACHE_DIR  CodexBar cost-usage dir
+#                         (default: ~/Library/Caches/CodexBar/cost-usage)
+#   CBPUB_PCT_HISTORY     CodexBar hourly usage-% history file (default:
+#                         ~/Library/Application Support/com.steipete.codexbar/
+#                         history/claude.json)
+#
 # Zero third-party deps: codexbar-stats.sh + base-macOS security/curl/launchctl/
-# awk/date/mktemp + zsh builtins.
+# osascript/awk/date/mktemp + zsh builtins.
 set -u
 
 LABEL="com.codexbar-toy.publish"
@@ -83,6 +96,126 @@ cmd_set_token() {
   log "token stored in Keychain (${n} bytes incl. trailing newline)"
 }
 
+# Roll up Claude total spend / tokens / 30-day history from CodexBar's LOCAL
+# cost cache and merge into the v2 payload. Reads ONLY the aggregate `days`
+# map (date -> model -> [input,cacheRead,cacheCreate,output,costNanos,n,n],
+# verified 2026-05-18); the cache's `files` map is private project paths and
+# is NEVER read. Cache filename schema churns (claude-v1/v2/...) — pick the
+# highest version; on ANY structural mismatch exit non-zero so the caller
+# publishes usage-only (fail-safe, never abort, never corrupt the payload).
+read -r -d '' COST_MERGE_JXA <<'EOF'
+ObjC.import('Foundation'); ObjC.import('stdlib');
+// objectForKey on a MISSING key returns a truthy JXA nil-wrapper whose .js is
+// undefined -> must test .js, not the wrapper (else missing keys read as the
+// string "undefined"). Same defensive idiom as readFile() below.
+function env(k){ var v=$.NSProcessInfo.processInfo.environment.objectForKey(k);
+  return (v && v.js!==undefined) ? String(v.js) : ''; }
+function eprint(s){ $.NSFileHandle.fileHandleWithStandardError
+  .writeData($.NSString.alloc.initWithUTF8String("cost-merge: "+s+"\n").dataUsingEncoding(4)); }
+function rf(p){ try { var s=$.NSString.stringWithContentsOfFileEncodingError(p,4,null);
+  return (s && s.js!==undefined) ? s.js : null; } catch(e){ return null; } }
+var jsonPath=env('CBPUB_JSON'); if(!jsonPath){ eprint("no CBPUB_JSON"); $.exit(2); }
+var home=env('HOME'); if(!home){ home=String($.NSHomeDirectory()); }
+var dir=env('CBPUB_COST_CACHE_DIR');
+if(!dir){ dir=home+"/Library/Caches/CodexBar/cost-usage"; }
+var fm=$.NSFileManager.defaultManager;
+var names=fm.contentsOfDirectoryAtPathError(dir,null);
+var arr=names?names.js:null;
+if(!arr||arr.length===undefined){ eprint("cache dir absent/empty: "+dir); $.exit(3); }
+var best=null, bestV=-1;
+for(var i=0;i<arr.length;i++){ var fn=String(arr[i].js!==undefined?arr[i].js:arr[i]);
+  var m=fn.match(/^claude-v(\d+)\.json$/); if(!m) continue;
+  var vv=parseInt(m[1],10); if(vv>bestV){bestV=vv;best=fn;} }
+if(!best){ eprint("no claude-v*.json in "+dir); $.exit(3); }
+var cTxt=rf(dir+"/"+best); if(!cTxt){ eprint("unreadable "+best); $.exit(3); }
+var cache; try{cache=JSON.parse(cTxt);}catch(e){ eprint("parse fail "+best); $.exit(3); }
+var days=cache&&cache.days;
+if(!days||typeof days!=='object'||Array.isArray(days)){ eprint("no days map (schema churn?)"); $.exit(3); }
+var dk=Object.keys(days).filter(function(k){return /^\d{4}-\d{2}-\d{2}$/.test(k);}).sort();
+if(dk.length===0){ eprint("empty days"); $.exit(3); }
+function dms(k){var p=k.split('-');return Date.UTC(+p[0],+p[1]-1,+p[2]);}
+function roll(o){var c=0,t=0,any=false;
+  for(var mdl in o){var a=o[mdl];
+    if(!Array.isArray(a)||a.length<5)continue;
+    var cn=+a[4]; if(isNaN(cn))continue;
+    c+=cn/1e7; t+=(+a[0]||0)+(+a[1]||0)+(+a[2]||0)+(+a[3]||0); any=true;}
+  return any?{c:Math.round(c),t:Math.round(t)}:null;}
+var today=dk[dk.length-1], tr=roll(days[today]);
+if(!tr){ eprint("today rollup empty (schema churn?)"); $.exit(3); }
+var tms=dms(today), cm=0, tm=0, hist=[];
+for(var i=0;i<dk.length;i++){var r=roll(days[dk[i]]); if(!r)continue;
+  if((tms-dms(dk[i]))/86400000<=29){cm+=r.c;tm+=r.t;}}
+// last <=31 day keys, OLDEST -> NEWEST to match firmware stats_model.h hist[]
+var hk=dk.slice(-31);
+for(var i=0;i<hk.length;i++){var r=roll(days[hk[i]]); hist.push(r?r.c:0);}
+var pTxt=rf(jsonPath); if(!pTxt){ eprint("payload unreadable"); $.exit(2); }
+var pay; try{pay=JSON.parse(pTxt);}catch(e){ eprint("payload parse fail"); $.exit(2); }
+if(!pay||!Array.isArray(pay.providers)){ eprint("payload shape"); $.exit(2); }
+var did=false;
+for(var i=0;i<pay.providers.length;i++){var pr=pay.providers[i];
+  if(pr&&pr.id==='claude'){pr.cost=pr.cost||{};
+    pr.cost.ct=tr.c; pr.cost.cm=cm; pr.cost.tt=tr.t; pr.cost.tm=tm; pr.cost.h=hist;
+    did=true;}}
+if(!did){ eprint("no claude provider in payload — nothing to merge"); $.exit(0); }
+var w=$.NSString.alloc.initWithUTF8String(JSON.stringify(pay))
+  .writeToFileAtomicallyEncodingError(jsonPath,true,4,null);
+if(!w){ eprint("payload writeback failed"); $.exit(2); }
+eprint("merged claude cost: today="+tr.c+"c/"+tr.t+"tok 30d="+cm+"c/"+tm+"tok hist="+hist.length+"d");
+$.exit(0);
+EOF
+
+# Add a 24h SESSION usage-% sparkline (`ph`) to Claude from CodexBar's hourly
+# history file (~/Library/Application Support/com.steipete.codexbar/history/
+# claude.json). This is usage %, NOT cost — feeds the Limits-card sparkline.
+# Same fail-safe contract: any structural problem -> exit non-zero, caller
+# publishes without `ph` (never abort, never corrupt the payload).
+read -r -d '' PCT_MERGE_JXA <<'EOF'
+ObjC.import('Foundation'); ObjC.import('stdlib');
+function env(k){ var v=$.NSProcessInfo.processInfo.environment.objectForKey(k);
+  return (v && v.js!==undefined) ? String(v.js) : ''; }
+function eprint(s){ $.NSFileHandle.fileHandleWithStandardError
+  .writeData($.NSString.alloc.initWithUTF8String("pct-merge: "+s+"\n").dataUsingEncoding(4)); }
+function rf(p){ try { var s=$.NSString.stringWithContentsOfFileEncodingError(p,4,null);
+  return (s && s.js!==undefined) ? s.js : null; } catch(e){ return null; } }
+var jsonPath=env('CBPUB_JSON'); if(!jsonPath){ eprint("no CBPUB_JSON"); $.exit(2); }
+var home=env('HOME'); if(!home){ home=String($.NSHomeDirectory()); }
+var fp=env('CBPUB_PCT_HISTORY');
+if(!fp){ fp=home+"/Library/Application Support/com.steipete.codexbar/history/claude.json"; }
+var hTxt=rf(fp); if(!hTxt){ eprint("history file absent: "+fp); $.exit(3); }
+var H; try{H=JSON.parse(hTxt);}catch(e){ eprint("history parse fail"); $.exit(3); }
+var acc=H&&H.accounts;
+if(!acc||typeof acc!=='object'||Array.isArray(acc)){ eprint("no accounts map (schema churn?)"); $.exit(3); }
+var ak=H.preferredAccountKey; if(!ak||!acc[ak]){ ak=Object.keys(acc)[0]; }
+var wins=ak?acc[ak]:null;
+if(!Array.isArray(wins)||wins.length===0){ eprint("no windows"); $.exit(3); }
+var sess=null;
+for(var i=0;i<wins.length;i++){ if(wins[i]&&wins[i].name==='session'){ sess=wins[i]; break; } }
+if(!sess){ var mw=1e18; for(var i=0;i<wins.length;i++){ var w=wins[i];
+  if(w&&typeof w.windowMinutes==='number'&&w.windowMinutes<mw){ mw=w.windowMinutes; sess=w; } } }
+if(!sess||!Array.isArray(sess.entries)){ eprint("no session window/entries"); $.exit(3); }
+var now=Date.now(), out=[];
+for(var i=0;i<sess.entries.length;i++){ var e=sess.entries[i];
+  if(!e||e.usedPercent==null||!e.capturedAt) continue;
+  var t=Date.parse(e.capturedAt); if(isNaN(t)) continue;
+  if((now-t)/1000 > 24*3600) continue;
+  var v=Math.round(Number(e.usedPercent));
+  if(isNaN(v)) continue; if(v<0)v=0; if(v>100)v=100;
+  out.push(v); }
+if(out.length>24){ out=out.slice(out.length-24); }   // most recent 24, oldest->newest
+var pTxt=rf(jsonPath); if(!pTxt){ eprint("payload unreadable"); $.exit(2); }
+var pay; try{pay=JSON.parse(pTxt);}catch(e){ eprint("payload parse fail"); $.exit(2); }
+if(!pay||!Array.isArray(pay.providers)){ eprint("payload shape"); $.exit(2); }
+var did=false;
+for(var i=0;i<pay.providers.length;i++){ var pr=pay.providers[i];
+  if(pr&&pr.id==='claude'){ if(out.length) pr.ph=out; did=true; } }
+if(!did){ eprint("no claude provider — nothing to merge"); $.exit(0); }
+var w=$.NSString.alloc.initWithUTF8String(JSON.stringify(pay))
+  .writeToFileAtomicallyEncodingError(jsonPath,true,4,null);
+if(!w){ eprint("payload writeback failed"); $.exit(2); }
+eprint("merged claude session 24h pct: "+out.length+" pts");
+$.exit(0);
+EOF
+
 cmd_once() {
   mkdir -p "$LOG_DIR"
   [[ -x "$STATS" ]] || die "sibling codexbar-stats.sh not found/executable at $STATS"
@@ -90,11 +223,18 @@ cmd_once() {
   local base="${MOCK_SINK_URL:-$UPSTASH_REST_URL}"
   [[ -n "$base" ]] || die "no UPSTASH_REST_URL (or MOCK_SINK_URL) in $CFG — see --help" 5
 
+  # Single-flight: mkdir is atomic. Prevents an overlapping manual --once and
+  # the scheduled launchd cycle from racing. NOT `local` (global EXIT trap).
+  lockdir="$LOG_DIR/.publish.lock"
+  if ! mkdir "$lockdir" 2>/dev/null; then
+    log "skip: another publish cycle in progress ($lockdir) — keeping last good"; exit 0
+  fi
   # NOTE: `work` is intentionally NOT `local` — the EXIT trap fires in global
   # scope after this function returns; a local would be unset there (set -u).
+  work=""
+  trap 'rm -rf "${work:-}"; rmdir "${lockdir:-/nonexistent/x}" 2>/dev/null' EXIT INT TERM
   work="$(mktemp -d "${TMPDIR:-/tmp}/cbpub.XXXXXX")" || die "mktemp failed"
   local json="$work/p.json" resp="$work/resp" kcfg="$work/curl.cfg"
-  trap 'rm -rf "${work:-}"' EXIT INT TERM
 
   "$STATS" --json >"$json" 2>>"$LOG"; local rc=$?
   case $rc in
@@ -104,6 +244,22 @@ cmd_once() {
   esac
   local bytes; bytes=$(wc -c <"$json" | tr -d ' ')
   [[ "$bytes" -gt 2 ]] || { log "skip: empty stats payload — keeping last good"; exit 3; }
+
+  # Augment Claude with total spend/tokens/30d history from the local cost
+  # cache. Fail-safe: any cache problem -> publish the usage-only payload.
+  if CBPUB_JSON="$json" osascript -l JavaScript -e "$COST_MERGE_JXA" 2>>"$LOG"; then
+    bytes=$(wc -c <"$json" | tr -d ' ')
+  else
+    log "note: Claude cost-cache merge skipped (absent/unrecognized) — publishing usage-only"
+  fi
+
+  # Add the 24h SESSION usage-% sparkline (`ph`). Independent + fail-safe: a
+  # missing/churned history file just omits `ph`, never blocks the publish.
+  if CBPUB_JSON="$json" osascript -l JavaScript -e "$PCT_MERGE_JXA" 2>>"$LOG"; then
+    bytes=$(wc -c <"$json" | tr -d ' ')
+  else
+    log "note: Claude 24h pct-history skipped (absent/unrecognized)"
+  fi
 
   local tok; tok="$(get_token)"
   [[ -n "$tok" ]] || die "no Upstash token in Keychain — run: codexbar-publish.sh --set-token" 5
