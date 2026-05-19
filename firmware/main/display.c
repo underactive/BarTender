@@ -1,5 +1,6 @@
 // firmware/main/display.c
 #include "display.h"
+#include "touch.h"
 #include "board_config.h"
 #include "config_store.h"
 #include "esp_lcd_panel_io.h"
@@ -256,6 +257,7 @@ void display_set_flipped(bool flipped)
     bool mx = BOARD_LCD_MIRROR_X ? !flipped : flipped;
     bool my = BOARD_LCD_MIRROR_Y ? !flipped : flipped;
     ESP_ERROR_CHECK(esp_lcd_panel_mirror(s_panel, mx, my));
+    touch_set_flipped(flipped);
     ESP_LOGI(TAG, "Display flipped=%u (mirror_x=%u mirror_y=%u)",
              (unsigned)flipped, (unsigned)mx, (unsigned)my);
 

@@ -240,8 +240,21 @@ void touch_init(QueueHandle_t evt_queue)
              BOARD_I2C_SDA, BOARD_I2C_SCL, BOARD_TOUCH_I2C_ADDR);
 }
 
+void touch_set_flipped(bool flipped)
+{
+    if (!s_touch) return;
+    /* Mirror touch axes to match the 180° display flip in display_set_flipped.
+     * Same XOR logic: base orientation uses BOARD_LCD_MIRROR_X/Y; flipped
+     * state inverts both so tap coordinates track the panel scan order. */
+    bool mx = BOARD_LCD_MIRROR_X ? !flipped : flipped;
+    bool my = BOARD_LCD_MIRROR_Y ? !flipped : flipped;
+    esp_lcd_touch_set_mirror_x(s_touch, mx);
+    esp_lcd_touch_set_mirror_y(s_touch, my);
+}
+
 #else  /* !BOARD_HAS_TOUCH */
 
 void touch_init(QueueHandle_t evt_queue) { (void)evt_queue; }
+void touch_set_flipped(bool flipped)     { (void)flipped; }
 
 #endif

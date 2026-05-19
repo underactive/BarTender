@@ -58,7 +58,8 @@ void app_main(void)
     configASSERT(q);
 
 #if BOARD_HAS_TOUCH
-    touch_init(q);         // taps → APP_EVT_TOUCH (refresh / triple-tap add-network)
+    touch_init(q);
+    touch_set_flipped(config_store_get_display_flipped());
 #endif
     net_wifi_start_multi();   // scans + autoconnects to a remembered network
     fetch_task_start(q);
