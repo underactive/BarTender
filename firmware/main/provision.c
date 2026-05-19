@@ -256,6 +256,12 @@ void provision_start(bool upstash_already_set)
 
     httpd_config_t hc = HTTPD_DEFAULT_CONFIG();
     hc.uri_match_fn = httpd_uri_match_wildcard;
+    // h_save uses char buf[1536] + ~530 B of field buffers AND calls into
+    // config_store_wifi_add_or_update, which puts a ~490 B wifi_creds_t on
+    // the stack, then deep NVS→partition→flash→cache-disable. The default
+    // 4 KB httpd task stack overflows there (corrupts the TCB → a bogus
+    // xTaskPriorityDisinherit assert in spi_flash_op_unlock). Give it room.
+    hc.stack_size = 8192;
     ESP_ERROR_CHECK(httpd_start(&s_http, &hc));
     httpd_uri_t u_root = { .uri = "/",     .method = HTTP_GET,  .handler = h_root };
     httpd_uri_t u_save = { .uri = "/save", .method = HTTP_POST, .handler = h_save };

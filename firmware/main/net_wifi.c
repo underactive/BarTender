@@ -235,12 +235,19 @@ static void wifi_mgr_task(void *arg)
         }
         // Audit QA§P1-2: on failure esp_wifi_scan_get_ap_records leaves `n`
         // undefined — using it would scan stale/garbage s_recs. Bail the sweep.
+        uint16_t total = 0;
+        esp_wifi_scan_get_ap_num(&total);             // true count (pre-read)
         uint16_t n = SCAN_MAX_AP;
         if (esp_wifi_scan_get_ap_records(&n, s_recs) != ESP_OK) {
             vTaskDelay(pdMS_TO_TICKS(2000));
             continue;
         }
         if (n > SCAN_MAX_AP) n = SCAN_MAX_AP;
+        // Diagnostic: total >> n ⇒ the wanted AP may be truncated out of the
+        // SCAN_MAX_AP buffer (RF-dense); total small + SSID absent ⇒ band/
+        // range/SSID-string. Either way the direct-MRU fallback below rescues.
+        ESP_LOGW(TAG, "scan: %u APs total, %u read; MRU='%s'",
+                 total, n, s_list.count ? s_list.e[0].ssid : "-");
 
         // Try candidates strongest-first; auth failures skip that SSID for
         // the rest of THIS sweep so a wrong saved password can't infinite-loop.
@@ -254,6 +261,27 @@ static void wifi_mgr_task(void *arg)
             if (reason_is_auth(s_last_disc_reason))
                 status_ssid("WiFi: wrong password %s", s_winner);
             skip_add(s_winner);                       // wrong pass / not here now
+        }
+
+        // Direct-connect fallback (regression fix): the OLD firmware connected
+        // with NO app-level scan and worked on this network/spot. The new
+        // scan→strncmp gate can miss a present AP — an RF-dense site with
+        // more APs than SCAN_MAX_AP (esp_wifi_scan_get_ap_records truncates,
+        // unordered), a hidden SSID, or a too-short active dwell. When the
+        // scan matched nothing, still try the MRU network directly: esp_wifi
+        // runs its own targeted join (exactly the proven old path). One
+        // attempt per sweep; respects the auth skip-set.
+        if (!associated && !saw_candidate && s_list.count > 0 &&
+            s_list.e[0].ssid[0] && !skipped(s_list.e[0].ssid)) {
+            ESP_LOGW(TAG, "scan blind — direct-connect MRU '%s'",
+                     s_list.e[0].ssid);
+            if (try_connect(0) && await_outcome()) {
+                associated = true;
+            } else {
+                if (reason_is_auth(s_last_disc_reason))
+                    status_ssid("WiFi: wrong password %s", s_list.e[0].ssid);
+                skip_add(s_list.e[0].ssid);
+            }
         }
 
         if (associated) {
@@ -311,7 +339,11 @@ void net_wifi_start_multi(void)
     // retry: a single blocking task serializes scan→select→connect→backoff,
     // so the flap-guard race the timer needed (Audit QA§LOW on the old
     // esp_timer rearm) cannot occur here.
-    xTaskCreate(wifi_mgr_task, "wifi_mgr", 4096, NULL, 4, &s_mgr);
+    // 6144 (not 4096): the mgr task also calls the blob config_store_wifi_*
+    // functions (each puts a ~490 B wifi_creds_t on the stack) plus the deep
+    // NVS/flash path on promote — same overflow class that crashed the httpd
+    // task. Headroom over s_recs handling + nvs depth.
+    xTaskCreate(wifi_mgr_task, "wifi_mgr", 6144, NULL, 4, &s_mgr);
     ESP_ERROR_CHECK(esp_wifi_start());     // STA_START → on_wifi wakes the mgr
     ESP_LOGI(TAG, "multi-WiFi manager started (%u remembered)",
              config_store_wifi_count());

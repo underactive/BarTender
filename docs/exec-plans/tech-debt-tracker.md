@@ -88,6 +88,28 @@ by targeted cleanup tasks on a regular cadence — not accumulated for a
   Haiku) `$` split exists in the cache `days` map but is intentionally not
   surfaced yet.
 
+### WiFi blob path: dense-RF scan truncation + on-stack scratch
+
+- **Domain:** firmware (net_wifi / config_store)
+- **Grade impact:** firmware B (no change; masked, not eliminated)
+- **Severity:** medium
+- **Added:** 2026-05-19 (found during first on-hardware bring-up of the
+  wifi-lru + nav work — never exercised on device before)
+- **Notes:** Two related shortcuts taken to fix on-device regressions:
+  (1) `SCAN_MAX_AP=24` is too small for RF-dense sites (32–38 APs observed);
+  `esp_wifi_scan_get_ap_records` truncates unordered, so the target SSID can
+  fall out of the read window. Masked by a direct-connect-to-MRU fallback,
+  which only rescues the *single* MRU network — multi-network roaming in a
+  dense location is still degraded. Proper fix: per-SSID directed scan
+  (`wifi_scan_config_t.ssid`) or a larger/dynamic record buffer.
+  (2) `config_store_wifi_*` put a ~490 B `wifi_creds_t` on the *caller's*
+  stack; this overflowed the 4 KB httpd task and panicked (bogus
+  `xTaskPriorityDisinherit` assert). Fixed by enlarging the httpd (8 KB) and
+  wifi_mgr (6 KB) task stacks rather than moving the buffer off-stack —
+  fragile if a new small-stack caller of the blob API appears. Proper fix:
+  heap- or static-scratch the blob buffer so config_store is stack-frugal
+  regardless of caller.
+
 ## Resolved debt
 
 (none)
