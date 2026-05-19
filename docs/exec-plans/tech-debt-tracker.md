@@ -25,7 +25,11 @@ by targeted cleanup tasks on a regular cadence — not accumulated for a
 - **Added:** 2026-05-18
 - **Notes:** Device NVS is unencrypted. At v2 the toy caches the owner's
   Claude spend + 30-day spend shape, so physical theft now leaks
-  identity-adjacent financial data, not just "how busy." Fix: enable ESP-IDF
+  identity-adjacent financial data, not just "how busy." **Scope widened
+  (2026-05-18, wifi-lru-persistent-upstash):** the device now stores up to
+  **5** WiFi PSKs (the `cbtoy/wnets` blob) instead of one, so a stolen board
+  also exposes more home/work passphrases. Severity unchanged (still
+  physical-possession-only) but the blast radius grew. Fix: enable ESP-IDF
   flash/NVS encryption + secure boot. See `docs/SECURITY.md` §"Device boundary".
 
 ### CodexBar cost-cache format coupling
@@ -52,7 +56,11 @@ by targeted cleanup tasks on a regular cadence — not accumulated for a
   cost-merge JXA were verified manually against live data + sanitized
   fixtures, not in an automated harness. The `firmware/test/host/` seam should
   compile `stats_model.c` against host cJSON and assert the v2 fixture; the
-  JXA merge needs a mock-cache test.
+  JXA merge needs a mock-cache test. **Extended (2026-05-18):** the new
+  `config_store` WiFi-list logic (LRU rotate/evict, blob validation,
+  same-SSID-in-place update, legacy migration) is pure, host-testable C with
+  no hardware deps and is currently only on-device-verifiable — a strong
+  candidate for the same `firmware/test/host/` seam.
 
 ### Plist template lacks XML escaping (pre-existing)
 

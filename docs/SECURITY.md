@@ -104,18 +104,24 @@ account identifiers) MUST update this section and re-justify again.
   accessible desk object yields only the ability to read data that is
   already non-sensitive (usage %). It cannot tamper with the store.
 - **No secrets in the firmware or repo.** WiFi creds + URL + read token are
-  entered via the first-boot captive portal and stored in NVS. They are
-  never compiled in, never committed (`firmware/secrets.h` is not used).
+  entered via the captive portal and stored in NVS. They are never compiled
+  in, never committed (`firmware/secrets.h` is not used). The Upstash token
+  is **never re-rendered into any HTML response**: the add-network form omits
+  the Upstash fields entirely (it cannot echo a value it never emits).
 - **NVS is unencrypted.** Threat is physical possession of the board only.
-  **Risk elevated at payload v2:** the toy now also caches the owner's Claude
-  spend + 30-day spend shape, so physical theft leaks more than "how busy."
-  Flash/NVS encryption is now a **tracked** hardening item
-  (`docs/exec-plans/tech-debt-tracker.md`), not just a vague follow-up.
+  **Risk elevated at payload v2:** the toy caches the owner's Claude spend +
+  30-day spend shape. **Scope widened further:** the device now remembers up
+  to **5** WiFi PSKs (a single `cbtoy/wnets` blob) instead of one, so a
+  physically stolen board exposes more home/work network passphrases. This
+  reinforces — does not change — the conclusion that flash/NVS encryption is
+  a **tracked** hardening item (`docs/exec-plans/tech-debt-tracker.md`).
 - **SoftAP exposure is bounded.** The provisioning AP is WPA2 (device-unique
-  password shown only on the local TFT), runs only while unprovisioned, and
-  the device reboots out of AP mode immediately on form submit. The captive
-  HTTP form is plaintext but reachable only by a station that already has the
-  WPA2 PSK, on local RF.
+  password shown only on the local TFT). It now also runs on demand for the
+  non-destructive "add a network" flow (triple-tap / self-heal set a one-shot
+  flag, consumed clear-before-act so a power loss cannot boot-loop into it),
+  and the device reboots out of AP mode immediately on form submit. The
+  captive HTTP form is plaintext but reachable only by a station that already
+  has the WPA2 PSK, on local RF.
 - **TLS trust** uses the bundled Mozilla CA store (`esp_crt_bundle`), not a
   pinned certificate — robust to Upstash cert rotation without a reflash.
 

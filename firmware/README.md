@@ -24,19 +24,36 @@ idf.py -p /dev/tty.usbmodem* flash monitor
 Managed deps (LVGL 9, esp_lcd_ili9341, esp_lcd_touch_ft5x06) are fetched
 automatically on first build.
 
-## First-boot provisioning (captive portal)
+## Provisioning (captive portal)
 
-With no credentials in NVS the device starts a WPA2 SoftAP and shows the
-join info **on its own screen**:
+If **Upstash is not set OR no WiFi network is remembered**, the device
+starts a WPA2 SoftAP and shows the join info **on its own screen**:
 
 1. Screen shows `WiFi: CodexBar-Toy-XXXX` + a password.
 2. Join that network from a phone/laptop. The captive sheet opens
    automatically (or browse `http://192.168.4.1/`).
-3. Enter: home WiFi SSID/password, Upstash REST URL, Redis key
-   (default `codexbar`), and the **read-only** Upstash token.
-4. Submit → values saved to NVS → device reboots and runs.
+3. **Full form** (Upstash not yet set): home WiFi SSID/password, Upstash
+   REST URL, Redis key (default `codexbar`), and the **read-only** token.
+   **WiFi-only form** (Upstash already set — e.g. you triple-tapped to add
+   a network): just the new WiFi SSID/password. You never re-enter Upstash,
+   and the token is never sent back to the browser.
+4. Submit → saved to NVS → device reboots and runs.
 
 Nothing secret is ever compiled into the binary or committed to the repo.
+
+## WiFi: remembered networks & roaming
+
+- The device remembers **up to 5** WiFi networks (most-recently-used
+  order). Adding a 6th evicts the least-recently-*used*. Re-adding an
+  existing SSID just updates its password in place.
+- On boot and after any disconnect it **scans** and autoconnects to the
+  strongest remembered network in range (8 dB stickiness toward the last
+  one). Moving between home / work / a saved café needs no interaction.
+- Changing or adding WiFi never requires re-entering Upstash.
+- **WPA2-PSK only.** Open, WPA2-Enterprise, and web-login ("click to
+  agree") venue WiFi are unsupported by design (no browser on the device).
+- Flashing over an older single-SSID build keeps working: the old SSID is
+  folded into the remembered list, Upstash preserved, no erase.
 
 ## Normal operation
 
@@ -46,8 +63,14 @@ Nothing secret is ever compiled into the binary or committed to the repo.
   window; `off` (dimmed) when that provider is `ok:false`. A status line
   shows link state and "updated Ns ago".
 - **Tap** the screen → immediate refresh.
-- **Triple-tap within 2 s** → wipe credentials and reboot into the
-  captive portal (re-provision; the FNK0104 has no BOOT button).
+- **Triple-tap within 2 s** → open the captive portal to **add a WiFi
+  network** (the FNK0104 has no BOOT button). **Non-destructive:** all
+  remembered networks **and** Upstash are kept. Honored **even before WiFi
+  has ever associated**, so a relocated device can still be set up by hand.
+- **Self-heal:** if a fresh boot finds **no remembered network in range**
+  for `CONNECT_GRACE_S` (180 s, confirmed by ≥2 empty scan sweeps) it opens
+  that same add-network portal on its own — also non-destructive. Once
+  associated, a later disconnect just rescans/roams; nothing is ever wiped.
 
 ## Security
 

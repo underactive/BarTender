@@ -39,7 +39,9 @@ ui_input_result_t ui_handle_input(const app_evt_t *ev);
 // --- thread-safe state setters (call from any task) ---
 
 // Provisioning screen: show the SoftAP SSID + password to join.
-void ui_set_provisioning(const char *ssid, const char *pass);
+// `wifi_only` true => copy says "add a network, Upstash already set"
+// (non-destructive add) instead of the full first-boot instructions.
+void ui_set_provisioning(const char *ssid, const char *pass, bool wifi_only);
 
 // One-line status banner (link state / errors), e.g. "WiFi: connecting…".
 void ui_set_status(const char *text);

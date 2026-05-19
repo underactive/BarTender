@@ -57,7 +57,7 @@ via a shared interface. Domains should not import cross-cutting code directly.
 |-------------------|---------------------------------------------------|-------------|
 | `codexbar-stats` (`scripts/codexbar-stats.sh`) | Read CodexBar locally; text report + `--json` v2 (usage % + extra-usage $) | Implemented |
 | `codexbar-publish` (`scripts/codexbar-publish.sh`) | Merge Claude cost from CodexBar's local cost cache; publish v2 to Upstash on a launchd schedule | Implemented |
-| `firmware` (`firmware/`) | ESP32-S3 reads Upstash, swipe-nav menu + Cost/Usage cards on ILI9341; captive provisioning | Implemented (POC, user-flashed) |
+| `firmware` (`firmware/`) | ESP32-S3 reads Upstash, swipe-nav menu + Cost/Usage cards on ILI9341; captive provisioning; remembers ≤5 WiFi nets (LRU) and scans+autoconnects when relocated, Upstash decoupled from WiFi | Implemented (POC, user-flashed) |
 
 ## Key design decisions
 
@@ -99,3 +99,20 @@ via a shared interface. Domains should not import cross-cutting code directly.
    the fetch task). `fetch.c` runs legacy refresh/triple-tap ONLY when that
    returns PASS (summary screen) — chosen over a separate nav module to keep
    all LVGL calls on `ui_task`.
+10. **Upstash and WiFi are decoupled; WiFi is an MRU ≤5-network roaming
+   store.** WiFi creds live in one versioned NVS blob (`cbtoy/wnets`,
+   `wifi_creds_t`), written with a single `nvs_set_blob`+commit so an LRU
+   rotate/evict is atomic — chosen over indexed keys (torn multi-key write)
+   and over `esp_wifi`'s built-in single-cred store (no multi-net/LRU/scan).
+   Upstash URL/key/token stay as independent string keys so changing WiFi
+   never re-prompts for the token and a corrupt WiFi blob can't endanger it
+   (blob validated on read; failure ⇒ "zero networks", never erase/brick).
+   A net_wifi-owned manager task scans **only while disconnected** (the toy
+   polls every 300 s, so it never needs to roam mid-link; relocating just
+   produces a real disconnect → scan) and the WiFi event handler is a **pure
+   signaller** — this is what preserves the lock-free `s_connected`
+   single-writer invariant (#net_wifi.c:12-15) while adding scan/select/MRU
+   state. Triple-tap and the 180 s self-heal are **non-destructive**: they
+   set a one-shot `fprov` flag (consumed clear-before-act ⇒ no boot-loop)
+   that opens an *add-network* portal keeping all creds. WPA2-PSK only by
+   user decision (open/Enterprise/web-login venues out of scope).

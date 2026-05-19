@@ -9,10 +9,22 @@ opening anything.
 
 ## Acceptance criteria
 
-- [ ] First boot with no creds → WPA2 SoftAP; the screen shows the SoftAP
-      SSID + password and the URL to open.
-- [ ] The captive form accepts WiFi SSID/pass + Upstash URL + Redis key +
-      read-only token; on submit they persist to NVS and the device reboots.
+- [ ] First boot with no Upstash **or** zero remembered WiFi → WPA2 SoftAP;
+      the screen shows the SoftAP SSID + password and the URL to open.
+- [ ] The **full** captive form (WiFi SSID/pass + Upstash URL + Redis key +
+      read-only token) is served only when Upstash is not yet set. Once
+      Upstash is saved the form is **WiFi-only** (SSID/pass); the URL/key/
+      token are kept and never re-rendered into the HTML.
+- [ ] Up to **5** WiFi networks are remembered (MRU-ordered). Adding a 6th
+      evicts the least-recently-*used* one. Re-adding an existing SSID
+      updates its password in place (no duplicate, no count growth).
+- [ ] On boot / after a disconnect the device **scans** and autoconnects to
+      the strongest remembered network in range (8 dB stickiness toward the
+      last one). Moving between remembered locations needs no interaction.
+- [ ] Changing/adding a WiFi network never requires re-entering Upstash.
+- [ ] A device flashed over an older single-SSID build keeps working: the
+      legacy SSID is folded into the remembered list, Upstash is preserved,
+      no erase and no forced portal.
 - [ ] After provisioning the device joins WiFi and, within ~15 s, shows one
       row per provider: id, a colored bar + % for the primary window.
 - [ ] Providers reported `ok:false` render as a dimmed "off", not blank.
@@ -21,9 +33,13 @@ opening anything.
       provider-row layout adapts to the panel width so bars/percentages are
       not clipped on either orientation.
 - [ ] On the **summary screen**: tap → immediate refresh; triple-tap within
-      2 s → wipe creds + reboot to the captive portal. (Inside the swipe menu
+      2 s → open the captive portal to **add a network**, NON-destructively
+      (all remembered networks + Upstash are kept). (Inside the swipe menu
       these gestures select/navigate instead — see
       [claude-cost-menu](claude-cost-menu.md).)
+- [ ] The triple-tap add-network gesture is honored **even before WiFi has
+      ever associated** (e.g. relocated where no remembered SSID is in
+      range), not only once connected. Nothing on-device wipes credentials.
 - [ ] Swipe down on the summary opens the provider menu; swipe up backs out
       one level. Full behavior: [claude-cost-menu](claude-cost-menu.md).
 - [ ] Rendered percentages match a `curl GET` of the same Upstash key.
@@ -33,7 +49,12 @@ opening anything.
 
 | Scenario | Expected behavior |
 |----------|-------------------|
-| WiFi drops | "reconnecting…" + capped backoff (5→15→60 s); last data stays on screen |
+| WiFi drops (after connecting once this boot) | Rescans and autoconnects to any remembered network now in range (capped 5→15→60 s between sweeps); last data stays on screen. Never self-reprovisions and never wipes — a transient blip must not discard creds |
+| Relocated where a *different* remembered network is present | Scans, finds it, autoconnects, promotes it to MRU — zero interaction |
+| Relocated where NO remembered network is in range | "WiFi: no known network"; triple-tap still opens the add-network portal, and after `CONNECT_GRACE_S` (180 s) AND ≥2 empty scan sweeps it auto-opens that portal **non-destructively** (keeps the ≤5 list + Upstash) |
+| A remembered SSID's password was changed at that location | "WiFi: wrong password &lt;ssid&gt;"; that SSID is skipped for the sweep and others are tried; recover by re-adding it via the portal |
+| Open / WPA2-Enterprise / web-login venue WiFi | Not associated (WPA2-PSK only, by design); device shows "no known network" rather than hanging — out of scope |
+| Hidden SSID | Best-effort: one direct connect attempt to the MRU entry per empty sweep; a fully-cloaked AP may not autoconnect |
 | Bad/expired token | "fetch error: auth (token?)" banner; retry every 20 s |
 | Key absent / publisher not run yet | "waiting for publisher…" (reachable, no value) |
 | Malformed JSON | "bad data from store" banner |
@@ -43,6 +64,8 @@ opening anything.
 ## Not in scope
 
 - Pushing/writing anything back to Upstash (device is read-only).
+- Open, WPA2-Enterprise, or web-login ("click to agree") venue WiFi — the
+  device has no browser and enforces a WPA2-PSK threshold by design.
 - On-screen text entry (provisioning is via the phone/laptop captive form).
 - Sound, animation, battery operation.
 - Historical graphs **on the summary screen** — but a 30-day Claude cost

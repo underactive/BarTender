@@ -74,8 +74,12 @@ Keychain; the ESP32 (Prompt 3) gets a separate read-only token.
 
 ESP-IDF firmware for the Freenove ESP32-S3 2.8" (FNK0104): joins WiFi, polls
 the Upstash key over HTTPS every 5 min, renders the stats on the ILI9341.
-First boot runs a captive-portal so nothing secret is ever compiled in. On the
-summary screen: tap to refresh, triple-tap to re-provision. **Swipe down** to
+A captive-portal handles setup so nothing secret is ever compiled in. It
+remembers up to **5 WiFi networks** and autoconnects to whichever is in range
+(home / work / café — no re-setup when you move); Upstash is stored
+separately so changing WiFi never re-prompts for the token. On the summary
+screen: tap to refresh, triple-tap to add a WiFi network (non-destructive —
+keeps everything). **Swipe down** to
 open a provider menu → tap a provider → **Cost** / **Usage Limits** cards
 (Claude shows real spend, tokens, and a 30-day history chart); **swipe up**
 backs out one level. Board bring-up is vendored from the `clawd-tank` project.

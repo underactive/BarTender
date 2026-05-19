@@ -34,6 +34,7 @@ static SemaphoreHandle_t s_mtx;
 static struct {
     ui_mode_t mode;
     char ssid[33], pass[64];
+    bool prov_wifi_only;          // UI_PROVISION: add-network vs first-boot copy
     char status[64];
     stats_t stats;
     int64_t fetched_ms;
@@ -713,7 +714,9 @@ static void render(void)   // ui_task only
         lv_label_set_text(title, "SETUP");
         lv_label_set_text(status, "Join this WiFi, then open 192.168.4.1");
         lv_label_set_text_fmt(prov_box,
-            "WiFi:  %s\nPass:  %s\n\nThen enter your home WiFi +\nUpstash URL + read-only token.",
+            st.prov_wifi_only
+              ? "WiFi:  %s\nPass:  %s\n\nAdd a WiFi network.\nUpstash is already set."
+              : "WiFi:  %s\nPass:  %s\n\nThen enter your home WiFi +\nUpstash URL + read-only token.",
             st.ssid, st.pass);
         return;
     }
@@ -853,11 +856,12 @@ void ui_start(void)
 
 static void mark(void) { st.dirty = true; }
 
-void ui_set_provisioning(const char *ssid, const char *pass)
+void ui_set_provisioning(const char *ssid, const char *pass, bool wifi_only)
 {
     xSemaphoreTake(s_mtx, portMAX_DELAY);
     st.mode = UI_PROVISION;
     st.nav_level = NAV_SUMMARY;          // leave any open menu/card
+    st.prov_wifi_only = wifi_only;
     strlcpy(st.ssid, ssid ? ssid : "", sizeof st.ssid);
     strlcpy(st.pass, pass ? pass : "", sizeof st.pass);
     mark();

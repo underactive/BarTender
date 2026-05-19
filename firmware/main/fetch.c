@@ -16,6 +16,13 @@
 static const char *TAG = "fetch";
 static QueueHandle_t s_q;
 
+// Triple-tap detector state. File-scope (not function-local as before) so the
+// SAME detector is fed by both the connect-wait and the steady-state loop —
+// the re-provision gesture must survive a boot that never associates.
+// Single producer/consumer (the one fetch task), like net_wifi.c's s_connected.
+static int64_t s_taps[3];
+static int     s_tc;
+
 static int64_t now_ms(void) { return esp_timer_get_time() / 1000; }
 
 static bool do_fetch(const char *url, const char *key, const char *tok)
@@ -50,13 +57,76 @@ static bool do_fetch(const char *url, const char *key, const char *tok)
     }
 }
 
-static void reprovision(void)
+// NON-DESTRUCTIVE re-provision. Sets a one-shot NVS flag and reboots; the next
+// boot opens the captive portal to ADD a network while KEEPING all remembered
+// WiFi + Upstash. (config_store_request_portal() only sets "fprov"; nothing is
+// erased.) Replaces the old reprovision() that wiped every credential.
+static void enter_portal(void)
 {
-    ESP_LOGW(TAG, "triple-tap — clearing creds, rebooting to portal");
-    ui_set_status("re-provisioning... rebooting");
-    config_store_clear_provisioning();
+    // Audit QA§P2-3: a triple-tap inside the 900 ms pre-restart window would
+    // re-enter this (note_tap calls it again); the guard makes it idempotent
+    // so the request/delay/restart isn't stacked. fetch_task is the only
+    // caller, so a plain static is sufficient (no concurrency here).
+    static bool s_porting;
+    if (s_porting) return;
+    s_porting = true;
+    ESP_LOGW(TAG, "opening setup portal (all creds kept)");
+    ui_set_status("opening setup... rebooting");
+    config_store_request_portal();
     vTaskDelay(pdMS_TO_TICKS(900));
     esp_restart();
+}
+
+// Feed one accepted TAP into the triple-tap detector. On a deliberate 3-tap
+// burst — all within 1200 ms AND each consecutive gap <= 600 ms, so stray
+// FT6336 noise over weeks of uptime can't trigger it (touch.c debounces at
+// 200 ms, so an intentional triple-tap comfortably fits) — it opens the
+// add-network portal (NEVER returns). Audit QA§MED timing preserved verbatim;
+// only the action changed (non-destructive) and the call site widened.
+static void note_tap(void)
+{
+    int64_t t = now_ms();
+    s_taps[0] = s_taps[1]; s_taps[1] = s_taps[2]; s_taps[2] = t;
+    if (s_tc < 3) s_tc++;
+    if (s_tc == 3 &&
+        (t - s_taps[0]) <= 1200 &&
+        (s_taps[1] - s_taps[0]) <= 600 &&
+        (s_taps[2] - s_taps[1]) <= 600) {
+        enter_portal();                               // no return
+    }
+}
+
+// Block until the first association, BUT keep servicing the event queue so the
+// triple-tap add-network gesture works even when no remembered SSID is in
+// range. Audit Reliability§HIGH: the OLD code spun in a bare `while(!connected)
+// vTaskDelay` here, so the queue was never drained — taps piled up unread and
+// the ONLY on-device recovery was unreachable behind the very failure it
+// recovers from. Self-heal: a relocated toy nobody is there to tap auto-opens
+// the add-network portal — but ONLY once net_wifi has confirmed (>= 2 scan
+// sweeps) that ZERO remembered networks are in range, AND the grace period
+// elapsed. That gate stops a slow multi-network sweep or a wrong-password
+// auth-retry loop from spuriously popping the portal. It is now NON-
+// destructive (config_store_request_portal keeps all WiFi + Upstash), and
+// scoped to the INITIAL connect only — once associated, a later outage just
+// rescans (net_wifi handles roaming; nothing is ever wiped).
+static void wait_for_first_link(void)
+{
+    int64_t deadline = now_ms() + (int64_t)CONNECT_GRACE_S * 1000;
+    while (!net_wifi_is_connected()) {
+        ui_set_status("WiFi: connecting...");
+        if (now_ms() >= deadline && net_wifi_no_known_network()) {
+            ESP_LOGW(TAG, "no known network in range for %ds — open portal",
+                     CONNECT_GRACE_S);
+            enter_portal();                           // no return
+        }
+        app_evt_t ev;
+        if (xQueueReceive(s_q, &ev, pdMS_TO_TICKS(500)) != pdTRUE)
+            continue;                                 // 500 ms status/deadline tick
+        if (ui_handle_input(&ev) == UI_INPUT_CONSUMED)
+            continue;                                 // menu/swipe owns it first
+        if (ev.type == APP_EVT_TAP)
+            note_tap();                               // triple-tap → no return
+    }
 }
 
 static void fetch_task(void *arg)
@@ -67,13 +137,8 @@ static void fetch_task(void *arg)
     config_store_get_upstash_key(key, sizeof key);
     config_store_get_upstash_token(tok, sizeof tok);
 
-    while (!net_wifi_is_connected()) {
-        ui_set_status("WiFi: connecting...");
-        vTaskDelay(pdMS_TO_TICKS(500));
-    }
+    wait_for_first_link();
 
-    int64_t taps[3] = { 0, 0, 0 };
-    int tc = 0;
     bool refresh_now = true;
 
     for (;;) {
@@ -99,20 +164,7 @@ static void fetch_task(void *arg)
                     continue;
                 // PASS: summary screen. Only a TAP gets here.
                 if (ev.type == APP_EVT_TAP) {
-                    int64_t t = now_ms();
-                    taps[0] = taps[1]; taps[1] = taps[2]; taps[2] = t;
-                    if (tc < 3) tc++;
-                    // Audit QA§MED: require 3 DELIBERATE rapid taps — all
-                    // within 1200 ms AND each consecutive gap ≤ 600 ms — so
-                    // stray FT6336 touch noise over weeks of uptime cannot
-                    // silently factory-reset. touch.c debounces at 200 ms, so
-                    // an intentional triple-tap comfortably fits this window.
-                    if (tc == 3 &&
-                        (t - taps[0]) <= 1200 &&
-                        (taps[1] - taps[0]) <= 600 &&
-                        (taps[2] - taps[1]) <= 600) {
-                        reprovision();                        // no return
-                    }
+                    note_tap();                               // triple-tap → no return
                     refresh_now = true;                       // single tap → refresh
                 }
             }

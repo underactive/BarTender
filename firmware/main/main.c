@@ -37,24 +37,30 @@ void app_main(void)
     display_init();        // SPI + ILI9341 + LVGL (vendored, proven)
     ui_start();            // LVGL UI task
 
-    if (!config_store_is_provisioned()) {
-        ESP_LOGW(TAG, "no credentials — starting captive portal");
-        provision_start(); // shows SSID/pass on screen; reboots on form submit
-        return;            // idle in AP mode until reboot
-    }
+    // Upstash and WiFi are now independent. Open the captive portal if either
+    // is missing, OR if a non-destructive triple-tap / self-heal asked for it
+    // (take_portal_request clears the one-shot flag FIRST — clear-before-act —
+    // so a power loss in the portal can never boot-loop). When Upstash is
+    // already set the portal serves the WiFi-only form (keeps the token).
+    bool have_upstash = config_store_has_upstash();
+    bool have_wifi    = config_store_wifi_count() > 0;
+    bool forced       = config_store_take_portal_request();
 
-    char ssid[CFG_SSID_MAX], pass[CFG_PASS_MAX];
-    config_store_get_ssid(ssid, sizeof ssid);
-    config_store_get_pass(pass, sizeof pass);
+    if (forced || !have_upstash || !have_wifi) {
+        ESP_LOGW(TAG, "captive portal (forced=%d upstash=%d wifi=%d)",
+                 forced, have_upstash, have_wifi);
+        provision_start(have_upstash);   // WiFi-only form if Upstash present
+        return;                          // idle in AP mode until reboot
+    }
 
     static QueueHandle_t q;
     q = xQueueCreate(8, sizeof(app_evt_t));
     configASSERT(q);
 
 #if BOARD_HAS_TOUCH
-    touch_init(q);         // taps → APP_EVT_TOUCH (refresh / triple-tap reprovision)
+    touch_init(q);         // taps → APP_EVT_TOUCH (refresh / triple-tap add-network)
 #endif
-    net_wifi_start(ssid, pass);
+    net_wifi_start_multi();   // scans + autoconnects to a remembered network
     fetch_task_start(q);
-    ESP_LOGI(TAG, "running (provisioned)");
+    ESP_LOGI(TAG, "running (upstash + %u WiFi)", config_store_wifi_count());
 }

@@ -16,6 +16,9 @@
 
 static const char *TAG = "prov";
 static httpd_handle_t s_http;
+// true => Upstash already in NVS: serve the WiFi-only form and keep Upstash.
+// The token is never written into any HTML response in this mode.
+static bool s_wifi_only;
 
 // ---- tiny x-www-form-urlencoded helpers ------------------------------------
 
@@ -80,10 +83,28 @@ static const char FORM[] =
     "Upstash READ-ONLY token<input name=token required>"
     "<button type=submit>Save &amp; reboot</button></form>";
 
+// WiFi-only variant: Upstash is already provisioned, so its fields are OMITTED
+// entirely. No stored secret (URL/key/token) is ever interpolated here.
+static const char FORM_WIFI[] =
+    "<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'>"
+    "<title>CodexBar Toy — add WiFi</title>"
+    "<style>body{font-family:system-ui;margin:24px;max-width:480px}"
+    "input{width:100%;padding:8px;margin:6px 0;box-sizing:border-box}"
+    "button{padding:10px 16px;font-size:16px}</style>"
+    "<h2>Add a WiFi network</h2>"
+    "<p>Upstash is already set up — just add this location's WiFi. "
+    "Up to 5 networks are remembered; the device autoconnects to whichever "
+    "is in range.</p>"
+    "<form method=POST action=/save>"
+    "WiFi network<input name=ssid required>"
+    "WiFi password<input name=pass type=password>"
+    "<button type=submit>Save &amp; reboot</button></form>";
+
 static esp_err_t h_root(httpd_req_t *r)
 {
     httpd_resp_set_type(r, "text/html");
-    return httpd_resp_send(r, FORM, HTTPD_RESP_USE_STRLEN);
+    return httpd_resp_send(r, s_wifi_only ? FORM_WIFI : FORM,
+                           HTTPD_RESP_USE_STRLEN);
 }
 
 // Captive-portal probes (Apple/Android/Windows) -> redirect to the form so the
@@ -125,17 +146,30 @@ static esp_err_t h_save(httpd_req_t *r)
          key[CFG_KEY_MAX], tok[CFG_TOKEN_MAX];
     field(buf, "ssid", ssid, sizeof ssid);
     field(buf, "pass", pass, sizeof pass);
-    field(buf, "url",  url,  sizeof url);
-    field(buf, "key",  key,  sizeof key);
-    field(buf, "token", tok, sizeof tok);
 
-    if (!ssid[0] || !url[0] || !tok[0]) {
-        httpd_resp_set_type(r, "text/html");
-        httpd_resp_send(r, "<h3>Missing required field — go back.</h3>",
-                        HTTPD_RESP_USE_STRLEN);
-        return ESP_OK;
+    bool ok;
+    if (s_wifi_only) {
+        // Add/replace just this network (LRU rotate); Upstash is untouched.
+        if (!ssid[0]) {
+            httpd_resp_set_type(r, "text/html");
+            httpd_resp_send(r, "<h3>Missing WiFi network — go back.</h3>",
+                            HTTPD_RESP_USE_STRLEN);
+            return ESP_OK;
+        }
+        ok = config_store_wifi_add_or_update(ssid, pass);
+    } else {
+        field(buf, "url",  url,  sizeof url);
+        field(buf, "key",  key,  sizeof key);
+        field(buf, "token", tok, sizeof tok);
+        if (!ssid[0] || !url[0] || !tok[0]) {
+            httpd_resp_set_type(r, "text/html");
+            httpd_resp_send(r, "<h3>Missing required field — go back.</h3>",
+                            HTTPD_RESP_USE_STRLEN);
+            return ESP_OK;
+        }
+        ok  = config_store_set_upstash(url, key, tok);
+        ok &= config_store_wifi_add_or_update(ssid, pass);
     }
-    bool ok = config_store_set_provisioning(ssid, pass, url, key, tok);
     httpd_resp_set_type(r, "text/html");
     httpd_resp_send(r, ok ? "<h3>Saved. Rebooting…</h3>"
                           : "<h3>Save failed. Power-cycle and retry.</h3>",
@@ -195,8 +229,9 @@ static void dns_task(void *arg)
 
 // ---- bring-up --------------------------------------------------------------
 
-void provision_start(void)
+void provision_start(bool upstash_already_set)
 {
+    s_wifi_only = upstash_already_set;
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     esp_netif_create_default_wifi_ap();
@@ -233,6 +268,7 @@ void provision_start(void)
 
     // Audit Security§LOW: don't print the AP PSK to the UART log — it's shown
     // on the device screen for the legitimate user via ui_set_provisioning().
-    ESP_LOGW(TAG, "PROVISIONING AP up: SSID=%s (password on screen) -> http://192.168.4.1/", ssid);
-    ui_set_provisioning(ssid, pass);
+    ESP_LOGW(TAG, "PROVISIONING AP up (%s): SSID=%s (password on screen) -> http://192.168.4.1/",
+             s_wifi_only ? "add-wifi" : "first-boot", ssid);
+    ui_set_provisioning(ssid, pass, s_wifi_only);
 }

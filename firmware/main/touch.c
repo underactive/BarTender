@@ -12,7 +12,8 @@
 //
 // Each debounced tap posts APP_EVT_TOUCH to the shared event queue. The
 // CodexBar toy uses this to force an immediate stats refresh; a triple-tap
-// (detected in fetch_task.c) wipes creds and re-enters provisioning.
+// (detected in fetch.c) opens the captive portal to ADD a WiFi network —
+// non-destructive: all remembered networks + Upstash are kept.
 
 #include "touch.h"
 #include "board_config.h"
