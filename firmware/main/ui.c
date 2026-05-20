@@ -58,6 +58,8 @@ static lv_obj_t *cost_card, *cost_hdr, *cost_logo, *cost_big, *cost_tok, *cost_t
                 *cost_30, *cost_bar, *cost_bar_lbl, *cost_na, *cost_cap;
 static lv_obj_t      *cost_chart;
 static lv_chart_series_t *cost_ser;
+// OpenRouter balance layout (balance hero + today/week secondary rows)
+static lv_obj_t *cost_or_lbl, *cost_or_row1, *cost_or_row2;
 
 // Usage-Limits card
 static lv_obj_t *lim_card, *lim_hdr, *lim_logo,
@@ -380,6 +382,27 @@ static void build_widgets(void)
     lv_obj_set_pos(cost_na, 12, 60);
     lv_obj_add_flag(cost_na, LV_OBJ_FLAG_HIDDEN);
 
+    // OpenRouter balance layout: "BALANCE" sub-label + TODAY + THIS WEEK rows.
+    // Shown instead of the Claude/Codex token+chart layout when has_balance.
+    cost_or_lbl = lv_label_create(cost_card);
+    lv_obj_set_style_text_color(cost_or_lbl, lv_color_hex(0x9aa0a6), 0);
+    lv_obj_set_style_text_font(cost_or_lbl, &lv_font_montserrat_12, 0);
+    lv_label_set_text(cost_or_lbl, "BALANCE");
+    lv_obj_set_pos(cost_or_lbl, 12, 88);
+    lv_obj_add_flag(cost_or_lbl, LV_OBJ_FLAG_HIDDEN);
+
+    cost_or_row1 = lv_label_create(cost_card);
+    lv_obj_set_style_text_color(cost_or_row1, lv_color_hex(0xe8eaed), 0);
+    lv_obj_set_style_text_font(cost_or_row1, &lv_font_montserrat_14, 0);
+    lv_obj_set_pos(cost_or_row1, 12, 118);
+    lv_obj_add_flag(cost_or_row1, LV_OBJ_FLAG_HIDDEN);
+
+    cost_or_row2 = lv_label_create(cost_card);
+    lv_obj_set_style_text_color(cost_or_row2, lv_color_hex(0xe8eaed), 0);
+    lv_obj_set_style_text_font(cost_or_row2, &lv_font_montserrat_14, 0);
+    lv_obj_set_pos(cost_or_row2, 12, 140);
+    lv_obj_add_flag(cost_or_row2, LV_OBJ_FLAG_HIDDEN);
+
     // ---- Usage-Limits card ----
     lim_card = lv_obj_create(scr);
     lv_obj_set_size(lim_card, W, H);
@@ -629,51 +652,80 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
     hide_summary_chrome();
 
     const stats_provider_t *p = &st.stats.p[st.nav_provider];
+    // Data-driven: any provider with a balance/credits field uses the balance layout.
+    // Avoids hardcoding "openrouter" and works for any future provider with the same shape.
+    bool has_balance = (p->credits_limit_c > 0 || p->credits_remaining_c > 0);
 
     if (st.nav_card == CARD_COST) {
         lv_obj_add_flag(lim_card, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(cost_card, LV_OBJ_FLAG_HIDDEN);
         render_card_hdr(cost_hdr, cost_logo, p->id, "TODAY");
 
-        lv_obj_t *body[] = { cost_big, cost_tok, cost_tok_unit, cost_30, cost_cap, cost_chart };
-        if (!p->has_cost) {                       // non-Claude / cache miss
+        if (!p->has_cost) {
             lv_obj_clear_flag(cost_na, LV_OBJ_FLAG_HIDDEN);
-            for (unsigned i = 0; i < sizeof body / sizeof *body; i++)
-                lv_obj_add_flag(body[i], LV_OBJ_FLAG_HIDDEN);
+            lv_obj_t *all[] = { cost_big, cost_tok, cost_tok_unit, cost_30, cost_cap,
+                                cost_chart, cost_bar, cost_bar_lbl,
+                                cost_or_lbl, cost_or_row1, cost_or_row2 };
+            for (unsigned i = 0; i < sizeof all / sizeof *all; i++)
+                lv_obj_add_flag(all[i], LV_OBJ_FLAG_HIDDEN);
             return;
         }
         lv_obj_add_flag(cost_na, LV_OBJ_FLAG_HIDDEN);
-        for (unsigned i = 0; i < sizeof body / sizeof *body; i++)
-            lv_obj_clear_flag(body[i], LV_OBJ_FLAG_HIDDEN);
 
-        char m[16], tk[16], m30[16], tk30[16];
-        fmt_money(m, sizeof m, p->cost_today_c);
-        lv_label_set_text(cost_big, m);
-        fmt_tokens(tk, sizeof tk, p->tok_today);
-        lv_label_set_text(cost_tok, tk);
-        lv_obj_align_to(cost_tok_unit, cost_tok, LV_ALIGN_OUT_RIGHT_BOTTOM, 5, 0);
-        fmt_money(m30, sizeof m30, p->cost_month_c);
-        fmt_tokens(tk30, sizeof tk30, p->tok_month);
-        lv_label_set_text_fmt(cost_30, "30 DAYS TOTAL: %s  " LV_SYMBOL_BULLET "  %s Toks",
-                              m30, tk30);
-
-        int n = p->hist_n;
-        if (n > NAV_HIST_PTS) n = NAV_HIST_PTS;
-        int draw_n = (n < 2) ? 2 : n;   // LVGL LINE chart needs >=2 pts; pad with 0 for flatline
-        int32_t mx = 1;
-        for (int i = 0; i < n; i++)
-            if (p->hist[i] > mx) mx = p->hist[i];
-        lv_chart_set_point_count(cost_chart, (uint32_t)draw_n);
-        lv_chart_set_range(cost_chart, LV_CHART_AXIS_PRIMARY_Y, 0, mx + mx / 8 + 1);
-        for (int i = 0; i < draw_n; i++)
-            lv_chart_set_value_by_id(cost_chart, cost_ser, i, (i < n) ? p->hist[i] : 0);
-        lv_color_t cc;
-        lv_chart_set_series_color(cost_chart, cost_ser,
-            prov_accent(p->id, &cc) ? cc : lv_color_hex(0xe06c4b));
-        lv_chart_refresh(cost_chart);
-        char cmx[16];
-        fmt_money(cmx, sizeof cmx, mx);
-        lv_label_set_text_fmt(cost_cap, "%d DAY SPEND (max): %s", n, cmx);
+        if (has_balance) {
+            // OpenRouter layout: balance as hero, today + week as secondary rows.
+            lv_obj_t *claude_only[] = { cost_tok, cost_tok_unit, cost_30, cost_cap,
+                                        cost_chart, cost_bar, cost_bar_lbl };
+            for (unsigned i = 0; i < sizeof claude_only / sizeof *claude_only; i++)
+                lv_obj_add_flag(claude_only[i], LV_OBJ_FLAG_HIDDEN);
+            char bal[16], tod[16], wk[16];
+            fmt_money(bal, sizeof bal, p->credits_remaining_c);
+            lv_label_set_text(cost_big, bal);
+            lv_obj_clear_flag(cost_big, LV_OBJ_FLAG_HIDDEN);
+            lv_label_set_text(cost_or_lbl, "BALANCE");
+            lv_obj_clear_flag(cost_or_lbl, LV_OBJ_FLAG_HIDDEN);
+            fmt_money(tod, sizeof tod, p->cost_today_c);
+            lv_label_set_text_fmt(cost_or_row1, "TODAY      %s", tod);
+            lv_obj_clear_flag(cost_or_row1, LV_OBJ_FLAG_HIDDEN);
+            fmt_money(wk, sizeof wk, p->cost_week_c);
+            lv_label_set_text_fmt(cost_or_row2, "THIS WEEK  %s", wk);
+            lv_obj_clear_flag(cost_or_row2, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            // Claude/Codex layout: today cost hero, token count, 30-day chart.
+            lv_obj_t *or_only[] = { cost_or_lbl, cost_or_row1, cost_or_row2 };
+            for (unsigned i = 0; i < sizeof or_only / sizeof *or_only; i++)
+                lv_obj_add_flag(or_only[i], LV_OBJ_FLAG_HIDDEN);
+            lv_obj_t *body[] = { cost_big, cost_tok, cost_tok_unit, cost_30, cost_cap, cost_chart };
+            for (unsigned i = 0; i < sizeof body / sizeof *body; i++)
+                lv_obj_clear_flag(body[i], LV_OBJ_FLAG_HIDDEN);
+            char m[16], tk[16], m30[16], tk30[16];
+            fmt_money(m, sizeof m, p->cost_today_c);
+            lv_label_set_text(cost_big, m);
+            fmt_tokens(tk, sizeof tk, p->tok_today);
+            lv_label_set_text(cost_tok, tk);
+            lv_obj_align_to(cost_tok_unit, cost_tok, LV_ALIGN_OUT_RIGHT_BOTTOM, 5, 0);
+            fmt_money(m30, sizeof m30, p->cost_month_c);
+            fmt_tokens(tk30, sizeof tk30, p->tok_month);
+            lv_label_set_text_fmt(cost_30, "30 DAYS TOTAL: %s  " LV_SYMBOL_BULLET "  %s Toks",
+                                  m30, tk30);
+            int n = p->hist_n;
+            if (n > NAV_HIST_PTS) n = NAV_HIST_PTS;
+            int draw_n = (n < 2) ? 2 : n;   // LVGL LINE chart needs >=2 pts; pad with 0 for flatline
+            int32_t mx = 1;
+            for (int i = 0; i < n; i++)
+                if (p->hist[i] > mx) mx = p->hist[i];
+            lv_chart_set_point_count(cost_chart, (uint32_t)draw_n);
+            lv_chart_set_range(cost_chart, LV_CHART_AXIS_PRIMARY_Y, 0, mx + mx / 8 + 1);
+            for (int i = 0; i < draw_n; i++)
+                lv_chart_set_value_by_id(cost_chart, cost_ser, i, (i < n) ? p->hist[i] : 0);
+            lv_color_t cc;
+            lv_chart_set_series_color(cost_chart, cost_ser,
+                prov_accent(p->id, &cc) ? cc : lv_color_hex(0xe06c4b));
+            lv_chart_refresh(cost_chart);
+            char cmx[16];
+            fmt_money(cmx, sizeof cmx, mx);
+            lv_label_set_text_fmt(cost_cap, "%d DAY SPEND (max): %s", n, cmx);
+        }
         return;
     }
 
@@ -683,13 +735,18 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
     render_card_hdr(lim_hdr, lim_logo, p->id, "LIMITS");
 
     char pb[12];
-    lv_label_set_text(lim_s_lbl, "TOTAL");
+    lv_label_set_text(lim_s_lbl, has_balance ? "API KEY" : "TOTAL");
     fmt_pct(pb, sizeof pb, p->has_p, p->p);
     lv_label_set_text(lim_s_big, pb);
     set_bar(lim_s_bar, p->has_p, p->p, p);
     char rst[48];
-    fmt_reset(rst, sizeof rst, p->pr);
-    lv_label_set_text(lim_s_rst, rst);
+    if (has_balance) {
+        lv_obj_add_flag(lim_s_rst, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        fmt_reset(rst, sizeof rst, p->pr);
+        lv_label_set_text(lim_s_rst, rst);
+        lv_obj_clear_flag(lim_s_rst, LV_OBJ_FLAG_HIDDEN);
+    }
 
     // Auto section: occupies chart area when no sparkline data and secondary exists.
     if (p->pct_hist_n == 0 && p->has_s) {
@@ -745,15 +802,30 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
         lv_obj_clear_flag(lim_x_lbl, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(lim_x_val, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(lim_x_bar, LV_OBJ_FLAG_HIDDEN);
-        char a[16], b[16];
-        fmt_money(a, sizeof a, p->extra_used_c);
-        fmt_money(b, sizeof b, p->extra_limit_c);
-        lv_label_set_text(lim_x_lbl, "EXTRA USAGE");
-        lv_label_set_text_fmt(lim_x_val, "%s / %s", a, b);
         int xp = extra_pct(p);
-        lv_bar_set_value(lim_x_bar, bar_fill(xp), LV_ANIM_OFF);
-        lv_obj_set_style_bg_color(lim_x_bar, bar_color(p, (float)xp),
-                                  LV_PART_INDICATOR);
+        if (has_balance) {
+            // Budget bar: shows remaining headroom (xu/xl = keyUsage/keyLimit).
+            // Bar fills proportional to remaining so more-left = more-filled.
+            int32_t rem = p->extra_limit_c - p->extra_used_c;
+            if (rem < 0) rem = 0;
+            char rem_str[16], lim_str[16];
+            fmt_money(rem_str, sizeof rem_str, rem);
+            fmt_money(lim_str, sizeof lim_str, p->extra_limit_c);
+            lv_label_set_text(lim_x_lbl, "BUDGET");
+            lv_label_set_text_fmt(lim_x_val, "%s / %s left", rem_str, lim_str);
+            lv_bar_set_value(lim_x_bar, 100 - xp, LV_ANIM_OFF);
+            lv_obj_set_style_bg_color(lim_x_bar, bar_color(p, (float)xp),
+                                      LV_PART_INDICATOR);
+        } else {
+            char a[16], b[16];
+            fmt_money(a, sizeof a, p->extra_used_c);
+            fmt_money(b, sizeof b, p->extra_limit_c);
+            lv_label_set_text(lim_x_lbl, "EXTRA USAGE");
+            lv_label_set_text_fmt(lim_x_val, "%s / %s", a, b);
+            lv_bar_set_value(lim_x_bar, bar_fill(xp), LV_ANIM_OFF);
+            lv_obj_set_style_bg_color(lim_x_bar, bar_color(p, (float)xp),
+                                      LV_PART_INDICATOR);
+        }
     } else {
         lv_obj_add_flag(lim_x_lbl, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(lim_x_val, LV_OBJ_FLAG_HIDDEN);

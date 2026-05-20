@@ -43,6 +43,9 @@ typedef struct {
     int64_t  tok_month;               // tokens trailing 30 days
     int32_t  extra_used_c;            // extra-usage overage used, cents
     int32_t  extra_limit_c;           // extra-usage overage limit, cents
+    int32_t  cost_week_c;             // spend this week, cents (OpenRouter keyUsageWeekly)
+    int32_t  credits_remaining_c;     // account balance remaining, cents (OpenRouter balance)
+    int32_t  credits_limit_c;         // total account credits, cents (OpenRouter totalCredits)
     int      hist_n;                  // valid entries in hist[] (0 => no chart)
     int32_t  hist[STATS_HIST_MAX];    // per-day spend, cents, oldest -> newest
 

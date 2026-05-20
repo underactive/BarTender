@@ -180,11 +180,23 @@ if (env('CBAR_MODE')==='json'){
       if (se.resetDescription) o.sr=String(se.resetDescription); }
     if (te){ var tp=num(te.usedPercent); if (tp!=null) o.t=tp;
       if (te.resetDescription) o.tr=String(te.resetDescription); }
+    var cobj={};
     var co=u.providerCost;
-    if (co){ var cobj={}, xu=cents(co.used), xl=cents(co.limit);
+    if (co){ var xu=cents(co.used), xl=cents(co.limit);
       if (xu!=null) cobj.xu=xu;
-      if (xl!=null) cobj.xl=xl;
-      if (cobj.xu!=null || cobj.xl!=null) o.cost=cobj; }
+      if (xl!=null) cobj.xl=xl; }
+    var oru=u.openRouterUsage;
+    if (oru && oru.keyDataFetched){
+      var ct=cents(oru.keyUsageDaily), cw=cents(oru.keyUsageWeekly);
+      var cr=cents(oru.balance), cl=cents(oru.totalCredits);
+      var xu2=cents(oru.keyUsage), xl2=cents(oru.keyLimit);
+      if (ct!=null) cobj.ct=ct;
+      if (cw!=null) cobj.cw=cw;
+      if (cr!=null) cobj.cr=cr;
+      if (cl!=null) cobj.cl=cl;
+      if (xu2!=null) cobj.xu=xu2;
+      if (xl2!=null) cobj.xl=xl2; }
+    if (Object.keys(cobj).length>0) o.cost=cobj;
     return o;
   };
   var provs=entries.map(project);

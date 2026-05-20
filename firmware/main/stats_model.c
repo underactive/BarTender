@@ -100,9 +100,15 @@ stats_parse_t stats_model_parse(const char *body, stats_t *out)
                 x = cJSON_GetObjectItemCaseSensitive(c, "tm");
                 if (cJSON_IsNumber(x)) p->tok_month     = i64_clamp(x->valuedouble);
                 x = cJSON_GetObjectItemCaseSensitive(c, "xu");
-                if (cJSON_IsNumber(x)) p->extra_used_c  = i32_clamp(x->valuedouble);
+                if (cJSON_IsNumber(x)) p->extra_used_c      = i32_clamp(x->valuedouble);
                 x = cJSON_GetObjectItemCaseSensitive(c, "xl");
-                if (cJSON_IsNumber(x)) p->extra_limit_c = i32_clamp(x->valuedouble);
+                if (cJSON_IsNumber(x)) p->extra_limit_c     = i32_clamp(x->valuedouble);
+                x = cJSON_GetObjectItemCaseSensitive(c, "cw");
+                if (cJSON_IsNumber(x)) p->cost_week_c        = i32_clamp(x->valuedouble);
+                x = cJSON_GetObjectItemCaseSensitive(c, "cr");
+                if (cJSON_IsNumber(x)) p->credits_remaining_c = i32_clamp(x->valuedouble);
+                x = cJSON_GetObjectItemCaseSensitive(c, "cl");
+                if (cJSON_IsNumber(x)) p->credits_limit_c    = i32_clamp(x->valuedouble);
                 const cJSON *h = cJSON_GetObjectItemCaseSensitive(c, "h");
                 if (cJSON_IsArray(h)) {
                     const cJSON *hv;

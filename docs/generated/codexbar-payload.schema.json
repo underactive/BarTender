@@ -22,19 +22,22 @@
           "sr": { "type": "string", "description": "Secondary reset hint." },
           "cost": {
             "type": "object",
-            "description": "v2 only, Claude only this build. Money is integer CENTS (LVGL has no float printf). Absent => firmware has_cost=false.",
+            "description": "v2 only. Present for Claude (cost-cache rollup) and OpenRouter (live keyDataFetched fields). Money is integer CENTS (LVGL has no float printf). Absent => firmware has_cost=false.",
             "properties": {
-              "xu": { "type": "integer", "description": "Extra-usage overage used, cents (from `codexbar usage` providerCost.used). NOT total spend." },
-              "xl": { "type": "integer", "description": "Extra-usage overage limit, cents (providerCost.limit)." },
-              "ct": { "type": "integer", "description": "Total spend TODAY, cents (publisher rollup of CodexBar cost cache)." },
-              "cm": { "type": "integer", "description": "Total spend trailing 30 days, cents." },
-              "tt": { "type": "integer", "description": "Tokens today (input+cacheRead+cacheCreate+output, summed over models)." },
-              "tm": { "type": "integer", "description": "Tokens trailing 30 days." },
+              "xu": { "type": "integer", "description": "Extra-usage overage used, cents (providerCost.used for Claude; keyUsage for OpenRouter). NOT total spend." },
+              "xl": { "type": "integer", "description": "Extra-usage overage limit, cents (providerCost.limit for Claude; keyLimit for OpenRouter)." },
+              "ct": { "type": "integer", "description": "Total spend TODAY, cents (Claude: publisher rollup from cost cache; OpenRouter: keyUsageDaily)." },
+              "cm": { "type": "integer", "description": "Total spend trailing 30 days, cents (Claude cost cache only)." },
+              "tt": { "type": "integer", "description": "Tokens today (Claude: input+cacheRead+cacheCreate+output summed over models)." },
+              "tm": { "type": "integer", "description": "Tokens trailing 30 days (Claude cost cache only)." },
+              "cw": { "type": "integer", "description": "Spend this week, cents (OpenRouter: keyUsageWeekly)." },
+              "cr": { "type": "integer", "description": "Account balance remaining, cents (OpenRouter: balance). Firmware credits_remaining_c." },
+              "cl": { "type": "integer", "description": "Total account credits, cents (OpenRouter: totalCredits). Firmware credits_limit_c." },
               "h":  {
                 "type": "array",
                 "items": { "type": "integer" },
                 "maxItems": 31,
-                "description": "Per-day total spend, cents, oldest -> newest (firmware caps at STATS_HIST_MAX=31)."
+                "description": "Per-day total spend, cents, oldest -> newest (Claude only; firmware caps at STATS_HIST_MAX=31)."
               }
             },
             "additionalProperties": false
