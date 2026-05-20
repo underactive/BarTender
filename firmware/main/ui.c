@@ -637,14 +637,20 @@ static int extra_pct(const stats_provider_t *p)
     return xp;
 }
 
-// "May 19 at 3:10PM" -> "Resets May 19 3:10PM"  (strips " at ", adds prefix)
-static void fmt_reset(char *dst, size_t n, const char *ts)
+// Set a reset-time label from a timestamp string, or hide it if empty.
+// Normalises both raw ("May 19 at 3:10PM") and pre-prefixed ("Resets May 19 at 3:10PM") inputs.
+static void set_reset_lbl(lv_obj_t *lbl, const char *ts)
 {
+    if (!ts || !ts[0]) { lv_obj_add_flag(lbl, LV_OBJ_FLAG_HIDDEN); return; }
+    if (strncmp(ts, "Resets ", 7) == 0) ts += 7;
+    char buf[48];
     const char *at = strstr(ts, " at ");
     if (at)
-        snprintf(dst, n, "Resets %.*s %s", (int)(at - ts), ts, at + 4);
+        snprintf(buf, sizeof buf, "Resets %.*s %s", (int)(at - ts), ts, at + 4);
     else
-        snprintf(dst, n, "Resets %s", ts);
+        snprintf(buf, sizeof buf, "Resets %s", ts);
+    lv_label_set_text(lbl, buf);
+    lv_obj_clear_flag(lbl, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
@@ -705,6 +711,7 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
             lv_label_set_text(cost_big, m);
             fmt_tokens(tk, sizeof tk, p->tok_today);
             lv_label_set_text(cost_tok, tk);
+            lv_label_set_text(cost_tok_unit, "tokens");
             lv_obj_align_to(cost_tok_unit, cost_tok, LV_ALIGN_OUT_RIGHT_BOTTOM, 5, 0);
             fmt_money(m30, sizeof m30, p->cost_month_c);
             fmt_tokens(tk30, sizeof tk30, p->tok_month);
@@ -737,17 +744,14 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
     render_card_hdr(lim_hdr, lim_logo, p->id, "LIMITS");
 
     char pb[12];
-    lv_label_set_text(lim_s_lbl, has_balance ? "API KEY" : "TOTAL");
+    lv_label_set_text(lim_s_lbl, has_balance ? "API KEY" : (p->has_t ? "TOTAL" : "SESSION"));
     fmt_pct(pb, sizeof pb, p->has_p, p->p);
     lv_label_set_text(lim_s_big, pb);
     set_bar(lim_s_bar, p->has_p, p->p, p);
-    char rst[48];
     if (has_balance) {
         lv_obj_add_flag(lim_s_rst, LV_OBJ_FLAG_HIDDEN);
     } else {
-        fmt_reset(rst, sizeof rst, p->pr);
-        lv_label_set_text(lim_s_rst, rst);
-        lv_obj_clear_flag(lim_s_rst, LV_OBJ_FLAG_HIDDEN);
+        set_reset_lbl(lim_s_rst, p->pr);
     }
 
     // Auto section: occupies chart area when no sparkline data and secondary exists.
@@ -755,13 +759,11 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
         lv_obj_clear_flag(lim_a_lbl, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(lim_a_big, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(lim_a_bar, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(lim_a_rst, LV_OBJ_FLAG_HIDDEN);
-        lv_label_set_text(lim_a_lbl, "AUTO");
+        lv_label_set_text(lim_a_lbl, p->has_t ? "AUTO" : "WEEKLY");
         fmt_pct(pb, sizeof pb, p->has_s, p->s);
         lv_label_set_text(lim_a_big, pb);
         set_bar(lim_a_bar, p->has_s, p->s, p);
-        fmt_reset(rst, sizeof rst, p->sr);
-        lv_label_set_text(lim_a_rst, rst);
+        set_reset_lbl(lim_a_rst, p->sr);
     } else {
         lv_obj_add_flag(lim_a_lbl, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(lim_a_big, LV_OBJ_FLAG_HIDDEN);
@@ -769,30 +771,26 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
         lv_obj_add_flag(lim_a_rst, LV_OBJ_FLAG_HIDDEN);
     }
 
-    // API section: uses tertiary (t/tr). Falls back to secondary as WEEKLY when
-    // the sparkline chart is shown (e.g. Claude) and no tertiary exists.
-    if (p->has_t) {
+    // lim_w: "API" tier for providers with tertiary + no sparkline (Cursor).
+    // Claude has pct_hist_n > 0; its secondary is the weekly window, not API.
+    if (p->has_t && p->pct_hist_n == 0) {
         lv_obj_clear_flag(lim_w_lbl, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(lim_w_big, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(lim_w_bar, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(lim_w_rst, LV_OBJ_FLAG_HIDDEN);
         lv_label_set_text(lim_w_lbl, "API");
         fmt_pct(pb, sizeof pb, p->has_t, p->t);
         lv_label_set_text(lim_w_big, pb);
         set_bar(lim_w_bar, p->has_t, p->t, p);
-        fmt_reset(rst, sizeof rst, p->tr);
-        lv_label_set_text(lim_w_rst, rst);
+        set_reset_lbl(lim_w_rst, p->tr);
     } else if (p->has_s && p->pct_hist_n > 0) {
         lv_obj_clear_flag(lim_w_lbl, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(lim_w_big, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(lim_w_bar, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(lim_w_rst, LV_OBJ_FLAG_HIDDEN);
         lv_label_set_text(lim_w_lbl, "WEEKLY");
         fmt_pct(pb, sizeof pb, p->has_s, p->s);
         lv_label_set_text(lim_w_big, pb);
         set_bar(lim_w_bar, p->has_s, p->s, p);
-        fmt_reset(rst, sizeof rst, p->sr);
-        lv_label_set_text(lim_w_rst, rst);
+        set_reset_lbl(lim_w_rst, p->sr);
     } else {
         lv_obj_add_flag(lim_w_lbl, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(lim_w_big, LV_OBJ_FLAG_HIDDEN);

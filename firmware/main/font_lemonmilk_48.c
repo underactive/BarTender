@@ -4,11 +4,7 @@
  * Opts: --font /Users/esison/Development/projects/hardware/codexbarjar/LEMONMILK-Medium.otf --size 48 --bpp 4 --format lvgl --no-compress -o /Users/esison/Development/projects/hardware/codexbarjar/firmware/main/font_lemonmilk_48.c --range 0x20,0x24-0x25,0x2D-0x2E,0x30-0x39,0x4D
  ******************************************************************************/
 
-#ifdef LV_LVGL_H_INCLUDE_SIMPLE
 #include "lvgl.h"
-#else
-#include "lvgl/lvgl.h"
-#endif
 
 #ifndef FONT_LEMONMILK_48
 #define FONT_LEMONMILK_48 1

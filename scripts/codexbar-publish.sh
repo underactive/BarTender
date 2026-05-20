@@ -294,18 +294,22 @@ if(bestCdx){
           var pp=PRICES[mdl2]; if(!pp) continue;
           dc+=((inp-cachedT)*pp.i+cachedT*pp.r+out*pp.o)/1e4; dt+=inp+out; anyM=true;}
         if(anyM) merged[ck]={c:Math.round(dc),t:Math.round(dt)};}}}}
-var today=piDk[piDk.length-1], tr=merged[today];
+// Derive today from the fully merged set (pi-sessions + codex-v supplement) so
+// that codex-v today data is not missed when pi-sessions hasn't cached today yet.
+var allDk=Object.keys(merged).filter(function(k){return /^\d{4}-\d{2}-\d{2}$/.test(k);}).sort();
+if(allDk.length===0){ eprint("merged days empty"); $.exit(3); }
+var today=allDk[allDk.length-1], tr=merged[today];
 if(!tr){ eprint("today rollup empty"); $.exit(3); }
-// If the latest cache key is a prior day (no Codex calls yet today), today's
-// cost and token count are 0. Same guard as COST_MERGE_JXA for Claude.
+// Always use the most-recent-cache-day data as "today" so the device matches
+// the CodexBar app, which shows the latest available day regardless of date.
+// sysToday is kept only for the diagnostic log line below.
 var sysToday=(function(){var d=new Date();
   return d.getFullYear()+'-'
     +String(d.getMonth()+1).padStart(2,'0')+'-'
     +String(d.getDate()).padStart(2,'0');})();
-var todayCents=(today===sysToday)?tr.c:0;
-var todayTok  =(today===sysToday)?tr.t:0;
+var todayCents=tr.c;
+var todayTok  =tr.t;
 var tms=dms(today), cm=0, tm=0;
-var allDk=Object.keys(merged).filter(function(k){return /^\d{4}-\d{2}-\d{2}$/.test(k);}).sort();
 for(var i=0;i<allDk.length;i++){var r=merged[allDk[i]]; if(!r) continue;
   if((tms-dms(allDk[i]))/86400000<=29){cm+=r.c;tm+=r.t;}}
 var hk=allDk.slice(-31), hist=[];
