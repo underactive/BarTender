@@ -673,23 +673,25 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
         lv_obj_add_flag(cost_na, LV_OBJ_FLAG_HIDDEN);
 
         if (has_balance) {
-            // OpenRouter layout: balance as hero, today + week as secondary rows.
-            lv_obj_t *claude_only[] = { cost_tok, cost_tok_unit, cost_30, cost_cap,
-                                        cost_chart, cost_bar, cost_bar_lbl };
-            for (unsigned i = 0; i < sizeof claude_only / sizeof *claude_only; i++)
-                lv_obj_add_flag(claude_only[i], LV_OBJ_FLAG_HIDDEN);
-            char bal[16], tod[16], wk[16];
-            fmt_money(bal, sizeof bal, p->credits_remaining_c);
-            lv_label_set_text(cost_big, bal);
-            lv_obj_clear_flag(cost_big, LV_OBJ_FLAG_HIDDEN);
-            lv_label_set_text(cost_or_lbl, "BALANCE");
-            lv_obj_clear_flag(cost_or_lbl, LV_OBJ_FLAG_HIDDEN);
+            // OpenRouter: today cost is hero; balance is secondary (token-count style);
+            // this-week cost is a caption at the bottom reusing cost_30 (H-38).
+            lv_obj_t *or_unused[] = { cost_cap, cost_chart, cost_bar, cost_bar_lbl,
+                                      cost_or_lbl, cost_or_row1, cost_or_row2 };
+            for (unsigned i = 0; i < sizeof or_unused / sizeof *or_unused; i++)
+                lv_obj_add_flag(or_unused[i], LV_OBJ_FLAG_HIDDEN);
+            char tod[16], bal[16], wk[16];
             fmt_money(tod, sizeof tod, p->cost_today_c);
-            lv_label_set_text_fmt(cost_or_row1, "TODAY      %s", tod);
-            lv_obj_clear_flag(cost_or_row1, LV_OBJ_FLAG_HIDDEN);
+            lv_label_set_text(cost_big, tod);
+            lv_obj_clear_flag(cost_big, LV_OBJ_FLAG_HIDDEN);
+            fmt_money(bal, sizeof bal, p->credits_remaining_c);
+            lv_label_set_text(cost_tok, bal);
+            lv_obj_clear_flag(cost_tok, LV_OBJ_FLAG_HIDDEN);
+            lv_label_set_text(cost_tok_unit, "balance");
+            lv_obj_align_to(cost_tok_unit, cost_tok, LV_ALIGN_OUT_RIGHT_BOTTOM, 5, 0);
+            lv_obj_clear_flag(cost_tok_unit, LV_OBJ_FLAG_HIDDEN);
             fmt_money(wk, sizeof wk, p->cost_week_c);
-            lv_label_set_text_fmt(cost_or_row2, "THIS WEEK  %s", wk);
-            lv_obj_clear_flag(cost_or_row2, LV_OBJ_FLAG_HIDDEN);
+            lv_label_set_text_fmt(cost_30, "THIS WEEK  %s", wk);
+            lv_obj_clear_flag(cost_30, LV_OBJ_FLAG_HIDDEN);
         } else {
             // Claude/Codex layout: today cost hero, token count, 30-day chart.
             lv_obj_t *or_only[] = { cost_or_lbl, cost_or_row1, cost_or_row2 };
