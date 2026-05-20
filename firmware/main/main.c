@@ -18,6 +18,7 @@
 #include "fetch.h"
 #include "provision.h"
 #include "screenshot.h"
+#include "led.h"
 #if BOARD_HAS_TOUCH
 #include "touch.h"
 #endif
@@ -36,6 +37,7 @@ void app_main(void)
 
     config_store_init();   // before display_init (brightness/flip)
     display_init();        // SPI + ILI9341 + LVGL (vendored, proven)
+    led_init();            // WS2812 RMT; noop if GPIO not wired
     ui_start();            // LVGL UI task
     screenshot_start();    // USB-serial screenshot listener ("screenshot\n")
 

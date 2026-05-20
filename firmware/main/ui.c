@@ -1,6 +1,8 @@
 // firmware/main/ui.c
 #include "ui.h"
 #include "provider_icons.h"
+#include "provider_colors.h"
+#include "led.h"
 #include "lvgl.h"
 extern const lv_font_t font_lemonmilk_48;
 extern const lv_font_t font_lemonmilk_24;
@@ -91,35 +93,10 @@ static lv_color_t pct_color(float p)   // green -> amber -> red
 // cursor/openrouter) are all high-contrast.
 static bool prov_accent(const char *id, lv_color_t *out)
 {
-    static const struct { const char *id; uint32_t hex; } TBL[] = {
-        { "codex",       0x49A3B0 }, { "openai",      0x0F826E },
-        { "claude",      0xCC7C5E }, { "cursor",      0x00BFA5 },
-        { "opencode",    0x3B82F6 }, { "opencodego",  0x3B82F6 },
-        { "alibaba",     0xFF6A00 }, { "factory",     0xFF6B35 },
-        { "gemini",      0xAB87EA }, { "antigravity", 0x60BA7E },
-        { "copilot",     0xA855F7 }, { "zai",         0xE85A6A },
-        { "minimax",     0xFE603C }, { "manus",       0x181818 },
-        { "kimi",        0xFE603C }, { "kilo",        0xF27027 },
-        { "kiro",        0xFF9900 }, { "vertexai",    0x4285F4 },
-        { "augment",     0x6366F1 }, { "jetbrains",   0xFF3399 },
-        { "kimik2",      0x4C00FF }, { "moonshot",    0x205DEB },
-        { "amp",         0xDC2626 }, { "ollama",      0x202020 },
-        { "synthetic",   0x141414 }, { "warp",        0x938BB4 },
-        { "openrouter",  0x6F42C1 }, { "elevenlabs",  0xEBEBE6 },
-        { "windsurf",    0x34E8BB }, { "perplexity",  0x20B2AA },
-        { "mimo",        0xFF6900 }, { "doubao",      0x2D88FF },
-        { "abacus",      0x38BDF8 }, { "mistral",     0xFF500F },
-        { "deepseek",    0x527DF0 }, { "codebuff",    0x44FF00 },
-        { "crof",        0x2EAB94 }, { "venice",      0x3399FF },
-        { "commandcode", 0x000000 }, { "stepfun",     0xFF8C00 },
-        { "bedrock",     0xFF9900 }, { "grok",        0x10A37F },
-        { "groq",        0xF56844 }, { "llmproxy",    0x24B47E },
-        { "deepgram",    0x0A121B },
-    };
     if (!id) return false;
-    for (unsigned i = 0; i < sizeof TBL / sizeof *TBL; i++)
-        if (strcmp(id, TBL[i].id) == 0) {
-            *out = lv_color_hex(TBL[i].hex);
+    for (unsigned i = 0; i < PROV_COLORS_N; i++)
+        if (strcmp(id, PROV_COLORS[i].id) == 0) {
+            *out = lv_color_hex(PROV_COLORS[i].hex);
             return true;
         }
     return false;
@@ -208,6 +185,7 @@ static void fmt_tokens(char *buf, size_t n, int64_t t)
         snprintf(buf, n, "%d", (int)t);
     }
 }
+
 
 // cents -> "$12.47" (integer only; no %f).
 static void fmt_money(char *buf, size_t n, int32_t cents)
@@ -870,6 +848,7 @@ static void render(void)   // ui_task only
               ? "WiFi:  %s\nPass:  %s\n\nAdd a WiFi network.\nUpstash is already set."
               : "WiFi:  %s\nPass:  %s\n\nThen enter your home WiFi +\nUpstash URL + read-only token.",
             st.ssid, st.pass);
+        led_off();
         return;
     }
 
@@ -889,6 +868,11 @@ static void render(void)   // ui_task only
         else       st.nav_provider = j;          // follow reorder by identity
     }
     clamp_scroll();
+
+    if (st.nav_level == NAV_PAGE)
+        led_set_provider(st.nav_id);
+    else
+        led_off();
 
     if (st.nav_level == NAV_PAGE) {
         render_card();

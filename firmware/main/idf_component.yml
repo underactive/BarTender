@@ -5,4 +5,5 @@ dependencies:
   lvgl/lvgl: "^9.2"
   espressif/esp_lcd_ili9341: "^2.0.0"
   espressif/esp_lcd_touch_ft5x06: "^1.0.6"
+  espressif/led_strip: ">=2.0.0"
   idf: ">=5.3"

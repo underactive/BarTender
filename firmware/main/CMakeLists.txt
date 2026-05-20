@@ -16,9 +16,11 @@ idf_component_register(
         "stats_model.c"
         "fetch.c"
         "screenshot.c"
+        "led.c"
     INCLUDE_DIRS "."
     REQUIRES
         esp_lcd driver esp_timer nvs_flash freertos json
+        led_strip
         esp_wifi esp_netif esp_event esp_http_client esp-tls
         esp_http_server mbedtls lwip esp_hw_support esp_system
 )
