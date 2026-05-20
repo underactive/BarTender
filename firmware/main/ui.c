@@ -1048,7 +1048,7 @@ ui_input_result_t ui_handle_input(const app_evt_t *ev)
             if (pi >= 0) {                             // open provider page
                 st.nav_provider = pi;
                 strlcpy(st.nav_id, st.stats.p[pi].id, sizeof st.nav_id);
-                st.nav_card     = CARD_COST;
+                st.nav_card     = st.stats.p[pi].has_cost ? CARD_COST : CARD_LIMITS;
                 st.nav_level    = NAV_PAGE;
                 st.dirty = true;
             }
@@ -1059,9 +1059,9 @@ ui_input_result_t ui_handle_input(const app_evt_t *ev)
         break;
 
     case NAV_PAGE:
-        if (ev->type == APP_EVT_TAP) {                 // cycle Cost ↔ Limit
+        if (ev->type == APP_EVT_TAP) {                 // cycle Cost ↔ Limit (Cost only if data present)
             st.nav_card = (st.nav_card == CARD_COST) ? CARD_LIMITS
-                                                     : CARD_COST;
+                : (st.stats.p[st.nav_provider].has_cost ? CARD_COST : CARD_LIMITS);
             st.dirty = true;
         } else if (ev->type == APP_EVT_SWIPE_LEFT) {   // back to the list
             st.nav_level = NAV_SUMMARY;

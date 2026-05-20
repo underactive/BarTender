@@ -296,6 +296,14 @@ if(bestCdx){
         if(anyM) merged[ck]={c:Math.round(dc),t:Math.round(dt)};}}}}
 var today=piDk[piDk.length-1], tr=merged[today];
 if(!tr){ eprint("today rollup empty"); $.exit(3); }
+// If the latest cache key is a prior day (no Codex calls yet today), today's
+// cost and token count are 0. Same guard as COST_MERGE_JXA for Claude.
+var sysToday=(function(){var d=new Date();
+  return d.getFullYear()+'-'
+    +String(d.getMonth()+1).padStart(2,'0')+'-'
+    +String(d.getDate()).padStart(2,'0');})();
+var todayCents=(today===sysToday)?tr.c:0;
+var todayTok  =(today===sysToday)?tr.t:0;
 var tms=dms(today), cm=0, tm=0;
 var allDk=Object.keys(merged).filter(function(k){return /^\d{4}-\d{2}-\d{2}$/.test(k);}).sort();
 for(var i=0;i<allDk.length;i++){var r=merged[allDk[i]]; if(!r) continue;
@@ -308,13 +316,13 @@ if(!pay||!Array.isArray(pay.providers)){ eprint("payload shape"); $.exit(2); }
 var did=false;
 for(var i=0;i<pay.providers.length;i++){var pv=pay.providers[i];
   if(pv&&pv.id==='codex'){pv.cost=pv.cost||{};
-    pv.cost.ct=tr.c; pv.cost.cm=cm; pv.cost.tt=tr.t; pv.cost.tm=tm; pv.cost.h=hist;
+    pv.cost.ct=todayCents; pv.cost.cm=cm; pv.cost.tt=todayTok; pv.cost.tm=tm; pv.cost.h=hist;
     did=true;}}
 if(!did){ eprint("no codex provider in payload — nothing to merge"); $.exit(0); }
 var w=$.NSString.alloc.initWithUTF8String(JSON.stringify(pay))
   .writeToFileAtomicallyEncodingError(jsonPath,true,4,null);
 if(!w){ eprint("payload writeback failed"); $.exit(2); }
-eprint("merged codex cost: today="+tr.c+"c/"+tr.t+"tok 30d="+cm+"c/"+tm+"tok hist="+hist.length+"d (pi="+piDk.length+"d cdx-supp="+(allDk.length-piDk.length)+"d)");
+eprint("merged codex cost: today="+todayCents+"c/"+todayTok+"tok (cache="+today+"/sys="+sysToday+") 30d="+cm+"c/"+tm+"tok hist="+hist.length+"d (pi="+piDk.length+"d cdx-supp="+(allDk.length-piDk.length)+"d)");
 $.exit(0);
 EOF
 
