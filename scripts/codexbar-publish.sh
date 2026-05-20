@@ -143,6 +143,14 @@ function roll(o){var c=0,t=0,any=false;
   return any?{c:Math.round(c),t:Math.round(t)}:null;}
 var today=dk[dk.length-1], tr=roll(days[today]);
 if(!tr){ eprint("today rollup empty (schema churn?)"); $.exit(3); }
+// If the latest cache key is a prior day (no API calls yet today), today's cost
+// and token count are 0. The cache will gain a new key on the first API call.
+var sysToday=(function(){var d=new Date();
+  return d.getFullYear()+'-'
+    +String(d.getMonth()+1).padStart(2,'0')+'-'
+    +String(d.getDate()).padStart(2,'0');})();
+var todayCents=(today===sysToday)?tr.c:0;
+var todayTok  =(today===sysToday)?tr.t:0;
 var tms=dms(today), cm=0, tm=0, hist=[];
 for(var i=0;i<dk.length;i++){var r=roll(days[dk[i]]); if(!r)continue;
   if((tms-dms(dk[i]))/86400000<=29){cm+=r.c;tm+=r.t;}}
@@ -155,13 +163,13 @@ if(!pay||!Array.isArray(pay.providers)){ eprint("payload shape"); $.exit(2); }
 var did=false;
 for(var i=0;i<pay.providers.length;i++){var pr=pay.providers[i];
   if(pr&&pr.id==='claude'){pr.cost=pr.cost||{};
-    pr.cost.ct=tr.c; pr.cost.cm=cm; pr.cost.tt=tr.t; pr.cost.tm=tm; pr.cost.h=hist;
+    pr.cost.ct=todayCents; pr.cost.cm=cm; pr.cost.tt=todayTok; pr.cost.tm=tm; pr.cost.h=hist;
     did=true;}}
 if(!did){ eprint("no claude provider in payload — nothing to merge"); $.exit(0); }
 var w=$.NSString.alloc.initWithUTF8String(JSON.stringify(pay))
   .writeToFileAtomicallyEncodingError(jsonPath,true,4,null);
 if(!w){ eprint("payload writeback failed"); $.exit(2); }
-eprint("merged claude cost: today="+tr.c+"c/"+tr.t+"tok 30d="+cm+"c/"+tm+"tok hist="+hist.length+"d");
+eprint("merged claude cost: today="+todayCents+"c/"+todayTok+"tok (cache="+today+"/sys="+sysToday+") 30d="+cm+"c/"+tm+"tok hist="+hist.length+"d");
 $.exit(0);
 EOF
 

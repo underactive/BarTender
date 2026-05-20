@@ -62,6 +62,7 @@ static lv_chart_series_t *cost_ser;
 // Usage-Limits card
 static lv_obj_t *lim_card, *lim_hdr, *lim_logo,
                 *lim_s_lbl, *lim_s_big, *lim_s_bar, *lim_s_rst,
+                *lim_a_lbl, *lim_a_big, *lim_a_bar, *lim_a_rst,
                 *lim_w_lbl, *lim_w_big, *lim_w_bar, *lim_w_rst,
                 *lim_x_lbl, *lim_x_val, *lim_x_bar, *lim_cap;
 static lv_obj_t      *lim_chart;
@@ -450,6 +451,35 @@ static void build_widgets(void)
     lim_ser = lv_chart_add_series(lim_chart, lv_color_hex(0x30c14e),
                                   LV_CHART_AXIS_PRIMARY_Y);
 
+    // Auto section: overlaps the chart area — exactly one is visible at a time.
+    // render_card() shows chart when pct_hist_n>0, Auto section otherwise.
+    const int a_lbl_y = chart_y;
+    const int a_big_y = a_lbl_y + 14 + 3;
+    const int a_bar_y = a_big_y + 26 + 3;
+    const int a_rst_y = a_bar_y + 5 + 3;
+    lim_a_lbl = lv_label_create(lim_card);
+    lv_obj_set_style_text_color(lim_a_lbl, lv_color_hex(0x9aa0a6), 0);
+    lv_obj_set_style_text_font(lim_a_lbl, &lv_font_montserrat_12, 0);
+    lv_obj_set_pos(lim_a_lbl, 12, a_lbl_y);
+    lim_a_big = lv_label_create(lim_card);
+    lv_obj_set_style_text_color(lim_a_big, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_text_font(lim_a_big, &font_lemonmilk_24, 0);
+    lv_obj_set_pos(lim_a_big, 12, a_big_y);
+    lim_a_bar = lv_bar_create(lim_card);
+    lv_obj_set_size(lim_a_bar, W - 24, 5);
+    lv_obj_set_pos(lim_a_bar, 12, a_bar_y);
+    lv_bar_set_range(lim_a_bar, 0, 100);
+    lv_obj_set_style_bg_color(lim_a_bar, lv_color_hex(0x3a3a3a), 0);
+    lv_obj_set_style_bg_opa(lim_a_bar, LV_OPA_COVER, 0);
+    lim_a_rst = lv_label_create(lim_card);
+    lv_obj_set_style_text_color(lim_a_rst, lv_color_hex(0x9aa0a6), 0);
+    lv_obj_set_style_text_font(lim_a_rst, &lv_font_montserrat_12, 0);
+    lv_obj_set_pos(lim_a_rst, 12, a_rst_y);
+    lv_obj_add_flag(lim_a_lbl, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim_a_big, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim_a_bar, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim_a_rst, LV_OBJ_FLAG_HIDDEN);
+
     lim_w_lbl = lv_label_create(lim_card);
     lv_obj_set_style_text_color(lim_w_lbl, lv_color_hex(0x9aa0a6), 0);
     lv_obj_set_style_text_font(lim_w_lbl, &lv_font_montserrat_12, 0);
@@ -468,6 +498,10 @@ static void build_widgets(void)
     lv_obj_set_style_text_color(lim_w_rst, lv_color_hex(0x9aa0a6), 0);
     lv_obj_set_style_text_font(lim_w_rst, &lv_font_montserrat_12, 0);
     lv_obj_set_pos(lim_w_rst, 12, w_rst_y);
+    lv_obj_add_flag(lim_w_lbl, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim_w_big, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim_w_bar, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim_w_rst, LV_OBJ_FLAG_HIDDEN);
 
     lim_x_lbl = lv_label_create(lim_card);
     lv_obj_set_style_text_color(lim_x_lbl, lv_color_hex(0x9aa0a6), 0);
@@ -555,14 +589,11 @@ static void hide_summary_chrome(void)  // hide title/status/rows before a card
 static void fmt_pct(char *buf, size_t n, bool has, float v)
 {
     if (!has) { snprintf(buf, n, "--"); return; }
-    if (v > 0.0f && v < 1.0f) {
-        int t = (int)(v * 10.0f + 0.5f);          // integer tenths (no %f)
-        snprintf(buf, n, "%d.%d%%", t / 10, t % 10);
-    } else {
-        int iv = (int)(v + 0.5f);
-        if (iv < 0) iv = 0; else if (iv > 100) iv = 100;
-        snprintf(buf, n, "%d%%", iv);
-    }
+    // Always 1 decimal place. LVGL sprintf has no float support (CONFIG_LV_USE_FLOAT
+    // unset), so use integer tenths: 45.3 -> tenths=453 -> "45.3%".
+    int tenths = (int)(v * 10.0f + 0.5f);
+    if (tenths < 0) tenths = 0; else if (tenths > 1000) tenths = 1000;
+    snprintf(buf, n, "%d.%d%%", tenths / 10, tenths % 10);
 }
 
 static void set_bar(lv_obj_t *bar, bool has, float v, const stats_provider_t *p)
@@ -652,7 +683,7 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
     render_card_hdr(lim_hdr, lim_logo, p->id, "LIMITS");
 
     char pb[12];
-    lv_label_set_text(lim_s_lbl, "SESSION");
+    lv_label_set_text(lim_s_lbl, "TOTAL");
     fmt_pct(pb, sizeof pb, p->has_p, p->p);
     lv_label_set_text(lim_s_big, pb);
     set_bar(lim_s_bar, p->has_p, p->p, p);
@@ -660,12 +691,55 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
     fmt_reset(rst, sizeof rst, p->pr);
     lv_label_set_text(lim_s_rst, rst);
 
-    fmt_pct(pb, sizeof pb, p->has_s, p->s);
-    lv_label_set_text(lim_w_lbl, "WEEKLY");
-    lv_label_set_text(lim_w_big, pb);
-    set_bar(lim_w_bar, p->has_s, p->s, p);
-    fmt_reset(rst, sizeof rst, p->sr);
-    lv_label_set_text(lim_w_rst, rst);
+    // Auto section: occupies chart area when no sparkline data and secondary exists.
+    if (p->pct_hist_n == 0 && p->has_s) {
+        lv_obj_clear_flag(lim_a_lbl, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(lim_a_big, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(lim_a_bar, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(lim_a_rst, LV_OBJ_FLAG_HIDDEN);
+        lv_label_set_text(lim_a_lbl, "AUTO");
+        fmt_pct(pb, sizeof pb, p->has_s, p->s);
+        lv_label_set_text(lim_a_big, pb);
+        set_bar(lim_a_bar, p->has_s, p->s, p);
+        fmt_reset(rst, sizeof rst, p->sr);
+        lv_label_set_text(lim_a_rst, rst);
+    } else {
+        lv_obj_add_flag(lim_a_lbl, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(lim_a_big, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(lim_a_bar, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(lim_a_rst, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    // API section: uses tertiary (t/tr). Falls back to secondary as WEEKLY when
+    // the sparkline chart is shown (e.g. Claude) and no tertiary exists.
+    if (p->has_t) {
+        lv_obj_clear_flag(lim_w_lbl, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(lim_w_big, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(lim_w_bar, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(lim_w_rst, LV_OBJ_FLAG_HIDDEN);
+        lv_label_set_text(lim_w_lbl, "API");
+        fmt_pct(pb, sizeof pb, p->has_t, p->t);
+        lv_label_set_text(lim_w_big, pb);
+        set_bar(lim_w_bar, p->has_t, p->t, p);
+        fmt_reset(rst, sizeof rst, p->tr);
+        lv_label_set_text(lim_w_rst, rst);
+    } else if (p->has_s && p->pct_hist_n > 0) {
+        lv_obj_clear_flag(lim_w_lbl, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(lim_w_big, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(lim_w_bar, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(lim_w_rst, LV_OBJ_FLAG_HIDDEN);
+        lv_label_set_text(lim_w_lbl, "WEEKLY");
+        fmt_pct(pb, sizeof pb, p->has_s, p->s);
+        lv_label_set_text(lim_w_big, pb);
+        set_bar(lim_w_bar, p->has_s, p->s, p);
+        fmt_reset(rst, sizeof rst, p->sr);
+        lv_label_set_text(lim_w_rst, rst);
+    } else {
+        lv_obj_add_flag(lim_w_lbl, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(lim_w_big, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(lim_w_bar, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(lim_w_rst, LV_OBJ_FLAG_HIDDEN);
+    }
 
     if (p->has_cost && p->extra_limit_c > 0) {
         lv_obj_clear_flag(lim_x_lbl, LV_OBJ_FLAG_HIDDEN);
@@ -833,18 +907,12 @@ static void render(void)   // ui_task only
             // the green/amber/red usage ramp.
             lv_obj_set_style_bg_color(row_bar[i], bar_color(p, p->p), LV_PART_INDICATOR);
             lv_obj_set_style_text_color(row_val[i], lv_color_hex(0xffffff), 0);
-            if (p->p < 1.0f && p->p > 0.0f) {
-                // Audit UI§HIGH: LVGL's built-in sprintf is compiled without
-                // float support (CONFIG_LV_USE_FLOAT unset), so "%.1f" renders
-                // the literal conversion char -> "f%" on screen. Format one
-                // decimal place with integer math. Quotient/remainder (not
-                // "0.%d") so a value that rounds up to 10 tenths, e.g. 0.97,
-                // shows "1.0%" instead of a broken "0.10%".
-                int tenths = (int)(p->p * 10.0f + 0.5f);   // 0.1 -> 1
+            {
+                int tenths = (int)(p->p * 10.0f + 0.5f);
+                if (tenths < 0) tenths = 0; else if (tenths > 1000) tenths = 1000;
                 lv_label_set_text_fmt(row_val[i], "%d.%d%%",
                                       tenths / 10, tenths % 10);
-            } else
-                lv_label_set_text_fmt(row_val[i], "%d%%", v);
+            }
         }
     }
 }

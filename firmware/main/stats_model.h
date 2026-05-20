@@ -29,6 +29,8 @@ typedef struct {
     char  pr[STATS_TXT_MAX];          // primary reset hint ("" if absent)
     bool  has_s;  float s;            // secondary used %
     char  sr[STATS_TXT_MAX];
+    bool  has_t;  float t;            // tertiary used %
+    char  tr[STATS_TXT_MAX];          // tertiary reset hint ("" if absent)
 
     // v2 cost block — present when publisher merged cost data (has_cost=false
     // otherwise, and for every provider on a v1 payload). Money is integer CENTS: LVGL's sprintf

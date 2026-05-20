@@ -165,19 +165,21 @@ if (env('CBAR_MODE')==='json'){
   // history are merged in by codexbar-publish.sh from CodexBar's local cost
   // cache. Relaxed single-user privacy model: docs/SECURITY.md.
   var num=function(n){ if (n==null||isNaN(n)) return null;
-    return (n>=1) ? Math.round(n) : parseFloat(Number(n).toFixed(2)); };
+    return parseFloat(Number(n).toFixed(1)); };
   var cents=function(n){ if (n==null||isNaN(n)) return null;
     return Math.round(Number(n)*100); };
   var project=function(e){
     var o={id:e.provider||"?"};
     if (e.error){ o.ok=false; return o; }
-    var u=e.usage||{}, pr=u.primary, se=u.secondary;
-    if (!pr && !se){ o.ok=false; return o; }
+    var u=e.usage||{}, pr=u.primary, se=u.secondary, te=u.tertiary;
+    if (!pr && !se && !te){ o.ok=false; return o; }
     o.ok=true;
     if (pr){ var pp=num(pr.usedPercent); if (pp!=null) o.p=pp;
       if (pr.resetDescription) o.pr=String(pr.resetDescription); }
     if (se){ var sp=num(se.usedPercent); if (sp!=null) o.s=sp;
       if (se.resetDescription) o.sr=String(se.resetDescription); }
+    if (te){ var tp=num(te.usedPercent); if (tp!=null) o.t=tp;
+      if (te.resetDescription) o.tr=String(te.resetDescription); }
     var co=u.providerCost;
     if (co){ var cobj={}, xu=cents(co.used), xl=cents(co.limit);
       if (xu!=null) cobj.xu=xu;

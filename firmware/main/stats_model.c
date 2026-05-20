@@ -81,6 +81,9 @@ stats_parse_t stats_model_parse(const char *body, stats_t *out)
             const cJSON *sp = cJSON_GetObjectItemCaseSensitive(e, "s");
             if (cJSON_IsNumber(sp)) { p->has_s = true; p->s = (float)sp->valuedouble; }
             cpy(p->sr, sizeof p->sr, cJSON_GetObjectItemCaseSensitive(e, "sr"));
+            const cJSON *tp = cJSON_GetObjectItemCaseSensitive(e, "t");
+            if (cJSON_IsNumber(tp)) { p->has_t = true; p->t = (float)tp->valuedouble; }
+            cpy(p->tr, sizeof p->tr, cJSON_GetObjectItemCaseSensitive(e, "tr"));
 
             // v2 optional `cost` object (Claude only this build). Absent on v1
             // and on non-Claude providers -> has_cost stays false (memset'd).
