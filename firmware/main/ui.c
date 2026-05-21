@@ -72,6 +72,12 @@ static lv_obj_t *lim_card, *lim_hdr, *lim_logo,
 static lv_obj_t      *lim_chart;
 static lv_chart_series_t *lim_ser;
 
+// Animation state — ui_task only, no mutex needed
+static nav_level_t s_prev_nav_level    = NAV_SUMMARY;
+static int         s_prev_nav_provider = -1;
+static card_kind_t s_prev_nav_card     = CARD_COST;
+static int         s_prev_row_bar[ROWS];   // last fill value per summary slot; -1 = unset
+
 static int s_scr_h = 320;   // cached screen height (set in build_widgets);
                             // read by ui_handle_input -> NO LVGL call off-task
 
@@ -198,6 +204,8 @@ static void fmt_money(char *buf, size_t n, int32_t cents)
 
 static void create_card_hdr(lv_obj_t *card, lv_obj_t **hdr_out, lv_obj_t **logo_out);
 static void render_card_hdr(lv_obj_t *hdr, lv_obj_t *logo, const char *id, const char *page);
+static void bar_opa_cb(void *obj, int32_t opa);
+static void update_bar_pulse(lv_obj_t *bar, float pct);
 
 static void build_widgets(void)
 {
@@ -213,6 +221,7 @@ static void build_widgets(void)
     const int W = lv_display_get_horizontal_resolution(lv_display_get_default());
     const int H = lv_display_get_vertical_resolution(lv_display_get_default());
     s_scr_h = H;
+    memset(s_prev_row_bar, -1, sizeof s_prev_row_bar);
     const int val_x = W - 52;          // right-anchored % column (line 2)
 
     title = lv_label_create(scr);
@@ -570,6 +579,10 @@ static void render_card_hdr(lv_obj_t *hdr, lv_obj_t *logo,
 
 static void hide_cards(void)     // hide the Cost/Limit panels (chrome stays)
 {
+    update_bar_pulse(lim_s_bar, 0.0f);
+    update_bar_pulse(lim_a_bar, 0.0f);
+    update_bar_pulse(lim_w_bar, 0.0f);
+    update_bar_pulse(lim_x_bar, 0.0f);
     lv_obj_add_flag(cost_card, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(lim_card,  LV_OBJ_FLAG_HIDDEN);
 }
@@ -580,6 +593,7 @@ static void hide_summary_chrome(void)  // hide title/status/rows before a card
     lv_obj_add_flag(status,   LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(prov_box, LV_OBJ_FLAG_HIDDEN);
     for (int i = 0; i < ROWS; i++) {
+        update_bar_pulse(row_bar[i], 0.0f);
         lv_obj_add_flag(row_id[i],   LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(row_bar[i],  LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(row_val[i],  LV_OBJ_FLAG_HIDDEN);
@@ -597,12 +611,87 @@ static void fmt_pct(char *buf, size_t n, bool has, float v)
     snprintf(buf, n, "%d.%d%%", tenths / 10, tenths % 10);
 }
 
+// ── Animation helpers (ui_task only) ─────────────────────────────────────────
+
+static void bar_opa_cb(void *obj, int32_t opa)
+{
+    lv_obj_set_style_bg_opa((lv_obj_t *)obj, (lv_opa_t)opa, LV_PART_INDICATOR);
+}
+
+// Start a heartbeat pulse on bars ≥90 %; stop it when they fall back below.
+static void update_bar_pulse(lv_obj_t *bar, float pct)
+{
+    bool should  = (pct >= 90.0f);
+    bool running = (lv_anim_get(bar, bar_opa_cb) != NULL);
+    if (should && !running) {
+        lv_anim_t a;
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, bar);
+        lv_anim_set_exec_cb(&a, bar_opa_cb);
+        lv_anim_set_values(&a, LV_OPA_40, LV_OPA_COVER);
+        lv_anim_set_duration(&a, 700);
+        lv_anim_set_playback_duration(&a, 700);
+        lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+        lv_anim_start(&a);
+    } else if (!should && running) {
+        lv_anim_delete(bar, bar_opa_cb);
+        lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, LV_PART_INDICATOR);
+    }
+}
+
+static void count_pct_cb(void *obj, int32_t v)
+{
+    lv_label_set_text_fmt((lv_obj_t *)obj, "%d.%d%%", (int)(v / 10), (int)(v % 10));
+}
+
+static void count_cents_cb(void *obj, int32_t v)
+{
+    lv_label_set_text_fmt((lv_obj_t *)obj, "$%d.%02d", (int)(v / 100), (int)(v % 100));
+}
+
+// Animate a numeric hero label from 0 to target using the provided formatter.
+static void anim_count_up(lv_obj_t *lbl, int32_t target, lv_anim_exec_xcb_t cb)
+{
+    lv_anim_delete(lbl, cb);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, lbl);
+    lv_anim_set_exec_cb(&a, cb);
+    lv_anim_set_values(&a, 0, target > 0 ? target : 0);
+    lv_anim_set_duration(&a, 400);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_start(&a);
+}
+
+static void chart_opa_cb(void *obj, int32_t opa)
+{
+    lv_obj_set_style_opa((lv_obj_t *)obj, (lv_opa_t)opa, 0);
+}
+
+// Fade a chart in from transparent over 600 ms on card entry.
+static void anim_chart_fadein(lv_obj_t *chart)
+{
+    lv_anim_delete(chart, chart_opa_cb);
+    lv_obj_set_style_opa(chart, LV_OPA_TRANSP, 0);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, chart);
+    lv_anim_set_exec_cb(&a, chart_opa_cb);
+    lv_anim_set_values(&a, LV_OPA_TRANSP, LV_OPA_COVER);
+    lv_anim_set_duration(&a, 600);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+    lv_anim_start(&a);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 static void set_bar(lv_obj_t *bar, bool has, float v, const stats_provider_t *p)
 {
     int iv = (int)(v + 0.5f);
     if (iv < 0) iv = 0; else if (iv > 100) iv = 100;
-    lv_bar_set_value(bar, has ? bar_fill(iv) : 0, LV_ANIM_OFF);
+    lv_bar_set_value(bar, has ? bar_fill(iv) : 0, LV_ANIM_ON);
     lv_obj_set_style_bg_color(bar, bar_color(p, v), LV_PART_INDICATOR);
+    update_bar_pulse(bar, has ? v : 0.0f);
 }
 
 // Extra-usage overage as a clamped 0..100 %. 0 when unknown / no limit.
@@ -633,6 +722,13 @@ static void set_reset_lbl(lv_obj_t *lbl, const char *ts)
 
 static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
 {
+    bool card_entered = (s_prev_nav_level    != NAV_PAGE        ||
+                         s_prev_nav_provider != st.nav_provider ||
+                         s_prev_nav_card     != st.nav_card);
+    s_prev_nav_level    = NAV_PAGE;
+    s_prev_nav_provider = st.nav_provider;
+    s_prev_nav_card     = st.nav_card;
+
     hide_summary_chrome();
 
     const stats_provider_t *p = &st.stats.p[st.nav_provider];
@@ -665,7 +761,11 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
                 lv_obj_add_flag(or_unused[i], LV_OBJ_FLAG_HIDDEN);
             char tod[16], bal[16], wk[16];
             fmt_money(tod, sizeof tod, p->cost_today_c);
-            lv_label_set_text(cost_big, tod);
+            if (card_entered) {
+                anim_count_up(cost_big, p->cost_today_c, count_cents_cb);
+            } else {
+                lv_label_set_text(cost_big, tod);
+            }
             lv_obj_clear_flag(cost_big, LV_OBJ_FLAG_HIDDEN);
             fmt_money(bal, sizeof bal, p->credits_remaining_c);
             lv_label_set_text(cost_tok, bal);
@@ -686,7 +786,11 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
                 lv_obj_clear_flag(body[i], LV_OBJ_FLAG_HIDDEN);
             char m[16], tk[16], m30[16], tk30[16];
             fmt_money(m, sizeof m, p->cost_today_c);
-            lv_label_set_text(cost_big, m);
+            if (card_entered) {
+                anim_count_up(cost_big, p->cost_today_c, count_cents_cb);
+            } else {
+                lv_label_set_text(cost_big, m);
+            }
             fmt_tokens(tk, sizeof tk, p->tok_today);
             lv_label_set_text(cost_tok, tk);
             lv_label_set_text(cost_tok_unit, "tokens");
@@ -709,6 +813,7 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
             lv_chart_set_series_color(cost_chart, cost_ser,
                 prov_accent(p->id, &cc) ? cc : lv_color_hex(0xe06c4b));
             lv_chart_refresh(cost_chart);
+            if (card_entered) anim_chart_fadein(cost_chart);
             char cmx[16];
             fmt_money(cmx, sizeof cmx, mx);
             lv_label_set_text_fmt(cost_cap, "%d DAY SPEND (max): %s", n, cmx);
@@ -724,7 +829,11 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
     char pb[12];
     lv_label_set_text(lim_s_lbl, has_balance ? "API KEY" : (p->has_t ? "TOTAL" : "SESSION"));
     fmt_pct(pb, sizeof pb, p->has_p, p->p);
-    lv_label_set_text(lim_s_big, pb);
+    if (card_entered && p->has_p) {
+        anim_count_up(lim_s_big, (int32_t)(p->p * 10.0f + 0.5f), count_pct_cb);
+    } else {
+        lv_label_set_text(lim_s_big, pb);
+    }
     set_bar(lim_s_bar, p->has_p, p->p, p);
     if (has_balance) {
         lv_obj_add_flag(lim_s_rst, LV_OBJ_FLAG_HIDDEN);
@@ -791,7 +900,7 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
             fmt_money(lim_str, sizeof lim_str, p->extra_limit_c);
             lv_label_set_text(lim_x_lbl, "BUDGET");
             lv_label_set_text_fmt(lim_x_val, "%s / %s left", rem_str, lim_str);
-            lv_bar_set_value(lim_x_bar, 100 - xp, LV_ANIM_OFF);
+            lv_bar_set_value(lim_x_bar, 100 - xp, LV_ANIM_ON);
             lv_obj_set_style_bg_color(lim_x_bar, bar_color(p, (float)xp),
                                       LV_PART_INDICATOR);
         } else {
@@ -800,11 +909,13 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
             fmt_money(b, sizeof b, p->extra_limit_c);
             lv_label_set_text(lim_x_lbl, "EXTRA USAGE");
             lv_label_set_text_fmt(lim_x_val, "%s / %s", a, b);
-            lv_bar_set_value(lim_x_bar, bar_fill(xp), LV_ANIM_OFF);
+            lv_bar_set_value(lim_x_bar, bar_fill(xp), LV_ANIM_ON);
             lv_obj_set_style_bg_color(lim_x_bar, bar_color(p, (float)xp),
                                       LV_PART_INDICATOR);
         }
+        update_bar_pulse(lim_x_bar, (float)xp);
     } else {
+        update_bar_pulse(lim_x_bar, 0.0f);
         lv_obj_add_flag(lim_x_lbl, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(lim_x_val, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(lim_x_bar, LV_OBJ_FLAG_HIDDEN);
@@ -823,6 +934,7 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
         for (int i = 0; i < n; i++)
             lv_chart_set_value_by_id(lim_chart, lim_ser, i, p->pct_hist[i]);
         lv_chart_refresh(lim_chart);
+        if (card_entered) anim_chart_fadein(lim_chart);
     } else {
         lv_obj_add_flag(lim_chart, LV_OBJ_FLAG_HIDDEN);
     }
@@ -881,6 +993,7 @@ static void render(void)   // ui_task only
 
     // NAV_SUMMARY — scrollable provider list
     hide_cards();
+    s_prev_nav_level = NAV_SUMMARY;   // ensure next card entry re-triggers animations
     lv_obj_clear_flag(title,  LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(status, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(prov_box, LV_OBJ_FLAG_HIDDEN);
@@ -951,17 +1064,23 @@ static void render(void)   // ui_task only
         }
 
         if (!p->ok || !p->has_p) {
+            update_bar_pulse(row_bar[i], 0.0f);
             lv_obj_add_flag(row_bar[i], LV_OBJ_FLAG_HIDDEN);
             lv_obj_set_style_text_color(row_val[i], lv_color_hex(0x6b7075), 0);
             lv_label_set_text(row_val[i], "off");
         } else {
             int v = (int)(p->p + 0.5f);
             if (v < 0) v = 0; else if (v > 100) v = 100;
+            int fill = bar_fill(v);
             lv_obj_clear_flag(row_bar[i], LV_OBJ_FLAG_HIDDEN);
-            lv_bar_set_value(row_bar[i], bar_fill(v), LV_ANIM_OFF);
+            if (fill != s_prev_row_bar[i]) {
+                lv_bar_set_value(row_bar[i], fill, LV_ANIM_ON);
+                s_prev_row_bar[i] = fill;
+            }
             // Per-provider accent (Claude orange); un-themed providers keep
             // the green/amber/red usage ramp.
             lv_obj_set_style_bg_color(row_bar[i], bar_color(p, p->p), LV_PART_INDICATOR);
+            update_bar_pulse(row_bar[i], p->p);
             lv_obj_set_style_text_color(row_val[i], lv_color_hex(0xffffff), 0);
             {
                 int tenths = (int)(p->p * 10.0f + 0.5f);
