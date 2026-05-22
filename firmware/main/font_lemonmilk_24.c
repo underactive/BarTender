@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Size: 24 px
  * Bpp: 4
- * Opts: --font /Users/esison/Development/projects/hardware/codexbarjar/LEMONMILK-Medium.otf --size 24 --bpp 4 --format lvgl --no-compress -o /Users/esison/Development/projects/hardware/codexbarjar/firmware/main/font_lemonmilk_24.c --range 0x20,0x24-0x25,0x2D-0x2E,0x30-0x39,0x42,0x4B,0x4D
+ * Opts: --font /Users/esison/Development/projects/hardware/bartender/LEMONMILK-Medium.otf --size 24 --bpp 4 --format lvgl --no-compress -o /Users/esison/Development/projects/hardware/bartender/firmware/main/font_lemonmilk_24.c --range 0x20,0x24-0x25,0x2D-0x2E,0x30-0x39,0x42,0x4B,0x4D
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE

@@ -1,4 +1,4 @@
-# codexbarjar
+# BarTender
 
 Pipe [CodexBar](https://github.com/steipete/CodexBar) AI-provider usage stats
 to an ESP32 desktop toy.

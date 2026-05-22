@@ -108,6 +108,18 @@ static bool prov_accent(const char *id, lv_color_t *out)
     return false;
 }
 
+// Providers hidden from the summary page. Add/remove IDs here to toggle
+// visibility — no structural changes needed. (All known providers live in
+// provider_icons.c; this is a flat list, not a bitmask.)
+#define HIDDEN_PROVIDERS "ollama", "opencode", "opencodego"
+static bool is_hidden_provider(const char *id)
+{
+    const char *h[] = { HIDDEN_PROVIDERS };
+    for (size_t i = 0; i < sizeof(h) / sizeof(h[0]); i++)
+        if (strcmp(id, h[i]) == 0) return true;
+    return false;
+}
+
 // Progress-bar indicator color: the provider's theme accent if it has one,
 // else the green/amber/red usage ramp.
 static lv_color_t bar_color(const stats_provider_t *p, float v)
@@ -227,7 +239,7 @@ static void build_widgets(void)
     title = lv_label_create(scr);
     lv_obj_set_style_text_color(title, lv_color_hex(0xffffff), 0);
     lv_obj_set_style_text_font(title, &lv_font_montserrat_18, 0);
-    lv_label_set_text(title, "CODEXBAR");
+    lv_label_set_text(title, "BARTENDER");
     lv_obj_set_pos(title, 8, 6);
 
     status = lv_label_create(scr);
@@ -1008,7 +1020,7 @@ static void render(void)   // ui_task only
     lv_obj_clear_flag(title,  LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(status, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(prov_box, LV_OBJ_FLAG_HIDDEN);
-    lv_label_set_text(title, "CODEXBAR");
+    lv_label_set_text(title, "BARTENDER");
 
     // Scrollable window: `vis` rows fit; st.scroll is the top provider index.
     // ASCII-only " +N more" hint (font ships 0x20-0x7F + 0xB0 + 0x2022 only)
@@ -1057,6 +1069,14 @@ static void render(void)   // ui_task only
             continue;
         }
         const stats_provider_t *p = &st.stats.p[pi];
+        if (is_hidden_provider(p->id)) {
+            lv_obj_add_flag(row_id[i],   LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(row_bar[i],  LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(row_val[i],  LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(row_icon[i], LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(row_bar_w[i], LV_OBJ_FLAG_HIDDEN);
+            continue;
+        }
         lv_obj_clear_flag(row_id[i],  LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(row_val[i], LV_OBJ_FLAG_HIDDEN);
         lv_label_set_text(row_id[i], p->id);

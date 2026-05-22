@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://codexbarjar/docs/generated/codexbar-payload.schema.json",
+  "$id": "https://bartender/docs/generated/codexbar-payload.schema.json",
   "title": "CodexBar toy Upstash payload (inner, decoded from the {\"result\":\"...\"} envelope)",
   "description": "Hand-maintained. Producer: scripts/codexbar-stats.sh --json (usage % + extra-usage $) augmented by scripts/codexbar-publish.sh (Claude cost rollup from CodexBar's local cost cache). Consumer: firmware/main/stats_model.{h,c}. v1 = pre-cost {id,ok,p?,pr?,s?,sr?}; v2 is a strict superset adding the optional per-provider `cost` object. Firmware accepts v1 and v2; rejects other versions.",
   "type": "object",

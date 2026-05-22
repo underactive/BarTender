@@ -43,7 +43,7 @@ managed components auto-fetched on first `idf.py build`.
 
 ## Decisions
 
-- 2026-05-18: Standalone `codexbarjar/firmware/` vendoring the board layer
+- 2026-05-18: Standalone `bartender/firmware/` vendoring the board layer
   (vs. editing clawd-tank or a shared component) — keeps repos decoupled.
 - 2026-05-18: Captive-portal → NVS provisioning (no secrets in source).
 - 2026-05-18: Consolidated UI into one `ui.c` with a copy-state-under-mutex
