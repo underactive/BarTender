@@ -53,7 +53,7 @@ static struct {
 
 // Widgets (created once, mutated only on ui_task)
 static lv_obj_t *scr, *title, *status, *prov_box;
-static lv_obj_t *row_id[ROWS], *row_bar[ROWS], *row_val[ROWS], *row_icon[ROWS];
+static lv_obj_t *row_id[ROWS], *row_bar[ROWS], *row_val[ROWS], *row_icon[ROWS], *row_bar_w[ROWS];
 
 // Cost card
 static lv_obj_t *cost_card, *cost_hdr, *cost_logo, *cost_big, *cost_tok, *cost_tok_unit,
@@ -268,6 +268,15 @@ static void build_widgets(void)
         lv_obj_set_style_text_font(row_val[i], &lv_font_montserrat_14, 0);
         lv_obj_set_pos(row_val[i], val_x, y + 26);
 
+        // Weekly bar: 3 px tall, right under the session bar (y+30 + 7 + 2 = y+39).
+        row_bar_w[i] = lv_bar_create(scr);
+        lv_obj_set_size(row_bar_w[i], val_x - ROW_TXT_X - 8, 3);
+        lv_obj_set_pos(row_bar_w[i], ROW_TXT_X, y + 39);
+        lv_bar_set_range(row_bar_w[i], 0, 100);
+        lv_obj_set_style_bg_color(row_bar_w[i], lv_color_hex(0x3a3a3a), 0);
+        lv_obj_set_style_bg_opa(row_bar_w[i], LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(row_bar_w[i], lv_color_hex(0x30c14e), LV_PART_INDICATOR);
+
         lv_obj_add_flag(row_id[i],  LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(row_bar[i], LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(row_val[i], LV_OBJ_FLAG_HIDDEN);
@@ -336,7 +345,7 @@ static void build_widgets(void)
     // points: LV_CHART_POINT_NONE == INT32_MAX, which a chart clamps to the
     // range max and would draw as a full-height block (the old "giant orange
     // bar" bug).
-    lv_chart_set_type(cost_chart, LV_CHART_TYPE_LINE);
+    lv_chart_set_type(cost_chart, LV_CHART_TYPE_LINE | LV_CHART_TYPE_CURVE);
     lv_chart_set_div_line_count(cost_chart, 0, 0);
     lv_obj_set_style_border_width(cost_chart, 0, 0);
     lv_obj_set_style_bg_opa(cost_chart, LV_OPA_TRANSP, 0);
@@ -450,7 +459,7 @@ static void build_widgets(void)
     lim_chart = lv_chart_create(lim_card);
     lv_obj_set_size(lim_chart, W - 24, chart_h > 8 ? chart_h : 8);
     lv_obj_set_pos(lim_chart, 12, chart_y);
-    lv_chart_set_type(lim_chart, LV_CHART_TYPE_LINE);
+    lv_chart_set_type(lim_chart, LV_CHART_TYPE_LINE | LV_CHART_TYPE_CURVE);
     lv_chart_set_div_line_count(lim_chart, 0, 0);
     lv_obj_set_style_border_width(lim_chart, 0, 0);
     lv_obj_set_style_bg_opa(lim_chart, LV_OPA_TRANSP, 0);
@@ -594,10 +603,12 @@ static void hide_summary_chrome(void)  // hide title/status/rows before a card
     lv_obj_add_flag(prov_box, LV_OBJ_FLAG_HIDDEN);
     for (int i = 0; i < ROWS; i++) {
         update_bar_pulse(row_bar[i], 0.0f);
+        update_bar_pulse(row_bar_w[i], 0.0f);
         lv_obj_add_flag(row_id[i],   LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(row_bar[i],  LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(row_val[i],  LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(row_icon[i], LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(row_bar_w[i], LV_OBJ_FLAG_HIDDEN);
     }
 }
 
@@ -1042,6 +1053,7 @@ static void render(void)   // ui_task only
             lv_obj_add_flag(row_bar[i],  LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(row_val[i],  LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(row_icon[i], LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(row_bar_w[i], LV_OBJ_FLAG_HIDDEN);
             continue;
         }
         const stats_provider_t *p = &st.stats.p[pi];
@@ -1087,6 +1099,18 @@ static void render(void)   // ui_task only
                 if (tenths < 0) tenths = 0; else if (tenths > 1000) tenths = 1000;
                 lv_label_set_text_fmt(row_val[i], "%d.%d%%",
                                       tenths / 10, tenths % 10);
+            }
+            // Weekly bar under session bar (Claude / Codex only).
+            if ((strcmp(p->id, "claude") == 0 || strcmp(p->id, "codex") == 0)
+                && p->has_s) {
+                int wv = (int)(p->s + 0.5f);
+                if (wv < 0) wv = 0; else if (wv > 100) wv = 100;
+                lv_bar_set_value(row_bar_w[i], bar_fill(wv), LV_ANIM_ON);
+                lv_obj_set_style_bg_color(row_bar_w[i], bar_color(p, p->s), LV_PART_INDICATOR);
+                update_bar_pulse(row_bar_w[i], p->s);
+                lv_obj_clear_flag(row_bar_w[i], LV_OBJ_FLAG_HIDDEN);
+            } else {
+                lv_obj_add_flag(row_bar_w[i], LV_OBJ_FLAG_HIDDEN);
             }
         }
     }

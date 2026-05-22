@@ -32,6 +32,8 @@
 #   CODEXBAR_BIN      codexbar binary           (default: `command -v codexbar`)
 #   CODEXBAR_CONFIG   config.json path          (default: ~/.codexbar/config.json)
 #   CBAR_CLI_PROVIDERS  providers to query with --source cli (default: "codex")
+#                       Note: --source auto for codex requires remoteControl IPC
+#                       with the running codexbar app; it fails silently in launchd.
 #   CBAR_TIMEOUT      per-run watchdog seconds  (default: 45; 150 with --all)
 #   NO_COLOR          disable ANSI (also auto-off when stdout is not a TTY)
 set -u

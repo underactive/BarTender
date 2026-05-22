@@ -19,8 +19,7 @@
 #include <stddef.h>
 
 #define CONFIG_DEFAULT_BRIGHTNESS       230  // 90% of 8-bit PWM duty
-#define CONFIG_DEFAULT_DISPLAY_FLIPPED  1   // 180° rotation (display.c:253);
-                                            // panel mounted USB-up vs native
+#define CONFIG_DEFAULT_DISPLAY_FLIPPED  0   // native orientation; panel mounted USB-down
 
 // Max field sizes (NVS string values; generous, kept small for the form).
 #define CFG_SSID_MAX   33   // 802.11 SSID <= 32 + NUL
