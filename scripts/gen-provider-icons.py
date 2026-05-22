@@ -26,7 +26,7 @@ OUT_H = os.path.join(HERE, "..", "firmware", "main", "provider_icons.h")
 # provider id (UsageProvider raw value == payload `id`) -> svg basename.
 # Several ids legitimately share one logo.
 ID_TO_SVG = {
-    "claude": "claude", "codex": "codex", "openai": "codex",
+    "claude": "claude", "codex": "codex", "openai": "codex", "pi": "pi",
     "cursor": "cursor", "openrouter": "openrouter",
     "opencode": "opencode", "opencodego": "opencode",
     "ollama": "ollama", "gemini": "gemini", "copilot": "copilot",

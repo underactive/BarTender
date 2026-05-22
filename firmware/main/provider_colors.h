@@ -14,6 +14,7 @@ typedef struct { const char *id; uint32_t hex; } prov_color_t;
 static const prov_color_t PROV_COLORS[] = {
     { "codex",       0x49A3B0 }, { "openai",      0x0F826E },
     { "claude",      0xCC7C5E }, { "cursor",      0x00BFA5 },
+    { "pi",          0xF2F2EE },
     { "opencode",    0x3B82F6 }, { "opencodego",  0x3B82F6 },
     { "alibaba",     0xFF6A00 }, { "factory",     0xFF6B35 },
     { "gemini",      0xAB87EA }, { "antigravity", 0x60BA7E },
