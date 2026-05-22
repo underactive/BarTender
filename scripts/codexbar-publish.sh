@@ -438,13 +438,19 @@ cmd_once() {
 
   # Append/replace the Pi Agent provider from local ~/.pi/agent state. This is
   # deliberately independent of CodexBar's unrelated pi-sessions cost cache.
+  # Timeout helper to prevent unbounded runtime during publish cycle.
   local pi_json="$work/pi.json"
-  if [[ -x "$PI_STATS" ]] && "$PI_STATS" >"$pi_json" 2>>"$LOG"; then
+  if [[ -x "$PI_STATS" ]] && timeout 30 "$PI_STATS" >"$pi_json" 2>>"$LOG"; then
     if CBPUB_JSON="$json" CBPUB_PI_JSON="$pi_json" osascript -l JavaScript -e "$PI_MERGE_JXA" 2>>"$LOG"; then
       bytes=$(wc -c <"$json" | tr -d ' ')
     else
       log "note: Pi Agent merge skipped (malformed helper output) — publishing without Pi"
     fi
+  elif [[ $? -eq 124 ]]; then
+    log "note: Pi Agent helper timed out after 30s — publishing without Pi"
+  else
+    log "note: Pi Agent helper failed (exit code $?) — publishing without Pi"
+  fi
   else
     log "note: Pi Agent stats skipped (absent/unrecognized) — publishing without Pi"
   fi

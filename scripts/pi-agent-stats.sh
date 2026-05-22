@@ -130,11 +130,25 @@ models_file = Path(os.environ.get("PI_AGENT_MODELS_FILE", agent_home / "models.j
 # Read models.json to keep the helper tied to the same local Pi Agent config
 # surface, but never publish model/provider names or credentials. Session usage
 # rows already carry reduced cost/tokens, so models are not needed for pricing.
+# NOTE: This creates a potential gap if future Pi Agent rows contain tokens but
+# not cost, as models.json pricing config would be ignored. Currently safe
+# because session rows include usage.cost; consider using models.json for
+# pricing if session data becomes incomplete.
 try:
     if models_file.is_file():
         json.loads(models_file.read_text(encoding="utf-8"))
 except Exception:
     eprint("models.json parse skipped")
+
+# Warn if models.json exists (contains pricing info) but we're not using it
+if models_file.is_file():
+    try:
+        models_data = json.loads(models_file.read_text(encoding="utf-8"))
+        # Check for common pricing fields that indicate this file has pricing config
+        if any(key in models_data for key in ['pricing', 'models', 'providers']):
+            eprint("note: models.json contains pricing config but session data is used for spend calculation")
+    except Exception:
+        pass
 
 if not sessions_dir.is_dir():
     eprint(f"sessions dir absent: {sessions_dir}")

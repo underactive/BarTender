@@ -7,7 +7,7 @@
 // an `ok:false` provider carries ONLY id+ok; `p`/`s` may be int or float.
 //
 // Schema versions: v1 = {id,ok,p?,pr?,s?,sr?}. v2 is a strict SUPERSET — same
-// fields plus an optional `cost` object (Claude only this build). A v2 parser
+// fields plus an optional `cost` object (Claude and Pi providers this build). A v2 parser
 // reads v1 unchanged (no cost => has_cost=false); both v1 and v2 are accepted.
 #pragma once
 
@@ -33,10 +33,11 @@ typedef struct {
     char  tr[STATS_TXT_MAX];          // tertiary reset hint ("" if absent)
 
     // v2 cost-card-capable fields — present when publisher merged a generic
-    // `cost` object or the Pi provider's sibling `pi` block (has_cost=false
-    // otherwise, and for every provider on a v1 payload). Money is integer CENTS: LVGL's sprintf
-    // is compiled without float support, so the UI formats with integer math.
-    // Token counts reach billions over 30 days -> 64-bit.
+    // `cost` object (Claude/OpenRouter) or the Pi provider's sibling `pi` block.
+    // For Pi: cost_today_c/cost_month_c alias max daily spend (ps), tok_today/tok_month alias
+    // max daily tokens (pt) — Pi has no true today/today semantics. has_cost indicates presence.
+    // Money is integer CENTS: LVGL's sprintf is compiled without float support, so the UI formats
+    // with integer math. Token counts reach billions over 30 days -> 64-bit.
     bool     has_cost;
     int32_t  cost_today_c;            // spend today, cents
     int32_t  cost_month_c;            // spend trailing 30 days, cents

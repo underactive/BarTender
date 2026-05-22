@@ -53,6 +53,7 @@
           "pi": {
             "type": "object",
             "description": "v2 optional, Pi provider only. Privacy-reduced Pi Agent rollup from ~/.pi/agent/sessions JSONL files. Present only on provider id `pi`; no raw prompts, cwd/project paths, model names, response IDs, or credentials are published.",
+            "required": ["ps", "pt", "h"],
             "properties": {
               "ps": { "type": "integer", "description": "Max daily Pi Agent spend over the last 30 calendar days, integer CENTS." },
               "pt": { "type": "integer", "description": "Max daily Pi Agent tokens over the last 30 calendar days." },
