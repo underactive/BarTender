@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://bartender/docs/generated/codexbar-payload.schema.json",
   "title": "CodexBar toy Upstash payload (inner, decoded from the {\"result\":\"...\"} envelope)",
-  "description": "Hand-maintained. Producer: scripts/codexbar-stats.sh --json (usage % + extra-usage $) augmented by scripts/codexbar-publish.sh (Claude cost rollup from CodexBar's local cost cache). Consumer: firmware/main/stats_model.{h,c}. v1 = pre-cost {id,ok,p?,pr?,s?,sr?}; v2 is a strict superset adding the optional per-provider `cost` object. Firmware accepts v1 and v2; rejects other versions.",
+  "description": "Hand-maintained. Producer: scripts/codexbar-stats.sh --json (usage % + extra-usage $) augmented by scripts/codexbar-publish.sh (Claude/Codex cost rollups from CodexBar's local cost caches plus the reduced Pi Agent provider from scripts/pi-agent-stats.sh). Consumer: firmware/main/stats_model.{h,c}. v1 = pre-cost {id,ok,p?,pr?,s?,sr?}; v2 is a strict superset adding optional per-provider `cost`, `ph`, and `pi` objects. Firmware accepts v1 and v2; rejects other versions.",
   "type": "object",
   "required": ["v", "ts", "providers"],
   "properties": {
@@ -20,9 +20,11 @@
           "pr": { "type": "string", "description": "Primary reset hint." },
           "s":  { "type": "number", "description": "Secondary/weekly used %, 0-100." },
           "sr": { "type": "string", "description": "Secondary reset hint." },
+          "t":  { "type": "number", "description": "Tertiary used %, 0-100." },
+          "tr": { "type": "string", "description": "Tertiary reset hint." },
           "cost": {
             "type": "object",
-            "description": "v2 only. Present for Claude (cost-cache rollup) and OpenRouter (live keyDataFetched fields). Money is integer CENTS (LVGL has no float printf). Absent => firmware has_cost=false.",
+            "description": "v2 optional. Present for providers with a generic cost payload (Claude/Codex cost-cache rollups; OpenRouter live keyDataFetched fields). Money is integer CENTS (LVGL has no float printf). Pi uses the sibling `pi` block instead; firmware still maps it into cost-card-capable fields.",
             "properties": {
               "xu": { "type": "integer", "description": "Extra-usage overage used, cents (providerCost.used for Claude; keyUsage for OpenRouter). NOT total spend." },
               "xl": { "type": "integer", "description": "Extra-usage overage limit, cents (providerCost.limit for Claude; keyLimit for OpenRouter)." },
@@ -47,6 +49,21 @@
             "items": { "type": "integer", "minimum": 0, "maximum": 100 },
             "maxItems": 24,
             "description": "v2 optional, Claude only. ~24h SESSION usage-% history (0..100), oldest -> newest, from CodexBar's hourly history file. Usage %, NOT cost. Absent => firmware pct_hist_n=0. Caps at STATS_PCT_HIST_MAX=24."
+          },
+          "pi": {
+            "type": "object",
+            "description": "v2 optional, Pi provider only. Privacy-reduced Pi Agent rollup from ~/.pi/agent/sessions JSONL files. Present only on provider id `pi`; no raw prompts, cwd/project paths, model names, response IDs, or credentials are published.",
+            "properties": {
+              "ps": { "type": "integer", "description": "Max daily Pi Agent spend over the last 30 calendar days, integer CENTS." },
+              "pt": { "type": "integer", "description": "Max daily Pi Agent tokens over the last 30 calendar days." },
+              "h": {
+                "type": "array",
+                "items": { "type": "integer" },
+                "maxItems": 30,
+                "description": "Pi Agent daily spend history, integer cents, oldest -> newest, one point per calendar day. Firmware caps at STATS_HIST_MAX."
+              }
+            },
+            "additionalProperties": false
           }
         }
       }

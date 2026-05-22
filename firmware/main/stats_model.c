@@ -85,8 +85,8 @@ stats_parse_t stats_model_parse(const char *body, stats_t *out)
             if (cJSON_IsNumber(tp)) { p->has_t = true; p->t = (float)tp->valuedouble; }
             cpy(p->tr, sizeof p->tr, cJSON_GetObjectItemCaseSensitive(e, "tr"));
 
-            // v2 optional `cost` object (Claude only this build). Absent on v1
-            // and on non-Claude providers -> has_cost stays false (memset'd).
+            // v2 optional `cost` object. Absent on v1 and on providers with no
+            // cost data -> has_cost stays false (memset'd).
             const cJSON *c = cJSON_GetObjectItemCaseSensitive(e, "cost");
             if (cJSON_IsObject(c)) {
                 p->has_cost = true;
@@ -118,6 +118,41 @@ stats_parse_t stats_model_parse(const char *body, stats_t *out)
                             p->hist[p->hist_n++] = i32_clamp(hv->valuedouble);
                     }
                 }
+            }
+
+            // v2 optional `pi` block: Pi Agent publishes max daily spend/tokens
+            // and a 30-day daily-spend history. Reuse the shared cost-shaped
+            // fields so the UI can branch on provider id without forking the
+            // transport/model contract.
+            const cJSON *pi = cJSON_GetObjectItemCaseSensitive(e, "pi");
+            if (strcmp(p->id, "pi") == 0 && cJSON_IsObject(pi)) {
+                const cJSON *x;
+                bool any_pi = false;
+                x = cJSON_GetObjectItemCaseSensitive(pi, "ps");
+                if (cJSON_IsNumber(x)) {
+                    p->cost_today_c = i32_clamp(x->valuedouble);
+                    p->cost_month_c = p->cost_today_c;
+                    any_pi = true;
+                }
+                x = cJSON_GetObjectItemCaseSensitive(pi, "pt");
+                if (cJSON_IsNumber(x)) {
+                    p->tok_today = i64_clamp(x->valuedouble);
+                    p->tok_month = p->tok_today;
+                    any_pi = true;
+                }
+                const cJSON *h = cJSON_GetObjectItemCaseSensitive(pi, "h");
+                if (cJSON_IsArray(h)) {
+                    p->hist_n = 0; // Pi history owns the chart for this provider.
+                    const cJSON *hv;
+                    cJSON_ArrayForEach(hv, h) {
+                        if (p->hist_n >= STATS_HIST_MAX) break;
+                        if (cJSON_IsNumber(hv)) {
+                            p->hist[p->hist_n++] = i32_clamp(hv->valuedouble);
+                            any_pi = true;
+                        }
+                    }
+                }
+                if (any_pi) p->has_cost = true;
             }
             // v2 optional `ph`: 24h session usage-% history (provider-level,
             // sibling of `cost`). Absent => pct_hist_n stays 0 (memset).

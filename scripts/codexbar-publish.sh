@@ -40,6 +40,9 @@
 #                         ~/Library/Application Support/com.steipete.codexbar/
 #                         history/claude.json)
 #   (Codex cost reads pi-sessions-v*.json from the same CBPUB_COST_CACHE_DIR)
+#   CBPUB_PI_STATS       Pi Agent reducer helper (default: sibling pi-agent-stats.sh)
+#   PI_AGENT_HOME / PI_AGENT_SESSIONS_DIR / PI_AGENT_MODELS_FILE
+#                         forwarded to pi-agent-stats.sh for hermetic tests
 #
 # Zero third-party deps: codexbar-stats.sh + base-macOS security/curl/launchctl/
 # osascript/awk/date/mktemp + zsh builtins.
@@ -53,6 +56,7 @@ LOG_DIR="${CBPUB_LOG_DIR:-$HOME/Library/Logs/codexbar-toy}"; LOG="$LOG_DIR/publi
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 SELF_DIR="${0:A:h}"
 STATS="$SELF_DIR/codexbar-stats.sh"
+PI_STATS="${CBPUB_PI_STATS:-$SELF_DIR/pi-agent-stats.sh}"
 work=""   # temp dir for cmd_once; referenced by its global EXIT trap
 TPL="$SELF_DIR/../launchd/$LABEL.plist.template"
 
@@ -330,6 +334,55 @@ eprint("merged codex cost: today="+todayCents+"c/"+todayTok+"tok (cache="+today+
 $.exit(0);
 EOF
 
+# Merge the reduced Pi Agent provider object emitted by pi-agent-stats.sh into
+# the provider array. The helper output is sanitized here to the public payload
+# contract so accidental extra local fields never cross the Upstash boundary.
+read -r -d '' PI_MERGE_JXA <<'EOF'
+ObjC.import('Foundation'); ObjC.import('stdlib');
+function env(k){ var v=$.NSProcessInfo.processInfo.environment.objectForKey(k);
+  return (v && v.js!==undefined) ? String(v.js) : ''; }
+function eprint(s){ $.NSFileHandle.fileHandleWithStandardError
+  .writeData($.NSString.alloc.initWithUTF8String("pi-merge: "+s+"\n").dataUsingEncoding(4)); }
+function rf(p){ try { var s=$.NSString.stringWithContentsOfFileEncodingError(p,4,null);
+  return (s && s.js!==undefined) ? s.js : null; } catch(e){ return null; } }
+function i32(v){ var n=Number(v); if(isNaN(n)) return null;
+  if(n < -2147483648) n=-2147483648; if(n > 2147483647) n=2147483647;
+  return Math.round(n); }
+function num(v){ var n=Number(v); return isNaN(n) ? null : n; }
+var jsonPath=env('CBPUB_JSON'), piPath=env('CBPUB_PI_JSON');
+if(!jsonPath || !piPath){ eprint('missing CBPUB_JSON/CBPUB_PI_JSON'); $.exit(2); }
+var pTxt=rf(jsonPath), piTxt=rf(piPath);
+if(!pTxt || !piTxt){ eprint('payload/helper unreadable'); $.exit(2); }
+var pay, src;
+try{ pay=JSON.parse(pTxt); }catch(e){ eprint('payload parse fail'); $.exit(2); }
+try{ src=JSON.parse(piTxt); }catch(e){ eprint('helper parse fail'); $.exit(3); }
+if(!pay || !Array.isArray(pay.providers)){ eprint('payload shape'); $.exit(2); }
+if(!src || src.id!=='pi' || src.ok!==true || !src.pi || typeof src.pi!=='object' || Array.isArray(src.pi)){
+  eprint('helper shape'); $.exit(3);
+}
+var ps=i32(src.pi.ps), pt=i32(src.pi.pt), p=num(src.p);
+if(ps===null || pt===null || !Array.isArray(src.pi.h)){ eprint('helper pi fields'); $.exit(3); }
+var h=[];
+for(var i=0;i<src.pi.h.length && h.length<30;i++){ var hv=i32(src.pi.h[i]); if(hv!==null) h.push(hv); }
+if(h.length===0){ eprint('empty helper history'); $.exit(3); }
+var dst={id:'pi', ok:true, pi:{ps:ps, pt:pt, h:h}};
+if(p!==null){ if(p<0)p=0; if(p>100)p=100; dst.p=Math.round(p*10)/10; }
+var hadPi=false;
+var next=[];
+for(var i=0;i<pay.providers.length;i++){
+  if(pay.providers[i] && pay.providers[i].id==='pi') { hadPi=true; continue; }
+  next.push(pay.providers[i]);
+}
+// Keep Pi first in the payload/provider summary so it is visible above Claude.
+next.unshift(dst);
+pay.providers=next;
+var w=$.NSString.alloc.initWithUTF8String(JSON.stringify(pay))
+  .writeToFileAtomicallyEncodingError(jsonPath,true,4,null);
+if(!w){ eprint('payload writeback failed'); $.exit(2); }
+eprint((hadPi?'replaced':'prepended')+' pi provider: max='+ps+'c/'+pt+'tok hist='+h.length+'d');
+$.exit(0);
+EOF
+
 cmd_once() {
   mkdir -p "$LOG_DIR"
   [[ -x "$STATS" ]] || die "sibling codexbar-stats.sh not found/executable at $STATS"
@@ -381,6 +434,19 @@ cmd_once() {
     bytes=$(wc -c <"$json" | tr -d ' ')
   else
     log "note: Claude 24h pct-history skipped (absent/unrecognized)"
+  fi
+
+  # Append/replace the Pi Agent provider from local ~/.pi/agent state. This is
+  # deliberately independent of CodexBar's unrelated pi-sessions cost cache.
+  local pi_json="$work/pi.json"
+  if [[ -x "$PI_STATS" ]] && "$PI_STATS" >"$pi_json" 2>>"$LOG"; then
+    if CBPUB_JSON="$json" CBPUB_PI_JSON="$pi_json" osascript -l JavaScript -e "$PI_MERGE_JXA" 2>>"$LOG"; then
+      bytes=$(wc -c <"$json" | tr -d ' ')
+    else
+      log "note: Pi Agent merge skipped (malformed helper output) — publishing without Pi"
+    fi
+  else
+    log "note: Pi Agent stats skipped (absent/unrecognized) — publishing without Pi"
   fi
 
   local tok; tok="$(get_token)"

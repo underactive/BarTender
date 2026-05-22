@@ -157,29 +157,48 @@ static int summary_vis_rows(void)
     return r;
 }
 
-// Pin st.scroll into [0, max(0, n - visible)] (closes the list-shrank race).
+// Summary rows are compacted over visible providers: hidden providers must not
+// consume scroll slots or tap targets, otherwise later visible providers (Pi)
+// can be pushed below blank rows.
+static int summary_visible_count(void)
+{
+    int n = 0;
+    for (int i = 0; i < st.stats.n && i < STATS_MAX_PROVIDERS; i++)
+        if (!is_hidden_provider(st.stats.p[i].id)) n++;
+    return n;
+}
+
+// Map a compact visible-list index back to the underlying stats.p[] index.
+static int summary_provider_at(int visible_idx)
+{
+    if (visible_idx < 0) return -1;
+    int seen = 0;
+    for (int i = 0; i < st.stats.n && i < STATS_MAX_PROVIDERS; i++) {
+        if (is_hidden_provider(st.stats.p[i].id)) continue;
+        if (seen == visible_idx) return i;
+        seen++;
+    }
+    return -1;
+}
+
+// Pin st.scroll into [0, max(0, visible_count - visible_rows)].
 static void clamp_scroll(void)
 {
-    int n   = st.stats.n < 0 ? 0 : st.stats.n;
-    int max = n - summary_vis_rows();
+    int max = summary_visible_count() - summary_vis_rows();
     if (max < 0)          max = 0;
     if (st.scroll > max)  st.scroll = max;
     if (st.scroll < 0)    st.scroll = 0;
 }
 
-// Tap y -> provider index (accounting for scroll), or -1 on a miss / the
-// inter-row gap. MUST mirror the summary render geometry (ROW_Y0/ROW_H).
+// Tap y -> provider index (accounting for compact visible-list scroll), or -1
+// on a miss / the inter-row gap. MUST mirror summary render geometry.
 static int summary_hit_test(int y)
 {
     if (y < ROW_Y0) return -1;
     int slot = (y - ROW_Y0) / ROW_H;
     if (slot < 0 || slot >= summary_vis_rows()) return -1;
     if ((y - ROW_Y0) % ROW_H > ROW_H - 8) return -1;   // 8 px inter-row gap
-    int idx = st.scroll + slot;
-    // stats_model.c:72 already caps st.stats.n at STATS_MAX_PROVIDERS; the
-    // explicit array-bound check makes the p[] safety local + future-proof.
-    if (idx < 0 || idx >= st.stats.n || idx >= STATS_MAX_PROVIDERS) return -1;
-    return idx;
+    return summary_provider_at(st.scroll + slot);
 }
 
 // tokens -> "123.2M" / "45.6K" / "789" using ONLY integer math (LVGL/newlib
@@ -758,11 +777,12 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
     // Data-driven: any provider with a balance/credits field uses the balance layout.
     // Avoids hardcoding "openrouter" and works for any future provider with the same shape.
     bool has_balance = (p->credits_limit_c > 0 || p->credits_remaining_c > 0);
+    bool is_pi = (strcmp(p->id, "pi") == 0);
 
     if (st.nav_card == CARD_COST) {
         lv_obj_add_flag(lim_card, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(cost_card, LV_OBJ_FLAG_HIDDEN);
-        render_card_hdr(cost_hdr, cost_logo, p->id, "TODAY");
+        render_card_hdr(cost_hdr, cost_logo, p->id, is_pi ? "STATS" : "TODAY");
 
         if (!p->has_cost) {
             lv_obj_clear_flag(cost_na, LV_OBJ_FLAG_HIDDEN);
@@ -800,7 +820,9 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
             lv_label_set_text_fmt(cost_30, "THIS WEEK  %s", wk);
             lv_obj_clear_flag(cost_30, LV_OBJ_FLAG_HIDDEN);
         } else {
-            // Claude/Codex layout: today cost hero, token count, 30-day chart.
+            // Claude/Codex/Pi layout: shared money/token/chart widgets, with
+            // Pi relabeled because its `pi` block carries 30-day max metrics
+            // rather than today's/30-day-total cost semantics.
             lv_obj_t *or_only[] = { cost_or_lbl, cost_or_row1, cost_or_row2 };
             for (unsigned i = 0; i < sizeof or_only / sizeof *or_only; i++)
                 lv_obj_add_flag(or_only[i], LV_OBJ_FLAG_HIDDEN);
@@ -816,12 +838,17 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
             }
             fmt_tokens(tk, sizeof tk, p->tok_today);
             lv_label_set_text(cost_tok, tk);
-            lv_label_set_text(cost_tok_unit, "tokens");
+            lv_label_set_text(cost_tok_unit, is_pi ? "max tokens" : "tokens");
             lv_obj_align_to(cost_tok_unit, cost_tok, LV_ALIGN_OUT_RIGHT_BOTTOM, 5, 0);
             fmt_money(m30, sizeof m30, p->cost_month_c);
             fmt_tokens(tk30, sizeof tk30, p->tok_month);
-            lv_label_set_text_fmt(cost_30, "30 DAYS TOTAL: %s  " LV_SYMBOL_BULLET "  %s Toks",
-                                  m30, tk30);
+            if (is_pi) {
+                lv_label_set_text_fmt(cost_30, "30 DAY MAX: %s  " LV_SYMBOL_BULLET "  %s Toks",
+                                      m30, tk30);
+            } else {
+                lv_label_set_text_fmt(cost_30, "30 DAYS TOTAL: %s  " LV_SYMBOL_BULLET "  %s Toks",
+                                      m30, tk30);
+            }
             int n = p->hist_n;
             if (n > NAV_HIST_PTS) n = NAV_HIST_PTS;
             int draw_n = (n < 2) ? 2 : n;   // LVGL LINE chart needs >=2 pts; pad with 0 for flatline
@@ -839,7 +866,8 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
             if (card_entered) anim_chart_fadein(cost_chart);
             char cmx[16];
             fmt_money(cmx, sizeof cmx, mx);
-            lv_label_set_text_fmt(cost_cap, "%d DAY SPEND (max): %s", n, cmx);
+            lv_label_set_text_fmt(cost_cap, is_pi ? "%d DAY PI SPEND (max): %s" : "%d DAY SPEND (max): %s",
+                                  n, cmx);
         }
         return;
     }
@@ -1022,12 +1050,14 @@ static void render(void)   // ui_task only
     lv_obj_add_flag(prov_box, LV_OBJ_FLAG_HIDDEN);
     lv_label_set_text(title, "BARTENDER");
 
-    // Scrollable window: `vis` rows fit; st.scroll is the top provider index.
+    // Scrollable window: `vis` rows fit; st.scroll is the top visible-provider
+    // index in the compact list (hidden providers do not consume slots).
     // ASCII-only " +N more" hint (font ships 0x20-0x7F + 0xB0 + 0x2022 only)
     // when the list is longer than the screen, so it never looks truncated.
     int vis  = summary_vis_rows();
-    int more = st.stats.n - (st.scroll + vis);   // rows hidden BELOW the
-    if (more < 0) more = 0;                       // current window (Audit§P1-3)
+    int shown_n = summary_visible_count();
+    int more = shown_n - (st.scroll + vis);       // rows hidden BELOW current window
+    if (more < 0) more = 0;
     char hint[24];   // "  +" + up to 11-digit %d + " more" + NUL (-Werror
                       // format-truncation is static; size for the worst %d)
     hint[0] = '\0';
@@ -1059,8 +1089,8 @@ static void render(void)   // ui_task only
     }
 
     for (int i = 0; i < ROWS; i++) {
-        int pi = st.scroll + i;                 // i = visual slot, pi = provider
-        if (i >= vis || pi >= st.stats.n) {
+        int pi = summary_provider_at(st.scroll + i); // i = visual slot, pi = stats.p[] index
+        if (i >= vis || pi < 0) {
             lv_obj_add_flag(row_id[i],   LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(row_bar[i],  LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(row_val[i],  LV_OBJ_FLAG_HIDDEN);
@@ -1069,14 +1099,6 @@ static void render(void)   // ui_task only
             continue;
         }
         const stats_provider_t *p = &st.stats.p[pi];
-        if (is_hidden_provider(p->id)) {
-            lv_obj_add_flag(row_id[i],   LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(row_bar[i],  LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(row_val[i],  LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(row_icon[i], LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(row_bar_w[i], LV_OBJ_FLAG_HIDDEN);
-            continue;
-        }
         lv_obj_clear_flag(row_id[i],  LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(row_val[i], LV_OBJ_FLAG_HIDDEN);
         lv_label_set_text(row_id[i], p->id);

@@ -55,10 +55,15 @@ read token are private to one user."** This was an informed decision for a
 personal desk object, recorded here as the mandated re-justification.
 
 **What now crosses the boundary (v2 payload):** usage `%` + reset hints,
-extra-usage `$` (cents), and — for Claude — total spend today/30-day, token
-counts, and a 30-day per-day spend history. Account email / `identity` /
-`loginMethod` are still **not projected** (`codexbar-stats.sh` simply never
-reads them; they are absent by construction, not by redaction).
+extra-usage `$` (cents), Claude/Codex total spend and token rollups, a 30-day
+per-day spend history where available, and — for Pi Agent — max daily spend,
+max daily tokens, and a 30-day daily spend history reduced from local Pi Agent
+session usage. Account email / `identity` / `loginMethod` are still **not
+projected** (`codexbar-stats.sh` simply never reads them; they are absent by
+construction, not by redaction). Pi Agent prompts, command/session trees,
+cwd/project paths, model names, response IDs, and provider credentials are also
+not projected; `pi-agent-stats.sh` reads only usage/cost counters from local
+session JSONL rows.
 
 **Why this is acceptable here, and only here:**
 
@@ -67,17 +72,22 @@ reads them; they are absent by construction, not by redaction).
   confidentiality now rests on **endpoint + token secrecy**, not on the
   payload being non-sensitive. A leak of the endpoint+token would reveal this
   user's AI spend and rough 30-day spend shape — accepted by the owner.
-- **The cost cache `files` map never leaves the Mac.** Cost is rolled up by
-  `codexbar-publish.sh` from CodexBar's local cache
-  (`~/Library/Caches/CodexBar/cost-usage/claude-v*.json`). That cache's
-  `files` map enumerates ~2000 **private project paths** (highly sensitive).
-  The publisher reads **only** the aggregate `days` map and forwards
-  rolled-up numbers; `files` is structurally never touched. This is the one
-  hard, non-negotiable minimization that remains.
-- **Cache-format churn is fail-safe.** The cache schema version churns
-  (`claude-v1/-v2/...`). On any unrecognized shape the publisher omits the
-  cost block and publishes usage-only — it never aborts and never emits a
-  half-parsed/garbage cost figure.
+- **Raw local source files never leave the Mac.** Cost is rolled up by
+  `codexbar-publish.sh` from CodexBar's local caches
+  (`~/Library/Caches/CodexBar/cost-usage/claude-v*.json`, Codex cache files).
+  Those caches may contain private project-path maps; the publisher reads only
+  aggregate day maps and forwards rolled-up numbers. Pi Agent is reduced by
+  `scripts/pi-agent-stats.sh` from `~/.pi/agent/sessions/**/*.jsonl`; it reads
+  assistant `usage` counters and timestamps, then emits only max spend/tokens
+  plus daily spend history. Raw prompts, cwd/project paths, model/provider
+  identifiers, response IDs, and credentials are structurally never emitted.
+  This local-source minimization is the hard, non-negotiable boundary that
+  remains.
+- **Cache/session-format churn is fail-safe.** The cache schema version churns
+  (`claude-v1/-v2/...`) and Pi Agent session rows can vary by release. On any
+  unrecognized local shape the publisher omits that reduced block/provider and
+  publishes the rest — it never aborts and never emits a half-parsed/garbage
+  cost figure.
 - **Credentials never transit and never rest in the repo.** The Upstash
   **write** token lives in the macOS Keychain (service `codexbar-toy`),
   passed to `curl` via a `0600 -K` config (never argv/log/plist). The device

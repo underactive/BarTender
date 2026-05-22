@@ -1,7 +1,7 @@
 # BarTender
 
 Pipe [CodexBar](https://github.com/steipete/CodexBar) AI-provider usage stats
-to an ESP32 desktop toy.
+and local Pi Agent usage rollups to an ESP32 desktop toy.
 
 ## Why
 
@@ -13,8 +13,10 @@ Mac directly, so the pipeline is three stages:
 2. **Publish to a cloud key** — `scripts/codexbar-publish.sh` → Upstash (done)
 3. **ESP32 reads + displays** it over WiFi — `firmware/` (done)
 
-Everything macOS-side is zero-third-party-dependency (only `codexbar` itself,
-plus base-macOS `osascript`/`curl`/`security`/`launchctl`).
+Everything macOS-side is zero-third-party-dependency beyond the local tools it
+reads (`codexbar` and, when Pi is installed, Pi Agent state under `~/.pi/agent`),
+plus base-macOS `osascript`/`curl`/`security`/`launchctl` and Python for local
+JSON reduction.
 
 ## Installation
 
@@ -59,16 +61,19 @@ printf 'UPSTASH_REST_URL=https://<db>.upstash.io\nUPSTASH_KEY=codexbar\n' \
 | `codexbar-publish.sh --print-plist` | Preview the launchd plist that `--install` would write |
 
 The **v2** payload carries usage % + reset hints + extra-usage $, and — for
-Claude — total spend (today / 30-day), token counts, and a 30-day per-day
-spend history rolled up from CodexBar's **local** cost cache. This is a
-**deliberately relaxed, private single-user channel**: account email /
-identity are never projected, and CodexBar's per-project paths never leave the
-Mac, but real spend now transits Upstash, so its endpoint + token must be kept
-private (full rationale + residual NVS risk in
-[docs/SECURITY.md](docs/SECURITY.md)). If there's no fresh data — or the cost
-cache is absent/format-churned — the publish is skipped or falls back to
-usage-only, so the toy keeps its last good value. The write token lives in the
-Keychain; the ESP32 (Prompt 3) gets a separate read-only token.
+Claude/Codex — total spend, token counts, and per-day spend history rolled up
+from CodexBar's **local** cost caches. It can also append a first-class `pi`
+provider from `scripts/pi-agent-stats.sh`, reduced from Pi Agent session JSONL
+under `~/.pi/agent/sessions/` into max daily spend, max daily tokens, and a
+30-day spend graph only. This is a **deliberately relaxed, private single-user
+channel**: account email / identity are never projected, CodexBar's
+per-project paths and Pi Agent raw sessions/prompts never leave the Mac, but
+real spend now transits Upstash, so its endpoint + token must be kept private
+(full rationale + residual NVS risk in [docs/SECURITY.md](docs/SECURITY.md)).
+If there's no fresh data — or a local cache/Pi source is absent/format-churned
+— the publish is skipped or falls back to the remaining reduced payload, so the
+toy keeps its last good value. The write token lives in the Keychain; the ESP32
+(Prompt 3) gets a separate read-only token.
 
 ### `firmware/` — ESP32-S3 desk toy
 
@@ -80,8 +85,9 @@ remembers up to **5 WiFi networks** and autoconnects to whichever is in range
 separately so changing WiFi never re-prompts for the token. On the summary
 screen: **swipe up/down** to scroll the provider list, **tap a provider** to
 open its **Cost** page, **tap again** to flip to **Usage Limits** (tapping
-cycles the two; Claude shows real spend, tokens, and a 30-day history chart),
-**swipe right→left** to go back. A **long-press (~1.5 s)** adds a WiFi network
+cycles the two; Claude/Codex show spend, tokens, and history; Pi shows max
+spend, max tokens, and its 30-day graph), **swipe right→left** to go back. A
+**long-press (~1.5 s)** adds a WiFi network
 (non-destructive — keeps everything). Board bring-up is vendored from the
 `clawd-tank` project.
 Build/flash/provisioning: [firmware/README.md](firmware/README.md). Full

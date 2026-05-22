@@ -37,9 +37,10 @@ process.
 - **Lifecycle:** invoked by the `com.codexbar-toy.publish` launchd LaunchAgent
   every `PUBLISH_INTERVAL` s (default 300) and at load. Skips the write when
   there is no fresh data (store keeps last good).
-- **Environment / hostname gating:** outbound HTTPS POST of a **whitelisted,
-  non-sensitive** payload only (usage % + reset hints; no PII/credentials/$ —
-  see `docs/SECURITY.md`). `MOCK_SINK_URL` redirects to a local sink for tests.
+- **Environment / hostname gating:** outbound HTTPS POST of a whitelisted,
+  privacy-reduced payload only (usage % + reset hints + reduced spend/token
+  rollups; no PII/credentials/raw sessions/project paths — see
+  `docs/SECURITY.md`). `MOCK_SINK_URL` redirects to a local sink for tests.
 - **Key env vars / CLI flags:** config keys `UPSTASH_REST_URL`, `UPSTASH_KEY`,
   `PUBLISH_INTERVAL`, `MOCK_SINK_URL`; test overrides `CBPUB_CONFIG`,
   `CBPUB_LOG_DIR`, `CBPUB_KC_SERVICE`; subcommands `--once/--set-token/
@@ -57,6 +58,31 @@ process.
 | Upstash **write** token | publish auth; macOS Keychain `codexbar-toy/publish` | Upstash DB tokens (write) |
 | Upstash **read-only** token | ESP32 read auth (Prompt 3) | Upstash DB tokens (read-only) |
 | `~/.codexbar/config.json` | enabled-provider list (read-only) | CodexBar app |
+
+## Pi Agent local state
+
+- **What:** Pi Agent CLI harness local session history and custom provider/model
+  configuration. This is a Mac-local source used to add `pi` as a first-class
+  provider row in the same payload consumed by the ESP32.
+- **Loaded via:** `scripts/pi-agent-stats.sh`, invoked fail-soft from
+  `scripts/codexbar-publish.sh --once`. The helper scans
+  `~/.pi/agent/sessions/**/*.jsonl` for assistant `usage` objects and reads
+  `~/.pi/agent/models.json` only as the local Pi Agent config surface.
+- **Lifecycle:** read once per publish cycle. No daemon and no network call.
+  Missing directories, malformed rows, or absent usage data make the helper
+  exit non-zero; the publisher logs the skip and continues publishing the
+  non-Pi payload.
+- **Environment / hostname gating:** local macOS files only. The published
+  boundary is reduced to `{id:"pi", ok:true, p, pi:{ps,pt,h}}`: max daily
+  spend in cents, max daily tokens, and 30-day daily spend history. Raw prompts,
+  command/session trees, cwd/project paths, model names, response IDs, and
+  provider credentials never leave the Mac.
+- **Key env vars / CLI flags:** `PI_AGENT_HOME`, `PI_AGENT_SESSIONS_DIR`,
+  `PI_AGENT_MODELS_FILE`, `PYTHON3`; `--help`.
+- **Gotchas:** Do not confuse Pi Agent sessions with CodexBar's unrelated
+  `pi-sessions-v*.json` cost-cache files, which are used only to roll up Codex
+  cost. Local/free Pi backends may have token usage with `$0.00` spend; the Pi
+  row can still render max tokens while the spend graph is flat.
 
 ## clawd-tank board layer (vendored)
 

@@ -2,7 +2,7 @@
 //
 // Two-step parse of the Upstash response into a flat struct.
 //   body  = {"result":"<escaped-json>"}                       (Upstash envelope)
-//   inner = {v,ts,providers:[{id,ok,p?,pr?,s?,sr?,cost?}]}     (our payload)
+//   inner = {v,ts,providers:[{id,ok,p?,pr?,s?,sr?,cost?,pi?}]} (our payload)
 // Field optionality matches the live contract verified against real bytes:
 // an `ok:false` provider carries ONLY id+ok; `p`/`s` may be int or float.
 //
@@ -32,7 +32,8 @@ typedef struct {
     bool  has_t;  float t;            // tertiary used %
     char  tr[STATS_TXT_MAX];          // tertiary reset hint ("" if absent)
 
-    // v2 cost block — present when publisher merged cost data (has_cost=false
+    // v2 cost-card-capable fields — present when publisher merged a generic
+    // `cost` object or the Pi provider's sibling `pi` block (has_cost=false
     // otherwise, and for every provider on a v1 payload). Money is integer CENTS: LVGL's sprintf
     // is compiled without float support, so the UI formats with integer math.
     // Token counts reach billions over 30 days -> 64-bit.

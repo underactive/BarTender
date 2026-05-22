@@ -26,7 +26,9 @@ opening anything.
       legacy SSID is folded into the remembered list, Upstash is preserved,
       no erase and no forced portal.
 - [ ] After provisioning the device joins WiFi and, within ~15 s, shows one
-      row per provider: id, a colored bar + % for the primary window.
+      row per provider: id, a colored bar + % for the primary window. When Pi
+      Agent local usage exists on the Mac, `pi` appears as a first-class row in
+      this same provider list rather than a separate screen.
 - [ ] Providers reported `ok:false` render as a dimmed "off", not blank.
 - [ ] A status line shows link state and "updated Ns ago".
 - [ ] The screen renders in portrait orientation (taller than wide); the
@@ -34,9 +36,11 @@ opening anything.
       not clipped on either orientation.
 - [ ] On the **summary screen**: vertical swipe scrolls the provider list;
       tap a provider row opens its Cost page (tap again cycles Cost↔Limit;
-      swipe right→left returns). A **long-press (~1.5 s)** opens the captive
-      portal to **add a network**, NON-destructively (all remembered networks
-      + Upstash are kept). Full nav: [claude-cost-menu](claude-cost-menu.md).
+      swipe right→left returns). Pi's Cost page uses the same chrome but shows
+      Pi max spend, max tokens, and a 30-day spend graph. A **long-press
+      (~1.5 s)** opens the captive portal to **add a network**,
+      NON-destructively (all remembered networks + Upstash are kept). Full
+      nav: [claude-cost-menu](claude-cost-menu.md).
 - [ ] The long-press add-network gesture is honored **even before WiFi has
       ever associated** (e.g. relocated where no remembered SSID is in
       range), not only once connected. Nothing on-device wipes credentials.
@@ -66,8 +70,8 @@ opening anything.
   device has no browser and enforces a WPA2-PSK threshold by design.
 - On-screen text entry (provisioning is via the phone/laptop captive form).
 - Sound, animation, battery operation.
-- Historical graphs **on the summary screen** — but a 30-day Claude cost
-  history chart now exists on the Cost card; see
-  [claude-cost-menu](claude-cost-menu.md).
+- Historical graphs **on the summary screen** — but 30-day provider graphs now
+  exist on Cost cards where reduced history is available (Claude/Codex spend,
+  Pi Agent spend); see [claude-cost-menu](claude-cost-menu.md).
 - NVS/flash encryption — now a **tracked** hardening item (risk elevated at
   payload v2; see `docs/SECURITY.md` and the tech-debt tracker).
