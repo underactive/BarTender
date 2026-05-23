@@ -120,24 +120,32 @@ stats_parse_t stats_model_parse(const char *body, stats_t *out)
                 }
             }
 
-            // v2 optional `pi` block: Pi Agent publishes max daily spend/tokens
-            // and a 30-day daily-spend history. Reuse the shared cost-shaped
-            // fields so the UI can branch on provider id without forking the
-            // transport/model contract.
+            // v2 optional `pi` block: Pi Agent publishes today's spend/tokens,
+            // 30-day max daily spend/tokens, and a 30-day daily-spend history.
+            // Reuse the shared cost-shaped fields so the UI can branch on
+            // provider id without forking the transport/model contract.
             const cJSON *pi = cJSON_GetObjectItemCaseSensitive(e, "pi");
             if (strcmp(p->id, "pi") == 0 && cJSON_IsObject(pi)) {
                 const cJSON *x;
                 bool any_pi = false;
-                x = cJSON_GetObjectItemCaseSensitive(pi, "ps");
+                x = cJSON_GetObjectItemCaseSensitive(pi, "ts");
                 if (cJSON_IsNumber(x)) {
                     p->cost_today_c = i32_clamp(x->valuedouble);
-                    p->cost_month_c = p->cost_today_c;
+                    any_pi = true;
+                }
+                x = cJSON_GetObjectItemCaseSensitive(pi, "tt");
+                if (cJSON_IsNumber(x)) {
+                    p->tok_today = i64_clamp(x->valuedouble);
+                    any_pi = true;
+                }
+                x = cJSON_GetObjectItemCaseSensitive(pi, "ps");
+                if (cJSON_IsNumber(x)) {
+                    p->cost_month_c = i32_clamp(x->valuedouble);
                     any_pi = true;
                 }
                 x = cJSON_GetObjectItemCaseSensitive(pi, "pt");
                 if (cJSON_IsNumber(x)) {
-                    p->tok_today = i64_clamp(x->valuedouble);
-                    p->tok_month = p->tok_today;
+                    p->tok_month = i64_clamp(x->valuedouble);
                     any_pi = true;
                 }
                 const cJSON *h = cJSON_GetObjectItemCaseSensitive(pi, "h");

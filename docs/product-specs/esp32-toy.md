@@ -37,7 +37,7 @@ opening anything.
 - [ ] On the **summary screen**: vertical swipe scrolls the provider list;
       tap a provider row opens its Cost page (tap again cycles Cost↔Limit;
       swipe right→left returns). Pi's Cost page uses the same chrome but shows
-      Pi max spend, max tokens, and a 30-day spend graph. A **long-press
+      today's Pi spend/tokens, 30-day maxes, and a 30-day spend graph. A **long-press
       (~1.5 s)** opens the captive portal to **add a network**,
       NON-destructively (all remembered networks + Upstash are kept). Full
       nav: [claude-cost-menu](claude-cost-menu.md).

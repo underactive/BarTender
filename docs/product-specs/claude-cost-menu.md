@@ -33,8 +33,8 @@ limits monitor, not just a clipped usage-% list.
       daily-spend **bar graph** ("N-DAY SPEND • max $X", side margins,
       autoscaled so the highest point fills the chart). Providers with
       extra-usage data also expose that budget on the Usage-Limits page.
-- [ ] **Pi Cost page** shows: header `PI STATS`; max daily spend as the big
-      `$` number; max daily tokens with a `max tokens` label; `30 DAY MAX:
+- [ ] **Pi Cost page** shows: header `PI TODAY`; today's spend as the big
+      `$` number; today's tokens with a `tokens` label; `30 DAY MAX:
       $<max> • <tokens>`; and a Pi-colored 30-day daily-spend bar graph from
       the reduced `pi.h` payload field, autoscaled so the highest point fills
       the chart. It reuses the existing provider page chrome and does not add

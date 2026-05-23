@@ -85,8 +85,8 @@ remembers up to **5 WiFi networks** and autoconnects to whichever is in range
 separately so changing WiFi never re-prompts for the token. On the summary
 screen: **swipe up/down** to scroll the provider list, **tap a provider** to
 open its **Cost** page, **tap again** to flip to **Usage Limits** (tapping
-cycles the two; Claude/Codex show spend, tokens, and history; Pi shows max
-spend, max tokens, and its 30-day graph), **swipe right→left** to go back. A
+cycles the two; Claude/Codex show spend, tokens, and history; Pi shows today's
+spend, today's tokens, 30-day maxes, and its 30-day graph), **swipe right→left** to go back. A
 **long-press (~1.5 s)** adds a WiFi network
 (non-destructive — keeps everything). Board bring-up is vendored from the
 `clawd-tank` project.

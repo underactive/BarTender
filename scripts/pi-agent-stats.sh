@@ -11,10 +11,12 @@
 #
 # Output is privacy-reduced and contains no prompts, cwd/project paths, model
 # names, provider credentials, response IDs, or raw session rows:
-#   {"id":"pi","ok":true,"p":41.2,"pi":{"ps":1245,"pt":893421,"h":[...]}}
+#   {"id":"pi","ok":true,"p":41.2,"pi":{"ts":512,"tt":123456,"ps":1245,"pt":893421,"h":[...]}}
 #
 # Field units:
 #   p      current usage as % of 30-day max spend (or max tokens if spend=0)
+#   pi.ts  today's spend, integer cents
+#   pi.tt  today's tokens
 #   pi.ps  max daily spend over the last 30 calendar days, integer cents
 #   pi.pt  max daily tokens over the last 30 calendar days
 #   pi.h   daily spend history, integer cents, oldest -> newest, 30 points
@@ -234,7 +236,15 @@ else:
     pct = 0.0
 pct = max(0.0, min(100.0, pct))
 
-provider = {"id": "pi", "ok": True, "p": pct, "pi": {"ps": max_spend, "pt": max_tokens, "h": hist}}
+provider = {
+    "id": "pi",
+    "ok": True,
+    "p": pct,
+    "pi": {"ts": latest_spend, "tt": latest_tokens, "ps": max_spend, "pt": max_tokens, "h": hist},
+}
 print(json.dumps(provider, separators=(",", ":")))
-eprint(f"reduced {used_rows} usage rows from {files} files: max={max_spend}c/{max_tokens}tok hist={len(hist)}d")
+eprint(
+    f"reduced {used_rows} usage rows from {files} files: "
+    f"today={latest_spend}c/{latest_tokens}tok max={max_spend}c/{max_tokens}tok hist={len(hist)}d"
+)
 PY

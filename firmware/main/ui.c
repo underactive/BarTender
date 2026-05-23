@@ -801,7 +801,7 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
     if (st.nav_card == CARD_COST) {
         lv_obj_add_flag(lim_card, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(cost_card, LV_OBJ_FLAG_HIDDEN);
-        render_card_hdr(cost_hdr, cost_logo, p->id, is_pi ? "STATS" : "TODAY");
+        render_card_hdr(cost_hdr, cost_logo, p->id, "TODAY");
 
         if (!p->has_cost) {
             lv_obj_clear_flag(cost_na, LV_OBJ_FLAG_HIDDEN);
@@ -839,15 +839,25 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
             lv_label_set_text_fmt(cost_30, "THIS WEEK  %s", wk);
             lv_obj_clear_flag(cost_30, LV_OBJ_FLAG_HIDDEN);
         } else {
-            // Claude/Codex/Pi layout: shared money/token/chart widgets, with
-            // Pi relabeled because its `pi` block carries 30-day max metrics
-            // rather than today's/30-day-total cost semantics.
+            // Claude/Codex/Pi layout: shared money/token/chart widgets. Pi uses
+            // today's reduced usage for the hero numbers and 30-day max metrics
+            // in the bottom summary row.
             lv_obj_t *or_only[] = { cost_or_lbl, cost_or_row1, cost_or_row2 };
             for (unsigned i = 0; i < sizeof or_only / sizeof *or_only; i++)
                 lv_obj_add_flag(or_only[i], LV_OBJ_FLAG_HIDDEN);
-            lv_obj_t *body[] = { cost_big, cost_tok, cost_tok_unit, cost_30, cost_cap, cost_chart };
+            lv_obj_t *body[] = { cost_big, cost_tok, cost_tok_unit, cost_30, cost_chart };
             for (unsigned i = 0; i < sizeof body / sizeof *body; i++)
                 lv_obj_clear_flag(body[i], LV_OBJ_FLAG_HIDDEN);
+            const int scr_w = lv_display_get_horizontal_resolution(lv_display_get_default());
+            const int scr_h = lv_display_get_vertical_resolution(lv_display_get_default());
+            if (is_pi) {
+                lv_obj_add_flag(cost_cap, LV_OBJ_FLAG_HIDDEN);
+                lv_obj_set_pos(cost_30, 12, scr_h - 22); // use the freed bottom caption slot
+            } else {
+                lv_obj_clear_flag(cost_cap, LV_OBJ_FLAG_HIDDEN);
+                lv_obj_set_pos(cost_30, 12, scr_h - 38);
+            }
+            lv_obj_set_size(cost_chart, scr_w - 24, scr_h - (is_pi ? 150 : 166));
             char m[16], tk[16], m30[16], tk30[16];
             fmt_money(m, sizeof m, p->cost_today_c);
             if (card_entered) {
@@ -857,7 +867,7 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
             }
             fmt_tokens(tk, sizeof tk, p->tok_today);
             lv_label_set_text(cost_tok, tk);
-            lv_label_set_text(cost_tok_unit, is_pi ? "max tokens" : "tokens");
+            lv_label_set_text(cost_tok_unit, "tokens");
             lv_obj_align_to(cost_tok_unit, cost_tok, LV_ALIGN_OUT_RIGHT_BOTTOM, 5, 0);
             fmt_money(m30, sizeof m30, p->cost_month_c);
             fmt_tokens(tk30, sizeof tk30, p->tok_month);
@@ -874,10 +884,11 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
             int32_t mx = render_cost_bar_chart(cost_chart, cost_ser, p->hist, n,
                 prov_accent(p->id, &cc) ? cc : lv_color_hex(0xe06c4b));
             if (card_entered) anim_chart_fadein(cost_chart);
-            char cmx[16];
-            fmt_money(cmx, sizeof cmx, mx);
-            lv_label_set_text_fmt(cost_cap, is_pi ? "%d DAY PI SPEND (max): %s" : "%d DAY SPEND (max): %s",
-                                  n, cmx);
+            if (!is_pi) {
+                char cmx[16];
+                fmt_money(cmx, sizeof cmx, mx);
+                lv_label_set_text_fmt(cost_cap, "%d DAY SPEND (max): %s", n, cmx);
+            }
         }
         return;
     }

@@ -34,8 +34,8 @@ typedef struct {
 
     // v2 cost-card-capable fields — present when publisher merged a generic
     // `cost` object (Claude/OpenRouter) or the Pi provider's sibling `pi` block.
-    // For Pi: cost_today_c/cost_month_c alias max daily spend (ps), tok_today/tok_month alias
-    // max daily tokens (pt) — Pi has no true today/today semantics. has_cost indicates presence.
+    // For Pi: cost_today_c/tok_today come from today's reduced usage (ts/tt),
+    // while cost_month_c/tok_month carry 30-day max daily spend/tokens (ps/pt).
     // Money is integer CENTS: LVGL's sprintf is compiled without float support, so the UI formats
     // with integer math. Token counts reach billions over 30 days -> 64-bit.
     bool     has_cost;

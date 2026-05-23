@@ -348,6 +348,7 @@ function rf(p){ try { var s=$.NSString.stringWithContentsOfFileEncodingError(p,4
 function i32(v){ var n=Number(v); if(isNaN(n)) return null;
   if(n < -2147483648) n=-2147483648; if(n > 2147483647) n=2147483647;
   return Math.round(n); }
+function i64(v){ var n=Number(v); return isNaN(n) ? null : Math.round(n); }
 function num(v){ var n=Number(v); return isNaN(n) ? null : n; }
 var jsonPath=env('CBPUB_JSON'), piPath=env('CBPUB_PI_JSON');
 if(!jsonPath || !piPath){ eprint('missing CBPUB_JSON/CBPUB_PI_JSON'); $.exit(2); }
@@ -360,12 +361,12 @@ if(!pay || !Array.isArray(pay.providers)){ eprint('payload shape'); $.exit(2); }
 if(!src || src.id!=='pi' || src.ok!==true || !src.pi || typeof src.pi!=='object' || Array.isArray(src.pi)){
   eprint('helper shape'); $.exit(3);
 }
-var ps=i32(src.pi.ps), pt=i32(src.pi.pt), p=num(src.p);
-if(ps===null || pt===null || !Array.isArray(src.pi.h)){ eprint('helper pi fields'); $.exit(3); }
+var ts=i32(src.pi.ts), tt=i64(src.pi.tt), ps=i32(src.pi.ps), pt=i64(src.pi.pt), p=num(src.p);
+if(ts===null || tt===null || ps===null || pt===null || !Array.isArray(src.pi.h)){ eprint('helper pi fields'); $.exit(3); }
 var h=[];
 for(var i=0;i<src.pi.h.length && h.length<30;i++){ var hv=i32(src.pi.h[i]); if(hv!==null) h.push(hv); }
 if(h.length===0){ eprint('empty helper history'); $.exit(3); }
-var dst={id:'pi', ok:true, pi:{ps:ps, pt:pt, h:h}};
+var dst={id:'pi', ok:true, pi:{ts:ts, tt:tt, ps:ps, pt:pt, h:h}};
 if(p!==null){ if(p<0)p=0; if(p>100)p=100; dst.p=Math.round(p*10)/10; }
 var hadPi=false;
 var next=[];
@@ -379,7 +380,7 @@ pay.providers=next;
 var w=$.NSString.alloc.initWithUTF8String(JSON.stringify(pay))
   .writeToFileAtomicallyEncodingError(jsonPath,true,4,null);
 if(!w){ eprint('payload writeback failed'); $.exit(2); }
-eprint((hadPi?'replaced':'prepended')+' pi provider: max='+ps+'c/'+pt+'tok hist='+h.length+'d');
+eprint((hadPi?'replaced':'prepended')+' pi provider: today='+ts+'c/'+tt+'tok max='+ps+'c/'+pt+'tok hist='+h.length+'d');
 $.exit(0);
 EOF
 
@@ -440,17 +441,26 @@ cmd_once() {
   # deliberately independent of CodexBar's unrelated pi-sessions cost cache.
   # Timeout helper to prevent unbounded runtime during publish cycle.
   local pi_json="$work/pi.json"
-  if [[ -x "$PI_STATS" ]] && timeout 30 "$PI_STATS" >"$pi_json" 2>>"$LOG"; then
-    if CBPUB_JSON="$json" CBPUB_PI_JSON="$pi_json" osascript -l JavaScript -e "$PI_MERGE_JXA" 2>>"$LOG"; then
-      bytes=$(wc -c <"$json" | tr -d ' ')
+  local pi_rc=127
+  if [[ -x "$PI_STATS" ]]; then
+    if command -v timeout >/dev/null 2>&1; then
+      timeout 30 "$PI_STATS" >"$pi_json" 2>>"$LOG"; pi_rc=$?
+    elif command -v gtimeout >/dev/null 2>&1; then
+      gtimeout 30 "$PI_STATS" >"$pi_json" 2>>"$LOG"; pi_rc=$?
     else
-      log "note: Pi Agent merge skipped (malformed helper output) — publishing without Pi"
+      "$PI_STATS" >"$pi_json" 2>>"$LOG"; pi_rc=$?
     fi
-  elif [[ $? -eq 124 ]]; then
-    log "note: Pi Agent helper timed out after 30s — publishing without Pi"
-  else
-    log "note: Pi Agent helper failed (exit code $?) — publishing without Pi"
-  fi
+    if [[ $pi_rc -eq 0 ]]; then
+      if CBPUB_JSON="$json" CBPUB_PI_JSON="$pi_json" osascript -l JavaScript -e "$PI_MERGE_JXA" 2>>"$LOG"; then
+        bytes=$(wc -c <"$json" | tr -d ' ')
+      else
+        log "note: Pi Agent merge skipped (malformed helper output) — publishing without Pi"
+      fi
+    elif [[ $pi_rc -eq 124 ]]; then
+      log "note: Pi Agent helper timed out after 30s — publishing without Pi"
+    else
+      log "note: Pi Agent helper failed (exit code $pi_rc) — publishing without Pi"
+    fi
   else
     log "note: Pi Agent stats skipped (absent/unrecognized) — publishing without Pi"
   fi
