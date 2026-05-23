@@ -30,14 +30,15 @@ limits monitor, not just a clipped usage-% list.
       all consumed by the nav machine.
 - [ ] **Claude/Codex Cost page** shows: provider header; today `$` big number;
       `<tokens> TOKENS TODAY`; `30D $<m> • <tokens>`; and a labeled 30-day
-      daily-spend **line sparkline** ("N-DAY SPEND • max $X", side margins,
-      point_count == real history length). Providers with extra-usage data
-      also expose that budget on the Usage-Limits page.
+      daily-spend **bar graph** ("N-DAY SPEND • max $X", side margins,
+      autoscaled so the highest point fills the chart). Providers with
+      extra-usage data also expose that budget on the Usage-Limits page.
 - [ ] **Pi Cost page** shows: header `PI STATS`; max daily spend as the big
       `$` number; max daily tokens with a `max tokens` label; `30 DAY MAX:
-      $<max> • <tokens>`; and a Pi-colored 30-day daily-spend line sparkline
-      from the reduced `pi.h` payload field. It reuses the existing provider
-      page chrome and does not add a Pi-only navigation path.
+      $<max> • <tokens>`; and a Pi-colored 30-day daily-spend bar graph from
+      the reduced `pi.h` payload field, autoscaled so the highest point fills
+      the chart. It reuses the existing provider page chrome and does not add
+      a Pi-only navigation path.
 - [ ] **Claude Usage-Limits page** shows: `SESSION` + big % + bar + reset;
       `WEEKLY <%>` + bar + reset; `EXTRA USAGE <used> / <limit>` + bar; and a
       labeled **24h SESSION usage-% line sparkline** ("SESSION 24H • now N%",

@@ -51,9 +51,10 @@ typedef struct {
     int      hist_n;                  // valid entries in hist[] (0 => no chart)
     int32_t  hist[STATS_HIST_MAX];    // per-day spend, cents, oldest -> newest
 
-    // v2 optional `ph`: ~24h SESSION usage-% history (0..100), oldest->newest.
+    // v2 optional `ph`: ~24h usage-% history (0..100), oldest->newest.
     // Usage %, NOT cost — feeds the Usage-Limits card sparkline. Additive
     // within v2 (absent => pct_hist_n=0); not tied to has_cost.
+    // For Pi provider: represents Current vs Max (today vs peak usage).
     int      pct_hist_n;
     uint8_t  pct_hist[STATS_PCT_HIST_MAX];
 } stats_provider_t;

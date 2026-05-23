@@ -57,9 +57,9 @@ Rendering:
       offset; tapping a row opens that provider's page (no menu screen
       exists anymore).
 - [ ] **Claude Cost card**: `$X.XX` today (no `f%` artifact), `<n>M TOKENS
-      TODAY`, `30D $… • …`, a **labeled 30-day spend line sparkline** with
-      side margins (NOT a full-bleed block — regression for the v9
-      POINT_NONE==INT32_MAX bar bug), `EXTRA $a / $b` bar.
+      TODAY`, `30D $… • …`, a **labeled 30-day spend bar graph** with side
+      margins, autoscaled so the highest point fills the chart, `EXTRA $a / $b`
+      bar.
 - [ ] **Claude Usage-Limits card**: session % == the summary row's `p`;
       weekly % == `s`; reset hints == `pr`/`sr`; plus a **24h SESSION
       usage-% line sparkline** ("SESSION 24H • now N%") with side margins.

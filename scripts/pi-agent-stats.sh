@@ -14,10 +14,13 @@
 #   {"id":"pi","ok":true,"p":41.2,"pi":{"ps":1245,"pt":893421,"h":[...]}}
 #
 # Field units:
-#   p      latest-day activity as % of 30-day max spend (or max tokens if spend=0)
+#   p      current usage as % of 30-day max spend (or max tokens if spend=0)
 #   pi.ps  max daily spend over the last 30 calendar days, integer cents
 #   pi.pt  max daily tokens over the last 30 calendar days
 #   pi.h   daily spend history, integer cents, oldest -> newest, 30 points
+#
+# Note: The 'p' field represents Current vs Max - today's usage compared to
+#       the busiest day in the last 30 days.
 #
 # Env overrides (testability hooks; default to real Pi Agent paths):
 #   PI_AGENT_HOME          default: ~/.pi/agent

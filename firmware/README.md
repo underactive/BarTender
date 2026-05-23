@@ -65,8 +65,9 @@ Nothing secret is ever compiled into the binary or committed to the repo.
   longer than the screen.
 - **Swipe up / down** → scroll the provider list (page at a time).
 - **Tap a provider row** → its **Cost** page. **Tap again** → **Usage
-  Limits** page. Tap again → Cost (tapping cycles the two). Non-Claude
-  Cost pages show "COST DATA NOT AVAILABLE YET".
+  Limits** page. Tap again → Cost (tapping cycles the two). Cost pages use
+  an autoscaled bar graph; Non-Claude Cost pages show "COST DATA NOT
+  AVAILABLE YET".
 - **Swipe right→left** → back to the summary list.
 - Refresh is automatic (the 300 s poll); there is no tap-to-refresh.
 - **Long-press (~1.5 s) on the summary** → open the captive portal to

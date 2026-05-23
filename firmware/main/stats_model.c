@@ -154,8 +154,9 @@ stats_parse_t stats_model_parse(const char *body, stats_t *out)
                 }
                 if (any_pi) p->has_cost = true;
             }
-            // v2 optional `ph`: 24h session usage-% history (provider-level,
+            // v2 optional `ph`: 24h usage-% history (provider-level,
             // sibling of `cost`). Absent => pct_hist_n stays 0 (memset).
+            // For Pi provider: represents Current vs Max (today vs peak usage).
             const cJSON *ph = cJSON_GetObjectItemCaseSensitive(e, "ph");
             if (cJSON_IsArray(ph)) {
                 const cJSON *pv;

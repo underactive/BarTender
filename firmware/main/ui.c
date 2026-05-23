@@ -370,17 +370,18 @@ static void build_widgets(void)
     cost_chart = lv_chart_create(cost_card);
     lv_obj_set_size(cost_chart, W - 24, H - 166);
     lv_obj_set_pos(cost_chart, 12, 120);
-    // LINE sparkline of the 30-day daily spend (CodexBar cost cache is
+    // BAR graph of the 30-day daily spend (CodexBar cost cache is
     // day-granular — no hourly $, so this is days, not 24h). point_count is
     // set per-render to the real history length so there are NEVER filler
     // points: LV_CHART_POINT_NONE == INT32_MAX, which a chart clamps to the
     // range max and would draw as a full-height block (the old "giant orange
     // bar" bug).
-    lv_chart_set_type(cost_chart, LV_CHART_TYPE_LINE | LV_CHART_TYPE_CURVE);
+    lv_chart_set_type(cost_chart, LV_CHART_TYPE_BAR);
     lv_chart_set_div_line_count(cost_chart, 0, 0);
     lv_obj_set_style_border_width(cost_chart, 0, 0);
     lv_obj_set_style_bg_opa(cost_chart, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_pad_all(cost_chart, 2, 0);   // keep the line off the edge
+    lv_obj_set_style_pad_all(cost_chart, 2, 0);   // keep the bars off the edge
+    lv_obj_set_style_pad_column(cost_chart, 2, LV_PART_MAIN);
     lv_obj_set_style_line_width(cost_chart, 2, LV_PART_ITEMS);
     lv_obj_set_style_width(cost_chart, 0, LV_PART_INDICATOR);   // no point dots
     lv_obj_set_style_height(cost_chart, 0, LV_PART_INDICATOR);
@@ -736,6 +737,24 @@ static void set_bar(lv_obj_t *bar, bool has, float v, const stats_provider_t *p)
     update_bar_pulse(bar, has ? v : 0.0f);
 }
 
+static int32_t render_cost_bar_chart(lv_obj_t *chart, lv_chart_series_t *ser,
+                                     const int32_t *hist, int n, lv_color_t color)
+{
+    int draw_n = (n < 2) ? 2 : n;
+    int32_t mx = 0;
+    for (int i = 0; i < n; i++)
+        if (hist[i] > mx) mx = hist[i];
+    int32_t chart_max = (mx > 0) ? mx : 1;
+
+    lv_chart_set_point_count(chart, (uint32_t)draw_n);
+    lv_chart_set_range(chart, LV_CHART_AXIS_PRIMARY_Y, 0, chart_max);
+    lv_chart_set_series_color(chart, ser, color);
+    for (int i = 0; i < draw_n; i++)
+        lv_chart_set_value_by_id(chart, ser, i, (i < n) ? hist[i] : 0);
+    lv_chart_refresh(chart);
+    return mx;
+}
+
 // Extra-usage overage as a clamped 0..100 %. 0 when unknown / no limit.
 // Single-sourced: used by both the Cost and Usage-Limits cards.
 static int extra_pct(const stats_provider_t *p)
@@ -851,18 +870,9 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
             }
             int n = p->hist_n;
             if (n > NAV_HIST_PTS) n = NAV_HIST_PTS;
-            int draw_n = (n < 2) ? 2 : n;   // LVGL LINE chart needs >=2 pts; pad with 0 for flatline
-            int32_t mx = 1;
-            for (int i = 0; i < n; i++)
-                if (p->hist[i] > mx) mx = p->hist[i];
-            lv_chart_set_point_count(cost_chart, (uint32_t)draw_n);
-            lv_chart_set_range(cost_chart, LV_CHART_AXIS_PRIMARY_Y, 0, mx + mx / 8 + 1);
-            for (int i = 0; i < draw_n; i++)
-                lv_chart_set_value_by_id(cost_chart, cost_ser, i, (i < n) ? p->hist[i] : 0);
             lv_color_t cc;
-            lv_chart_set_series_color(cost_chart, cost_ser,
+            int32_t mx = render_cost_bar_chart(cost_chart, cost_ser, p->hist, n,
                 prov_accent(p->id, &cc) ? cc : lv_color_hex(0xe06c4b));
-            lv_chart_refresh(cost_chart);
             if (card_entered) anim_chart_fadein(cost_chart);
             char cmx[16];
             fmt_money(cmx, sizeof cmx, mx);
