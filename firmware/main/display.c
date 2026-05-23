@@ -266,10 +266,20 @@ lv_display_t *display_init(void) {
     return display;
 }
 
-void display_set_brightness(uint8_t duty)
+static void display_apply_brightness(uint8_t duty)
 {
     ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, duty);
     ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+}
+
+void display_set_brightness_silent(uint8_t duty)
+{
+    display_apply_brightness(duty);
+}
+
+void display_set_brightness(uint8_t duty)
+{
+    display_apply_brightness(duty);
     ESP_LOGI(TAG, "Brightness set to %u", duty);
 }
 

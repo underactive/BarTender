@@ -37,6 +37,9 @@ typedef enum {
 // Process one touch event. Returns UI_INPUT_PASS ONLY for a LONG_PRESS on the
 // summary screen, or any event while in provisioning mode; everything else is
 // CONSUMED by the nav machine.
+// When the idle screensaver/dim fallback is active, the first stats-mode input
+// restores saved navigation/brightness and is consumed; it never also performs
+// navigation or passes LONG_PRESS through to setup.
 ui_input_result_t ui_handle_input(const app_evt_t *ev);
 
 // --- thread-safe state setters (call from any task) ---

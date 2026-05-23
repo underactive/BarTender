@@ -4,6 +4,8 @@
 #include "provider_colors.h"
 #include "led.h"
 #include "lvgl.h"
+#include "display.h"
+#include "config_store.h"
 extern const lv_font_t font_lemonmilk_48;
 extern const lv_font_t font_lemonmilk_24;
 #include "freertos/FreeRTOS.h"
@@ -29,6 +31,20 @@ typedef enum { UI_PROVISION, UI_STATS } ui_mode_t;
 typedef enum { NAV_SUMMARY, NAV_PAGE } nav_level_t;
 typedef enum { CARD_COST, CARD_LIMITS } card_kind_t;
 
+#define SCREENSAVER_IDLE_MS     (5LL * 60LL * 1000LL)
+#define SCREENSAVER_ACTIVE_MS   (8LL * 60LL * 60LL * 1000LL)
+#define SCREENSAVER_PAGE_MS     (15LL * 1000LL)
+#define SCREENSAVER_FADE_MS     700LL
+#define SCREENSAVER_DIM_DUTY    8
+
+typedef struct {
+    char id[STATS_ID_MAX];
+    bool seen;
+    bool has_sig;
+    uint32_t sig;
+    int64_t last_change_ms;
+} saver_activity_t;
+
 // Shared state — written by any task under s_mtx, consumed only by ui_task.
 static SemaphoreHandle_t s_mtx;
 static SemaphoreHandle_t s_shot_sem;  // binary; given by ui_task after snapshot render
@@ -49,6 +65,25 @@ static struct {
                                 // silently swap which one the page shows
     card_kind_t nav_card;       // which page is showing in NAV_PAGE
     int         scroll;         // NAV_SUMMARY: index of the top visible row
+    // Screensaver state: activity tracking, idle entry/exit, fade/dim state.
+    saver_activity_t activity[STATS_MAX_PROVIDERS];
+    bool saver_active, saver_dim_only;
+    nav_level_t saved_nav_level;
+    int saved_nav_provider;
+    char saved_nav_id[STATS_ID_MAX];
+    card_kind_t saved_nav_card;
+    int saved_scroll;
+    char saver_id[STATS_ID_MAX];
+    card_kind_t saver_card;
+    int64_t last_input_ms, saver_next_cycle_ms;
+    uint8_t saver_brightness, saver_target_brightness;
+    int64_t saver_fade_start_ms, saver_fade_end_ms;
+    bool saver_transitioning;
+    char saver_next_id[STATS_ID_MAX];
+    card_kind_t saver_next_card;
+    bool saver_next_dim_only;
+    bool saver_show_summary;
+    bool saver_next_show_summary;
 } st;
 
 // Widgets (created once, mutated only on ui_task)
@@ -80,6 +115,258 @@ static int         s_prev_row_bar[ROWS];   // last fill value per summary slot; 
 
 static int s_scr_h = 320;   // cached screen height (set in build_widgets);
                             // read by ui_handle_input -> NO LVGL call off-task
+
+// Forward declarations for functions defined later but used by screensaver helpers.
+static bool is_hidden_provider(const char *id);
+static void clamp_scroll(void);
+
+static bool provider_has_limits_card(const stats_provider_t *p)
+{
+    return p->has_p || p->has_s || p->has_t || p->pct_hist_n > 0 ||
+           (p->has_cost && p->extra_limit_c > 0);
+}
+
+static int pct_tenths(bool has, float v)
+{
+    if (!has) return -1;
+    int t = (int)(v * 10.0f + 0.5f);
+    if (t < 0) t = 0; else if (t > 1000) t = 1000;
+    return t;
+}
+
+static uint32_t hash_mix_u32(uint32_t h, uint32_t v)
+{
+    h ^= v + 0x9e3779b9U + (h << 6) + (h >> 2);
+    return h;
+}
+
+static uint32_t provider_metric_sig(const stats_provider_t *p)
+{
+    uint32_t h = 2166136261U;
+    h = hash_mix_u32(h, p->ok ? 1U : 0U);
+    h = hash_mix_u32(h, (uint32_t)pct_tenths(p->has_p, p->p));
+    h = hash_mix_u32(h, (uint32_t)pct_tenths(p->has_s, p->s));
+    h = hash_mix_u32(h, (uint32_t)pct_tenths(p->has_t, p->t));
+    h = hash_mix_u32(h, p->has_cost ? 1U : 0U);
+    if (p->has_cost) {
+        h = hash_mix_u32(h, (uint32_t)p->cost_today_c);
+        h = hash_mix_u32(h, (uint32_t)p->cost_month_c);
+        h = hash_mix_u32(h, (uint32_t)p->tok_today);
+        h = hash_mix_u32(h, (uint32_t)(p->tok_today >> 32));
+        h = hash_mix_u32(h, (uint32_t)p->tok_month);
+        h = hash_mix_u32(h, (uint32_t)(p->tok_month >> 32));
+        h = hash_mix_u32(h, (uint32_t)p->extra_used_c);
+        h = hash_mix_u32(h, (uint32_t)p->extra_limit_c);
+        h = hash_mix_u32(h, (uint32_t)p->cost_week_c);
+        h = hash_mix_u32(h, (uint32_t)p->credits_remaining_c);
+        h = hash_mix_u32(h, (uint32_t)p->credits_limit_c);
+        h = hash_mix_u32(h, (uint32_t)p->hist_n);
+        for (int i = 0; i < p->hist_n && i < STATS_HIST_MAX; i++)
+            h = hash_mix_u32(h, (uint32_t)p->hist[i]);
+    }
+    h = hash_mix_u32(h, (uint32_t)p->pct_hist_n);
+    for (int i = 0; i < p->pct_hist_n && i < STATS_PCT_HIST_MAX; i++)
+        h = hash_mix_u32(h, p->pct_hist[i]);
+    return h;
+}
+
+static saver_activity_t *activity_slot(const char *id)
+{
+    int empty = -1;
+    for (int i = 0; i < STATS_MAX_PROVIDERS; i++) {
+        if (st.activity[i].seen && strcmp(st.activity[i].id, id) == 0) return &st.activity[i];
+        if (!st.activity[i].seen && empty < 0) empty = i;
+    }
+    if (empty < 0) {
+        int oldest = 0;
+        for (int i = 1; i < STATS_MAX_PROVIDERS; i++)
+            if (st.activity[i].last_change_ms < st.activity[oldest].last_change_ms) oldest = i;
+        empty = oldest;
+    }
+    st.activity[empty] = (saver_activity_t){0};
+    st.activity[empty].seen = true;
+    strlcpy(st.activity[empty].id, id, sizeof st.activity[empty].id);
+    return &st.activity[empty];
+}
+
+static void update_provider_activity_locked(const stats_t *s, int64_t now_ms)
+{
+    if (!s) return;
+    for (int i = 0; i < s->n && i < STATS_MAX_PROVIDERS; i++) {
+        const stats_provider_t *p = &s->p[i];
+        if (!p->id[0] || is_hidden_provider(p->id) || !p->ok) continue;
+        if (!p->has_cost && !provider_has_limits_card(p)) continue;
+        uint32_t sig = provider_metric_sig(p);
+        saver_activity_t *slot = activity_slot(p->id);
+        if (!slot->has_sig) { slot->sig = sig; slot->has_sig = true; }
+        else if (slot->sig != sig) { slot->last_change_ms = now_ms; slot->sig = sig; }
+    }
+}
+
+static int find_provider_id(const char *id)
+{
+    for (int i = 0; id && i < st.stats.n && i < STATS_MAX_PROVIDERS; i++)
+        if (strcmp(st.stats.p[i].id, id) == 0) return i;
+    return -1;
+}
+
+static bool provider_card_available(const stats_provider_t *p, card_kind_t card)
+{
+    return card == CARD_COST ? p->has_cost : provider_has_limits_card(p);
+}
+
+static bool saver_candidate_at(int64_t now, int start, char *id, size_t id_n, card_kind_t *card)
+{
+    for (int step = 0; step < STATS_MAX_PROVIDERS; step++) {
+        int i = (start + step) % STATS_MAX_PROVIDERS;
+        saver_activity_t *a = &st.activity[i];
+        if (!a->seen || !a->has_sig || a->last_change_ms <= 0) continue;
+        if (now - a->last_change_ms > SCREENSAVER_ACTIVE_MS) continue;
+        int pi = find_provider_id(a->id);
+        if (pi < 0) continue;
+        const stats_provider_t *p = &st.stats.p[pi];
+        if (is_hidden_provider(p->id) || !p->ok) continue;
+        if (p->has_cost) *card = CARD_COST;
+        else if (provider_has_limits_card(p)) *card = CARD_LIMITS;
+        else continue;
+        strlcpy(id, a->id, id_n);
+        return true;
+    }
+    return false;
+}
+
+static void saver_start_fade_locked(uint8_t from, uint8_t to, int64_t now)
+{
+    st.saver_brightness = from;
+    st.saver_target_brightness = to;
+    st.saver_fade_start_ms = now;
+    st.saver_fade_end_ms = now + SCREENSAVER_FADE_MS;
+    display_set_brightness_silent(from);
+}
+
+static void saver_step_fade_locked(int64_t now)
+{
+    if (st.saver_fade_end_ms > 0) {
+        if (now >= st.saver_fade_end_ms) {
+            // Fade completed — snap to target and handle page transition.
+            display_set_brightness_silent(st.saver_target_brightness);
+            st.saver_brightness = st.saver_target_brightness;
+            st.saver_fade_end_ms = 0;
+            // If a page transition was waiting for fade-to-dim, apply it now.
+            if (st.saver_transitioning) {
+                if (st.saver_next_show_summary) {
+                    st.saver_show_summary = true;
+                    st.nav_level = NAV_SUMMARY;
+                    st.scroll = 0;
+                } else {
+                    st.saver_show_summary = false;
+                    strlcpy(st.saver_id, st.saver_next_id, sizeof st.saver_id);
+                    st.saver_card = st.saver_next_card;
+                    st.saver_dim_only = st.saver_next_dim_only;
+                    if (!st.saver_dim_only) {
+                        int pi = find_provider_id(st.saver_id);
+                        if (pi >= 0) {
+                            st.nav_provider = pi;
+                            strlcpy(st.nav_id, st.saver_id, sizeof st.nav_id);
+                            st.nav_card = st.saver_card;
+                            st.nav_level = NAV_PAGE;
+                        }
+                    }
+                }
+                st.dirty = true;
+                st.saver_transitioning = false;
+                st.saver_next_cycle_ms = now + SCREENSAVER_PAGE_MS;
+                // Fade back up from dim to configured brightness.
+                if (!st.saver_dim_only)
+                    saver_start_fade_locked(SCREENSAVER_DIM_DUTY, config_store_get_brightness(), now);
+            }
+        } else {
+            int64_t dur = st.saver_fade_end_ms - st.saver_fade_start_ms;
+            int64_t el = now - st.saver_fade_start_ms;
+            int duty = st.saver_brightness + (int)(((int)st.saver_target_brightness - (int)st.saver_brightness) * el / dur);
+            if (duty < 0) duty = 0; else if (duty > 255) duty = 255;
+            display_set_brightness_silent((uint8_t)duty);
+        }
+    }
+}
+
+static void saver_enter_locked(int64_t now)
+{
+    if (st.saver_active || st.mode != UI_STATS) return;
+    st.saved_nav_level = st.nav_level;
+    st.saved_nav_provider = st.nav_provider;
+    strlcpy(st.saved_nav_id, st.nav_id, sizeof st.saved_nav_id);
+    st.saved_nav_card = st.nav_card;
+    st.saved_scroll = st.scroll;
+    st.saver_active = true;
+    st.saver_show_summary = false;
+    st.saver_dim_only = !saver_candidate_at(now, 0, st.saver_id, sizeof st.saver_id, &st.saver_card);
+    st.saver_next_cycle_ms = now + SCREENSAVER_PAGE_MS;
+    saver_start_fade_locked(config_store_get_brightness(), st.saver_dim_only ? SCREENSAVER_DIM_DUTY : config_store_get_brightness(), now);
+    if (!st.saver_dim_only) {
+        int pi = find_provider_id(st.saver_id);
+        if (pi >= 0) { st.nav_level = NAV_PAGE; st.nav_provider = pi; strlcpy(st.nav_id, st.saver_id, sizeof st.nav_id); st.nav_card = st.saver_card; }
+    }
+    st.dirty = true;
+}
+
+static void saver_advance_locked(int64_t now)
+{
+    if (!st.saver_active || st.saver_dim_only || now < st.saver_next_cycle_ms) return;
+    if (st.saver_transitioning) return;  // mid-transition, wait for fade to complete
+
+    if (st.saver_show_summary) {
+        // Summary was showing — find first active provider to restart the cycle.
+        if (!saver_candidate_at(now, 0, st.saver_next_id, sizeof st.saver_next_id, &st.saver_next_card)) {
+            st.saver_next_dim_only = true;
+        } else {
+            st.saver_next_dim_only = false;
+        }
+        st.saver_next_show_summary = false;
+    } else {
+        int pi = find_provider_id(st.saver_id);
+        if (pi >= 0 && st.saver_card == CARD_COST && provider_card_available(&st.stats.p[pi], CARD_LIMITS)) {
+            // Cycle Cost -> Limits on the same provider.
+            strlcpy(st.saver_next_id, st.saver_id, sizeof st.saver_next_id);
+            st.saver_next_card = CARD_LIMITS;
+            st.saver_next_dim_only = false;
+            st.saver_next_show_summary = false;
+        } else {
+            int start = 0;
+            for (int i = 0; i < STATS_MAX_PROVIDERS; i++)
+                if (st.activity[i].seen && strcmp(st.activity[i].id, st.saver_id) == 0) { start = i + 1; break; }
+            if (!saver_candidate_at(now, start, st.saver_next_id, sizeof st.saver_next_id, &st.saver_next_card)) {
+                // No more active providers — show summary, then wrap around.
+                st.saver_next_dim_only = false;
+                st.saver_next_show_summary = true;
+            } else {
+                st.saver_next_dim_only = false;
+                st.saver_next_show_summary = false;
+            }
+        }
+    }
+    // Start transition: fade to dim, apply page when fade completes.
+    st.saver_transitioning = true;
+    saver_start_fade_locked(st.saver_brightness, SCREENSAVER_DIM_DUTY, now);
+}
+
+static void saver_exit_locked(int64_t now)
+{
+    if (!st.saver_active) return;
+    st.saver_active = false;
+    st.saver_dim_only = false;
+    st.saver_transitioning = false;
+    st.saver_show_summary = false;
+    st.saver_next_show_summary = false;
+    st.nav_level = st.saved_nav_level;
+    st.nav_provider = st.saved_nav_provider;
+    strlcpy(st.nav_id, st.saved_nav_id, sizeof st.nav_id);
+    st.nav_card = st.saved_nav_card;
+    st.scroll = st.saved_scroll;
+    saver_start_fade_locked(st.saver_brightness, config_store_get_brightness(), now);
+    clamp_scroll();
+    st.dirty = true;
+}
 
 static lv_color_t pct_color(float p)   // green -> amber -> red
 {
@@ -1190,6 +1477,12 @@ static void ui_task(void *arg)
         // the render entirely (take(0)) under setter contention.
         if (xSemaphoreTake(s_mtx, pdMS_TO_TICKS(5)) == pdTRUE) {
             int64_t now = esp_timer_get_time() / 1000;
+            // Screensaver timers.
+            if (st.mode != UI_STATS) { st.saver_active = false; st.saver_fade_end_ms = 0; st.saver_transitioning = false; st.saver_show_summary = false; st.saver_next_show_summary = false; }
+            saver_step_fade_locked(now);
+            if (st.mode == UI_STATS && !st.saver_active && st.last_input_ms > 0 && now - st.last_input_ms >= SCREENSAVER_IDLE_MS)
+                saver_enter_locked(now);
+            saver_advance_locked(now);
             // Re-render every 10 s in stats mode so the "updated Ns ago"
             // counter ticks even without new data. render() recomputes the
             // age from st.fetched_ms, so this is always accurate (no gap).
@@ -1271,7 +1564,7 @@ void ui_set_stats(const stats_t *s, int64_t fetched_uptime_ms)
 {
     xSemaphoreTake(s_mtx, portMAX_DELAY);
     st.mode = UI_STATS;
-    if (s) st.stats = *s;
+    if (s) { update_provider_activity_locked(s, fetched_uptime_ms); st.stats = *s; }
     st.fetched_ms = fetched_uptime_ms;
     mark();
     xSemaphoreGive(s_mtx);
@@ -1294,6 +1587,9 @@ ui_input_result_t ui_handle_input(const app_evt_t *ev)
         r = UI_INPUT_PASS;
         goto out;
     }
+
+    st.last_input_ms = esp_timer_get_time() / 1000;
+    if (st.saver_active) { saver_exit_locked(st.last_input_ms); r = UI_INPUT_CONSUMED; goto out; }
 
     switch (st.nav_level) {
     case NAV_SUMMARY:

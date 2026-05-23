@@ -12,6 +12,10 @@ lv_display_t *display_init(void);
 // Set backlight brightness (0-255 PWM duty cycle).
 void display_set_brightness(uint8_t duty);
 
+// Set PWM backlight brightness without logging; intended for frequent UI-owned
+// fade steps. Use display_set_brightness() for user/config-driven changes.
+void display_set_brightness_silent(uint8_t duty);
+
 // Rotate the panel 180° in hardware (toggles both mirror flags relative to the
 // board's native BOARD_LCD_MIRROR_X/Y). Applied live — no reboot needed. Safe
 // to call before display_init() returns (no-op until the panel handle exists).
