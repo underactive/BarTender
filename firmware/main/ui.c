@@ -91,7 +91,7 @@ static lv_obj_t *scr, *title, *status, *prov_box;
 static lv_obj_t *row_id[ROWS], *row_bar[ROWS], *row_val[ROWS], *row_icon[ROWS], *row_bar_w[ROWS];
 
 // Cost card
-static lv_obj_t *cost_card, *cost_hdr, *cost_logo, *cost_big, *cost_tok, *cost_tok_unit,
+static lv_obj_t *cost_card, *cost_hdr, *cost_logo, *cost_big, *cost_lbl, *cost_tok, *cost_tok_unit,
                 *cost_30, *cost_bar, *cost_bar_lbl, *cost_na, *cost_cap;
 static lv_obj_t      *cost_chart;
 static lv_chart_series_t *cost_ser;
@@ -679,15 +679,21 @@ static void build_widgets(void)
 
     create_card_hdr(cost_card, &cost_hdr, &cost_logo);
 
+    cost_lbl = lv_label_create(cost_card);
+    lv_obj_set_style_text_color(cost_lbl, lv_color_hex(0x9aa0a6), 0);
+    lv_obj_set_style_text_font(cost_lbl, &lv_font_montserrat_12, 0);
+    lv_obj_set_pos(cost_lbl, 12, 36);
+    lv_obj_add_flag(cost_lbl, LV_OBJ_FLAG_HIDDEN);
+
     cost_big = lv_label_create(cost_card);
     lv_obj_set_style_text_color(cost_big, lv_color_hex(0xffffff), 0);
     lv_obj_set_style_text_font(cost_big, &font_lemonmilk_48, 0);
-    lv_obj_set_pos(cost_big, 12, 32);
+    lv_obj_set_pos(cost_big, 12, 48);
 
     cost_tok = lv_label_create(cost_card);
     lv_obj_set_style_text_color(cost_tok, lv_color_hex(0x9aa0a6), 0);
     lv_obj_set_style_text_font(cost_tok, &font_lemonmilk_24, 0);
-    lv_obj_set_pos(cost_tok, 12, 88);
+    lv_obj_set_pos(cost_tok, 12, 104);
 
     cost_tok_unit = lv_label_create(cost_card);
     lv_obj_set_style_text_color(cost_tok_unit, lv_color_hex(0x9aa0a6), 0);
@@ -705,8 +711,8 @@ static void build_widgets(void)
     lv_obj_set_pos(cost_cap, 12, H - 22);
 
     cost_chart = lv_chart_create(cost_card);
-    lv_obj_set_size(cost_chart, W - 24, H - 166);
-    lv_obj_set_pos(cost_chart, 12, 120);
+    lv_obj_set_size(cost_chart, W - 24, H - 178);
+    lv_obj_set_pos(cost_chart, 12, 132);
     // BAR graph of the 30-day daily spend (CodexBar cost cache is
     // day-granular — no hourly $, so this is days, not 24h). point_count is
     // set per-render to the real history length so there are NEVER filler
@@ -1217,13 +1223,15 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
                                  cost_bar, cost_bar_lbl, cost_cap };
             for (unsigned i = 0; i < sizeof hide / sizeof *hide; i++)
                 lv_obj_add_flag(hide[i], LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(cost_lbl, LV_OBJ_FLAG_HIDDEN);
+            lv_label_set_text(cost_lbl, "TOKENS");
             lv_obj_t *show[] = { cost_big, cost_tok, cost_tok_unit, cost_30, cost_chart };
             for (unsigned i = 0; i < sizeof show / sizeof *show; i++)
                 lv_obj_clear_flag(show[i], LV_OBJ_FLAG_HIDDEN);
             const int scr_w = lv_display_get_horizontal_resolution(lv_display_get_default());
             const int scr_h = lv_display_get_vertical_resolution(lv_display_get_default());
             lv_obj_set_pos(cost_30, 12, scr_h - 22);
-            lv_obj_set_size(cost_chart, scr_w - 24, scr_h - 150);
+            lv_obj_set_size(cost_chart, scr_w - 24, scr_h - 162);
             char tk[16], rq[16], tk30[16], rq30[16];
             fmt_tokens(tk, sizeof tk, p->lm_tok_today);
             snprintf(rq, sizeof rq, "%d", (int)p->lm_req_today);
@@ -1246,6 +1254,9 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
             if (card_entered) anim_chart_fadein(cost_chart);
             return;
         }
+
+        // Hide the TOKENS label for non-LM-studio providers.
+        lv_obj_add_flag(cost_lbl, LV_OBJ_FLAG_HIDDEN);
 
         if (has_balance) {
             // OpenRouter: today cost is hero; balance is secondary (token-count style);
