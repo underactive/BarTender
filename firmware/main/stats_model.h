@@ -103,3 +103,8 @@ typedef enum {
 } stats_parse_t;
 
 stats_parse_t stats_model_parse(const char *body, stats_t *out);
+
+// Reorder the provider array to match the canonical display sequence.
+// Known providers are placed in a defined order; unknown providers follow
+// in their original relative order. Call after parsing and before rendering.
+void stats_model_reorder(stats_t *stats);

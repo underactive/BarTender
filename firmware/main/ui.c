@@ -17,7 +17,7 @@ extern const lv_font_t font_lemonmilk_24;
 #include <ctype.h>
 
 #define ROWS         STATS_MAX_PROVIDERS
-#define ROW_Y0       46
+#define ROW_Y0       20
 #define ROW_H        48          // icon column + name line + bar/% line
 #define ROW_ICON_PX  32          // matches scripts/gen-provider-icons.py
 #define ROW_TXT_X    48          // name/bar start (right of the icon column)
@@ -602,7 +602,7 @@ static void build_widgets(void)
     lv_obj_set_style_text_color(status, lv_color_hex(0x9aa0a6), 0);
     lv_obj_set_style_text_font(status, &lv_font_montserrat_12, 0);
     lv_label_set_text(status, "starting...");
-    lv_obj_set_pos(status, 8, 28);
+    lv_obj_set_pos(status, 8, 4);
 
     for (int i = 0; i < ROWS; i++) {
         int y = ROW_Y0 + i * ROW_H;
@@ -991,12 +991,19 @@ static void render_card_hdr(lv_obj_t *hdr, lv_obj_t *logo,
     up_id(up, sizeof up, id);
     lv_label_set_text_fmt(hdr, "%s  %s", up, page);
 
-    lv_color_t tc;
     const lv_image_dsc_t *ic = provider_icon(id);
     if (ic) {
         lv_image_set_src(logo, ic);
-        lv_obj_set_style_image_recolor(logo,
-            prov_accent(id, &tc) ? tc : lv_color_hex(0xe8eaed), 0);
+        if (provider_icon_is_full_color(id)) {
+            lv_obj_set_style_image_recolor_opa(
+                logo, LV_OPA_TRANSP, 0);
+        } else {
+            lv_color_t tc;
+            lv_obj_set_style_image_recolor_opa(
+                logo, LV_OPA_COVER, 0);
+            lv_obj_set_style_image_recolor(logo,
+                prov_accent(id, &tc) ? tc : lv_color_hex(0xe8eaed), 0);
+        }
         lv_obj_clear_flag(logo, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_pos(hdr, 30, 10);
     } else {
@@ -1602,10 +1609,9 @@ static void render(void)   // ui_task only
     // NAV_SUMMARY — scrollable provider list
     hide_cards();
     s_prev_nav_level = NAV_SUMMARY;   // ensure next card entry re-triggers animations
-    lv_obj_clear_flag(title,  LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(title, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(status, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(prov_box, LV_OBJ_FLAG_HIDDEN);
-    lv_label_set_text(title, "BARTENDER");
 
     // Scrollable window: `vis` rows fit; st.scroll is the top visible-provider
     // index in the compact list (hidden providers do not consume slots).
@@ -1660,15 +1666,21 @@ static void render(void)   // ui_task only
         lv_obj_clear_flag(row_val[i], LV_OBJ_FLAG_HIDDEN);
         lv_label_set_text(row_id[i], p->id);
 
-        // Provider logo (CodexBar silhouette), tinted with the provider
-        // accent (light grey if the provider has no theme color). Hidden if
-        // we have no icon for this provider id.
+        // Provider logo: A8 silhouette (tinted via recolor) or ARGB8888
+        // full-color image (no tinting). Hidden if no icon for this id.
         const lv_image_dsc_t *ic = provider_icon(p->id);
         if (ic) {
-            lv_color_t tc;
             lv_image_set_src(row_icon[i], ic);
-            lv_obj_set_style_image_recolor(row_icon[i],
-                prov_accent(p->id, &tc) ? tc : lv_color_hex(0xe8eaed), 0);
+            if (provider_icon_is_full_color(p->id)) {
+                lv_obj_set_style_image_recolor_opa(
+                    row_icon[i], LV_OPA_TRANSP, 0);
+            } else {
+                lv_color_t tc;
+                lv_obj_set_style_image_recolor_opa(
+                    row_icon[i], LV_OPA_COVER, 0);
+                lv_obj_set_style_image_recolor(row_icon[i],
+                    prov_accent(p->id, &tc) ? tc : lv_color_hex(0xe8eaed), 0);
+            }
             lv_obj_clear_flag(row_icon[i], LV_OBJ_FLAG_HIDDEN);
         } else {
             lv_obj_add_flag(row_icon[i], LV_OBJ_FLAG_HIDDEN);
@@ -1815,7 +1827,7 @@ void ui_set_stats(const stats_t *s, int64_t fetched_uptime_ms)
 {
     xSemaphoreTake(s_mtx, portMAX_DELAY);
     st.mode = UI_STATS;
-    if (s) { update_provider_activity_locked(s, fetched_uptime_ms); st.stats = *s; }
+    if (s) { update_provider_activity_locked(s, fetched_uptime_ms); st.stats = *s; stats_model_reorder(&st.stats); }
     st.fetched_ms = fetched_uptime_ms;
     mark();
     xSemaphoreGive(s_mtx);

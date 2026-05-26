@@ -259,3 +259,51 @@ stats_parse_t stats_model_parse(const char *body, stats_t *out)
     ESP_LOGI(TAG, "parsed v=%d ts=%s n=%d", out->v, out->ts, out->n);
     return STATS_PARSE_OK;
 }
+
+// ---- display ordering -----------------------------------------------------
+
+// Canonical summary-page display sequence. Providers not listed here follow
+// in their original relative order at the bottom of the list.
+// Reminder: hidden providers (ollama, opencode, opencodego) are filtered
+// in ui.c by is_hidden_provider() — they affect neither order nor slots.
+static const char *s_display_order[] = {
+    "pi",
+    "lmstudio",
+    "openrouter",
+    "claude",
+    "codex",
+    "cursor",
+};
+
+void stats_model_reorder(stats_t *stats)
+{
+    if (!stats || stats->n <= 1) return;
+
+    // Priority per slot: -1 = unknown (lowest), 0..N = display index
+    int prio[STATS_MAX_PROVIDERS];
+    const unsigned n_order = sizeof(s_display_order) / sizeof(s_display_order[0]);
+    for (int i = 0; i < stats->n; i++) {
+        prio[i] = -1;
+        for (unsigned oi = 0; oi < n_order; oi++) {
+            if (strcmp(stats->p[i].id, s_display_order[oi]) == 0) {
+                prio[i] = (int)oi;
+                break;
+            }
+        }
+    }
+
+    // Stable bubble sort by priority (n ≤ 12, trivial). Unknown providers
+    // (prio=-1) sink below all known ones. Ties preserve original order.
+    for (int i = 0; i < stats->n - 1; i++) {
+        for (int j = 0; j < stats->n - 1 - i; j++) {
+            if (prio[j + 1] != -1 && (prio[j] == -1 || prio[j + 1] < prio[j])) {
+                stats_provider_t tmp = stats->p[j];
+                stats->p[j] = stats->p[j + 1];
+                stats->p[j + 1] = tmp;
+                int tp = prio[j];
+                prio[j] = prio[j + 1];
+                prio[j + 1] = tp;
+            }
+        }
+    }
+}
