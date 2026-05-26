@@ -29,12 +29,14 @@ static const prov_color_t PROV_COLORS[] = {
     { "openrouter",  0x6F42C1 }, { "elevenlabs",  0xEBEBE6 },
     { "windsurf",    0x34E8BB }, { "perplexity",  0x20B2AA },
     { "mimo",        0xFF6900 }, { "doubao",      0x2D88FF },
-    { "abacus",      0x38BDF8 }, { "mistral",     0xFF500F },
+    { "abacus",      0x38BDF8 },
+    { "mistral",     0xFF500F },
     { "deepseek",    0x527DF0 }, { "codebuff",    0x44FF00 },
     { "crof",        0x2EAB94 }, { "venice",      0x3399FF },
     { "commandcode", 0x000000 }, { "stepfun",     0xFF8C00 },
     { "bedrock",     0xFF9900 }, { "grok",        0x10A37F },
     { "groq",        0xF56844 }, { "llmproxy",    0x24B47E },
+    { "lmstudio",   0x7C3AED },
     { "deepgram",    0x0A121B },
 };
 #define PROV_COLORS_N  (sizeof(PROV_COLORS) / sizeof(*PROV_COLORS))

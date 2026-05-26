@@ -37,6 +37,7 @@ ID_TO_SVG = {
     "minimax": "minimax", "mistral": "mistral", "perplexity": "perplexity",
     "vertexai": "vertex-ai", "abacus": "abacus-ai-dark", "zai": "zai-dark",
     "synthetic": "synthetic", "warp": "warp", "codebuff": "codebuff",
+    "lmstudio": "lmstudio",
 }
 
 

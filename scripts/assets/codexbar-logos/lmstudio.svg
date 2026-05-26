@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- LM Studio: isometric hexagon cube mark -->
+  <!-- Full hexagon silhouette -->
+  <polygon points="16,2 27,8 27,21 16,27 5,21 5,8" fill="#fff"/>
+  <!-- Right face (lighter) -->
+  <polygon points="16,14 27,8 27,21 16,27 16,14" fill="#fff" opacity="0.4"/>
+  <!-- Top face (darker) -->
+  <polygon points="16,2 27,8 16,14 5,8 16,2" fill="#fff" opacity="0.7"/>
+</svg>
