@@ -162,6 +162,81 @@ stats_parse_t stats_model_parse(const char *body, stats_t *out)
                 }
                 if (any_pi) p->has_cost = true;
             }
+            // v2 optional `lm` block: LM Studio publishes local inference
+            // metrics — requests, tokens, cache, top models, 7-day table.
+            // Dedicated fields, not cost-shaped slot reuse.
+            const cJSON *lm = cJSON_GetObjectItemCaseSensitive(e, "lm");
+            if (strcmp(p->id, "lmstudio") == 0 && cJSON_IsObject(lm)) {
+                const cJSON *x;
+                bool any_lm = false;
+                x = cJSON_GetObjectItemCaseSensitive(lm, "rq");
+                if (cJSON_IsNumber(x)) { p->lm_req_today = i32_clamp(x->valuedouble); any_lm = true; }
+                x = cJSON_GetObjectItemCaseSensitive(lm, "tk");
+                if (cJSON_IsNumber(x)) { p->lm_tok_today = i64_clamp(x->valuedouble); any_lm = true; }
+                x = cJSON_GetObjectItemCaseSensitive(lm, "mxr");
+                if (cJSON_IsNumber(x)) { p->lm_req_month_max = i32_clamp(x->valuedouble); any_lm = true; }
+                x = cJSON_GetObjectItemCaseSensitive(lm, "mxt");
+                if (cJSON_IsNumber(x)) { p->lm_tok_month_max = i64_clamp(x->valuedouble); any_lm = true; }
+                x = cJSON_GetObjectItemCaseSensitive(lm, "cp");
+                if (cJSON_IsNumber(x)) { p->lm_cache_pct = (float)x->valuedouble; any_lm = true; }
+                x = cJSON_GetObjectItemCaseSensitive(lm, "ch");
+                if (cJSON_IsNumber(x)) { p->lm_cache_hit_pct = (float)x->valuedouble; any_lm = true; }
+                const cJSON *hr = cJSON_GetObjectItemCaseSensitive(lm, "hr");
+                if (cJSON_IsArray(hr)) {
+                    const cJSON *hv;
+                    cJSON_ArrayForEach(hv, hr) {
+                        if (p->lm_hr_n >= STATS_HIST_MAX) break;
+                        if (cJSON_IsNumber(hv)) { p->lm_hr[p->lm_hr_n++] = i32_clamp(hv->valuedouble); any_lm = true; }
+                    }
+                }
+                const cJSON *ht = cJSON_GetObjectItemCaseSensitive(lm, "ht");
+                if (cJSON_IsArray(ht)) {
+                    const cJSON *hv;
+                    cJSON_ArrayForEach(hv, ht) {
+                        if (p->lm_ht_n >= STATS_HIST_MAX) break;
+                        if (cJSON_IsNumber(hv)) { p->lm_ht[p->lm_ht_n++] = i64_clamp(hv->valuedouble); any_lm = true; }
+                    }
+                }
+                const cJSON *models = cJSON_GetObjectItemCaseSensitive(lm, "models");
+                if (cJSON_IsArray(models)) {
+                    const cJSON *mv;
+                    cJSON_ArrayForEach(mv, models) {
+                        if (p->lm_models_n >= LM_MODELS_MAX) break;
+                        if (!cJSON_IsObject(mv)) continue;
+                        const cJSON *mid = cJSON_GetObjectItemCaseSensitive(mv, "id");
+                        const cJSON *mrq = cJSON_GetObjectItemCaseSensitive(mv, "rq");
+                        if (cJSON_IsString(mid) && mid->valuestring && cJSON_IsNumber(mrq)) {
+                            strlcpy(p->lm_models_id[p->lm_models_n], mid->valuestring, STATS_ID_MAX);
+                            p->lm_models_req[p->lm_models_n] = i32_clamp(mrq->valuedouble);
+                            p->lm_models_n++;
+                            any_lm = true;
+                        }
+                    }
+                }
+                const cJSON *week = cJSON_GetObjectItemCaseSensitive(lm, "week");
+                if (cJSON_IsArray(week)) {
+                    const cJSON *wv;
+                    cJSON_ArrayForEach(wv, week) {
+                        if (p->lm_week_n >= LM_WEEK_MAX) break;
+                        if (!cJSON_IsObject(wv)) continue;
+                        const cJSON *wd = cJSON_GetObjectItemCaseSensitive(wv, "d");
+                        const cJSON *wrq = cJSON_GetObjectItemCaseSensitive(wv, "rq");
+                        const cJSON *wtk = cJSON_GetObjectItemCaseSensitive(wv, "tk");
+                        const cJSON *wcp = cJSON_GetObjectItemCaseSensitive(wv, "cp");
+                        const cJSON *wch = cJSON_GetObjectItemCaseSensitive(wv, "ch");
+                        if (cJSON_IsString(wd) && wd->valuestring) {
+                            strlcpy(p->lm_week_d[p->lm_week_n], wd->valuestring, 6);
+                            if (cJSON_IsNumber(wrq)) p->lm_week_rq[p->lm_week_n] = i32_clamp(wrq->valuedouble);
+                            if (cJSON_IsNumber(wtk)) p->lm_week_tk[p->lm_week_n] = i64_clamp(wtk->valuedouble);
+                            if (cJSON_IsNumber(wcp)) p->lm_week_cp[p->lm_week_n] = (float)wcp->valuedouble;
+                            if (cJSON_IsNumber(wch)) p->lm_week_ch[p->lm_week_n] = (float)wch->valuedouble;
+                            p->lm_week_n++;
+                            any_lm = true;
+                        }
+                    }
+                }
+                if (any_lm) p->has_lm = true;
+            }
             // v2 optional `ph`: 24h usage-% history (provider-level,
             // sibling of `cost`). Absent => pct_hist_n stays 0 (memset).
             // For Pi provider: represents Current vs Max (today vs peak usage).

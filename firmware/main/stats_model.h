@@ -57,6 +57,36 @@ typedef struct {
     // For Pi provider: represents Current vs Max (today vs peak usage).
     int      pct_hist_n;
     uint8_t  pct_hist[STATS_PCT_HIST_MAX];
+
+    // v2 optional `lm` block: LM Studio publishes local inference metrics
+    // (requests, tokens, cache %, model breakdown, 7-day table) without any
+    // cost/spend data. Dedicated fields (not cost-shaped slot reuse) because
+    // LM Studio has dual parallel histories (requests + tokens) that don't
+    // match the single cost-history shape.
+    bool     has_lm;
+    int32_t  lm_req_today;          // requests today
+    int64_t  lm_tok_today;          // tokens today
+    int32_t  lm_req_month_max;      // 30-day max daily requests
+    int64_t  lm_tok_month_max;      // 30-day max daily tokens
+    float    lm_cache_pct;          // cache % (KV cache MiB / limit MiB), 0-100
+    float    lm_cache_hit_pct;      // cache hit % (avg cached/total tokens), 0-100
+    int      lm_hr_n;               // valid entries in lm_hr[]
+    int32_t  lm_hr[STATS_HIST_MAX];  // daily requests, oldest -> newest
+    int      lm_ht_n;               // valid entries in lm_ht[]
+    int64_t  lm_ht[STATS_HIST_MAX];  // daily tokens, oldest -> newest
+
+#define LM_MODELS_MAX 10
+    int      lm_models_n;
+    char     lm_models_id[LM_MODELS_MAX][STATS_ID_MAX];
+    int32_t  lm_models_req[LM_MODELS_MAX];
+
+#define LM_WEEK_MAX  7
+    int      lm_week_n;
+    char     lm_week_d[LM_WEEK_MAX][6]; // "MM-DD"
+    int32_t  lm_week_rq[LM_WEEK_MAX];
+    int64_t  lm_week_tk[LM_WEEK_MAX];
+    float    lm_week_cp[LM_WEEK_MAX];
+    float    lm_week_ch[LM_WEEK_MAX];
 } stats_provider_t;
 
 typedef struct {

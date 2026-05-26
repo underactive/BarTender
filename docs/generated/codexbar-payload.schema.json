@@ -67,6 +67,49 @@
               }
             },
             "additionalProperties": false
+          },
+          "lm": {
+            "type": "object",
+            "description": "v2 optional, LM Studio provider only. Local inference metrics from ~/.lmstudio/server-logs/. Present only on provider id `lmstudio`.",
+            "required": ["rq", "tk", "mxr", "mxt"],
+            "properties": {
+              "rq":  { "type": "integer", "description": "Requests today." },
+              "tk":  { "type": "integer", "description": "Tokens today." },
+              "mxr": { "type": "integer", "description": "30-day max daily requests." },
+              "mxt": { "type": "integer", "description": "30-day max daily tokens." },
+              "cp":  { "type": "number", "description": "Cache % (KV cache MiB / limit MiB), 0-100." },
+              "ch":  { "type": "number", "description": "Cache hit % (avg cached/total tokens), 0-100." },
+              "hr":  { "type": "array", "items": { "type": "integer" }, "maxItems": 31, "description": "Daily requests history, oldest->newest." },
+              "ht":  { "type": "array", "items": { "type": "integer" }, "maxItems": 31, "description": "Daily tokens history, oldest->newest." },
+              "models": {
+                "type": "array", "maxItems": 10,
+                "items": {
+                  "type": "object", "required": ["id", "rq"],
+                  "properties": {
+                    "id": { "type": "string", "description": "Model identifier from LM Studio request body." },
+                    "rq": { "type": "integer", "description": "Requests using this model today." }
+                  },
+                  "additionalProperties": false
+                },
+                "description": "Top-10 models by request count today."
+              },
+              "week": {
+                "type": "array", "maxItems": 7,
+                "items": {
+                  "type": "object", "required": ["d", "rq", "tk"],
+                  "properties": {
+                    "d":  { "type": "string", "description": "Date MM-DD." },
+                    "rq": { "type": "integer", "description": "Requests on this day." },
+                    "tk": { "type": "integer", "description": "Tokens on this day." },
+                    "cp": { "type": "number", "description": "Cache % on this day, 0-100." },
+                    "ch": { "type": "number", "description": "Cache hit % on this day, 0-100." }
+                  },
+                  "additionalProperties": false
+                },
+                "description": "7-day daily usage table."
+              }
+            },
+            "additionalProperties": false
           }
         }
       }
