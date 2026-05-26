@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://bartender/docs/generated/codexbar-payload.schema.json",
   "title": "CodexBar toy Upstash payload (inner, decoded from the {\"result\":\"...\"} envelope)",
-  "description": "Hand-maintained. Producer: scripts/codexbar-stats.sh --json (usage % + extra-usage $) augmented by scripts/codexbar-publish.sh (Claude/Codex cost rollups from CodexBar's local cost caches plus the reduced Pi Agent provider from scripts/pi-agent-stats.sh). Consumer: firmware/main/stats_model.{h,c}. v1 = pre-cost {id,ok,p?,pr?,s?,sr?}; v2 is a strict superset adding optional per-provider `cost`, `ph`, and `pi` objects. Firmware accepts v1 and v2; rejects other versions.",
+  "description": "Hand-maintained. Producer: scripts/codexbar-stats.sh --json (usage % + extra-usage $) augmented by scripts/codexbar-publish.sh (Claude/Codex cost rollups from CodexBar's local cost caches plus the reduced Pi Agent provider from scripts/pi-agent-stats.sh and optional per-provider `cu` on `cursor` from scripts/cursor-stats.sh). Consumer: firmware/main/stats_model.{h,c}. v1 = pre-cost {id,ok,p?,pr?,s?,sr?}; v2 is a strict superset adding optional per-provider `cost`, `ph`, `pi`, `lm`, and `cu` objects. Firmware accepts v1 and v2; rejects other versions.",
   "type": "object",
   "required": ["v", "ts", "providers"],
   "properties": {
@@ -107,6 +107,23 @@
                   "additionalProperties": false
                 },
                 "description": "7-day daily usage table."
+              }
+            },
+            "additionalProperties": false
+          },
+          "cu": {
+            "type": "object",
+            "description": "v2 optional, Cursor provider only. Mac-local daily token rollup from scripts/cursor-stats.sh merged by codexbar-publish.sh. Present only on provider id `cursor`; WorkosCursorSessionToken never published.",
+            "required": ["tk", "mxt", "ht"],
+            "properties": {
+              "sess": { "type": "boolean", "description": "true when the Mac Keychain Cursor session validated on last publish; false means re-run --set-cursor-session (device may show a summary hint)." },
+              "tk":  { "type": "integer", "description": "Tokens today (Mac-local calendar day)." },
+              "mxt": { "type": "integer", "description": "30-day max daily tokens." },
+              "ht":  {
+                "type": "array",
+                "items": { "type": "integer" },
+                "maxItems": 31,
+                "description": "Daily token totals, oldest -> newest. Firmware caps at STATS_HIST_MAX."
               }
             },
             "additionalProperties": false

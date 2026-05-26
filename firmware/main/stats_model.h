@@ -87,6 +87,15 @@ typedef struct {
     int64_t  lm_week_tk[LM_WEEK_MAX];
     float    lm_week_cp[LM_WEEK_MAX];
     float    lm_week_ch[LM_WEEK_MAX];
+
+    // v2 optional `cu` block: Cursor token rollup (Mac-local daily totals).
+    // Token-only — no cost/requests. Dedicated fields (not cost-slot reuse).
+    bool     has_cu;
+    bool     cu_sess_ok;                // false => Mac Keychain session stale; refresh cookie
+    int64_t  cu_tok_today;              // tokens today (Mac-local calendar day)
+    int64_t  cu_tok_month_max;          // 30-day max daily tokens
+    int      cu_ht_n;                   // valid entries in cu_ht[]
+    int64_t  cu_ht[STATS_HIST_MAX];     // daily tokens, oldest -> newest
 } stats_provider_t;
 
 typedef struct {

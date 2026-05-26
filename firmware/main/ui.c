@@ -186,6 +186,17 @@ static uint32_t provider_metric_sig(const stats_provider_t *p)
         h = hash_mix_u32(h, (uint32_t)p->lm_models_n);
         h = hash_mix_u32(h, (uint32_t)p->lm_week_n);
     }
+    h = hash_mix_u32(h, p->has_cu ? 1U : 0U);
+    if (p->has_cu) {
+        h = hash_mix_u32(h, p->cu_sess_ok ? 1U : 0U);
+        h = hash_mix_u32(h, (uint32_t)p->cu_tok_today);
+        h = hash_mix_u32(h, (uint32_t)(p->cu_tok_today >> 32));
+        h = hash_mix_u32(h, (uint32_t)p->cu_tok_month_max);
+        h = hash_mix_u32(h, (uint32_t)(p->cu_tok_month_max >> 32));
+        h = hash_mix_u32(h, (uint32_t)p->cu_ht_n);
+        for (int i = 0; i < p->cu_ht_n && i < STATS_HIST_MAX; i++)
+            h = hash_mix_u32(h, (uint32_t)p->cu_ht[i]);
+    }
     return h;
 }
 
@@ -214,7 +225,7 @@ static void update_provider_activity_locked(const stats_t *s, int64_t now_ms)
     for (int i = 0; i < s->n && i < STATS_MAX_PROVIDERS; i++) {
         const stats_provider_t *p = &s->p[i];
         if (!p->id[0] || is_hidden_provider(p->id) || !p->ok) continue;
-        if (!p->has_cost && !provider_has_limits_card(p) && !p->has_lm) continue;
+        if (!p->has_cost && !provider_has_limits_card(p) && !p->has_lm && !p->has_cu) continue;
         uint32_t sig = provider_metric_sig(p);
         saver_activity_t *slot = activity_slot(p->id);
         if (!slot->has_sig) { slot->sig = sig; slot->has_sig = true; }
@@ -232,7 +243,7 @@ static int find_provider_id(const char *id)
 static bool provider_card_available(const stats_provider_t *p, card_kind_t card)
 {
     switch (card) {
-        case CARD_COST:         return p->has_cost || p->has_lm;
+        case CARD_COST:         return p->has_cost || p->has_lm || p->has_cu;
         case CARD_LIMITS:       return provider_has_limits_card(p) || p->has_lm;
     }
     return false;
@@ -249,7 +260,7 @@ static bool saver_candidate_at(int64_t now, int start, char *id, size_t id_n, ca
         if (pi < 0) continue;
         const stats_provider_t *p = &st.stats.p[pi];
         if (is_hidden_provider(p->id) || !p->ok) continue;
-        if (p->has_cost || p->has_lm) *card = CARD_COST;
+        if (p->has_cost || p->has_lm || p->has_cu) *card = CARD_COST;
         else if (provider_has_limits_card(p)) *card = CARD_LIMITS;
         else continue;
         strlcpy(id, a->id, id_n);
@@ -569,6 +580,15 @@ static void create_card_hdr(lv_obj_t *card, lv_obj_t **hdr_out, lv_obj_t **logo_
 static void render_card_hdr(lv_obj_t *hdr, lv_obj_t *logo, const char *id, const char *page);
 static void bar_opa_cb(void *obj, int32_t opa);
 static void update_bar_pulse(lv_obj_t *bar, float pct);
+
+#define CURSOR_SESS_AMBER 0xF4A261
+
+static bool cursor_sess_refresh_needed(const stats_provider_t *p)
+{
+    if (strcmp(p->id, "cursor") != 0 || !p->ok || !p->has_p) return false;
+    if (!p->has_cu) return true;
+    return !p->cu_sess_ok;
+}
 
 static void build_widgets(void)
 {
@@ -1028,6 +1048,33 @@ static void update_bar_pulse(lv_obj_t *bar, float pct)
     }
 }
 
+static void cursor_icon_opa_cb(void *obj, int32_t opa)
+{
+    lv_obj_set_style_image_recolor_opa((lv_obj_t *)obj, (lv_opa_t)opa, 0);
+}
+
+// Slow amber pulse on the Cursor icon when the Mac session cookie needs refresh.
+static void update_cursor_sess_pulse(lv_obj_t *icon, bool needs)
+{
+    bool running = (lv_anim_get(icon, cursor_icon_opa_cb) != NULL);
+    if (needs && !running) {
+        lv_obj_set_style_image_recolor(icon, lv_color_hex(CURSOR_SESS_AMBER), 0);
+        lv_obj_set_style_image_recolor_opa(icon, LV_OPA_COVER, 0);
+        lv_anim_t a;
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, icon);
+        lv_anim_set_exec_cb(&a, cursor_icon_opa_cb);
+        lv_anim_set_values(&a, LV_OPA_30, LV_OPA_COVER);
+        lv_anim_set_duration(&a, 1200);
+        lv_anim_set_playback_duration(&a, 1200);
+        lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+        lv_anim_start(&a);
+    } else if (!needs && running) {
+        lv_anim_delete(icon, cursor_icon_opa_cb);
+        lv_obj_set_style_image_recolor_opa(icon, LV_OPA_COVER, 0);
+    }
+}
+
 static void count_pct_cb(void *obj, int32_t v)
 {
     lv_label_set_text_fmt((lv_obj_t *)obj, "%d.%d%%", (int)(v / 10), (int)(v % 10));
@@ -1144,13 +1191,14 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
     bool has_balance = (p->credits_limit_c > 0 || p->credits_remaining_c > 0);
     bool is_pi = (strcmp(p->id, "pi") == 0);
     bool is_lmstudio = (strcmp(p->id, "lmstudio") == 0);
+    bool is_cursor = (strcmp(p->id, "cursor") == 0);
 
     if (st.nav_card == CARD_COST) {
         lv_obj_add_flag(lim_card, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(cost_card, LV_OBJ_FLAG_HIDDEN);
         render_card_hdr(cost_hdr, cost_logo, p->id, "TODAY");
 
-        if (!p->has_cost && !p->has_lm) {
+        if (!p->has_cost && !p->has_lm && !p->has_cu) {
             lv_obj_clear_flag(cost_na, LV_OBJ_FLAG_HIDDEN);
             lv_obj_t *all[] = { cost_big, cost_tok, cost_tok_unit, cost_30, cost_cap,
                                 cost_chart, cost_bar, cost_bar_lbl,
@@ -1193,6 +1241,39 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
             int32_t ht32[STATS_HIST_MAX];
             for (int hi = 0; hi < n && hi < STATS_HIST_MAX; hi++)
                 ht32[hi] = (int32_t)(p->lm_ht[hi] > INT32_MAX ? INT32_MAX : p->lm_ht[hi]);
+            (void)render_cost_bar_chart(cost_chart, cost_ser, ht32, n,
+                prov_accent(p->id, &cc) ? cc : lv_color_hex(0x7C3AED));
+            if (card_entered) anim_chart_fadein(cost_chart);
+            return;
+        }
+
+        if (is_cursor && p->has_cu) {
+            // CURSOR TODAY: token hero only (no requests line, no $, no OR rows)
+            lv_obj_t *hide[] = { cost_or_lbl, cost_or_row1, cost_or_row2,
+                                 cost_bar, cost_bar_lbl, cost_cap,
+                                 cost_tok, cost_tok_unit };
+            for (unsigned i = 0; i < sizeof hide / sizeof *hide; i++)
+                lv_obj_add_flag(hide[i], LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(cost_lbl, LV_OBJ_FLAG_HIDDEN);
+            lv_label_set_text(cost_lbl, "TOKENS");
+            lv_obj_t *show[] = { cost_big, cost_30, cost_chart };
+            for (unsigned i = 0; i < sizeof show / sizeof *show; i++)
+                lv_obj_clear_flag(show[i], LV_OBJ_FLAG_HIDDEN);
+            const int scr_w = lv_display_get_horizontal_resolution(lv_display_get_default());
+            const int scr_h = lv_display_get_vertical_resolution(lv_display_get_default());
+            lv_obj_set_pos(cost_30, 12, scr_h - 22);
+            lv_obj_set_size(cost_chart, scr_w - 24, scr_h - 162);
+            char tk[16], tk30[16];
+            fmt_tokens(tk, sizeof tk, p->cu_tok_today);
+            lv_label_set_text(cost_big, tk);
+            fmt_tokens(tk30, sizeof tk30, p->cu_tok_month_max);
+            lv_label_set_text_fmt(cost_30, "30 DAY MAX: %s Toks", tk30);
+            int n = p->cu_ht_n;
+            if (n > NAV_HIST_PTS) n = NAV_HIST_PTS;
+            lv_color_t cc;
+            int32_t ht32[STATS_HIST_MAX];
+            for (int hi = 0; hi < n && hi < STATS_HIST_MAX; hi++)
+                ht32[hi] = (int32_t)(p->cu_ht[hi] > INT32_MAX ? INT32_MAX : p->cu_ht[hi]);
             (void)render_cost_bar_chart(cost_chart, cost_ser, ht32, n,
                 prov_accent(p->id, &cc) ? cc : lv_color_hex(0x7C3AED));
             if (card_entered) anim_chart_fadein(cost_chart);
@@ -1548,7 +1629,12 @@ static void render(void)   // ui_task only
         const stats_provider_t *p = &st.stats.p[pi];
         lv_obj_clear_flag(row_id[i],  LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(row_val[i], LV_OBJ_FLAG_HIDDEN);
-        lv_label_set_text(row_id[i], p->id);
+        {
+            bool cu_warn = cursor_sess_refresh_needed(p);
+            lv_label_set_text(row_id[i], p->id);
+            lv_obj_set_style_text_color(row_id[i],
+                cu_warn ? lv_color_hex(CURSOR_SESS_AMBER) : lv_color_hex(0xe8eaed), 0);
+        }
 
         // Provider logo: A8 silhouette (tinted via recolor) or ARGB8888
         // full-color image (no tinting). Hidden if no icon for this id.
@@ -1566,8 +1652,10 @@ static void render(void)   // ui_task only
                     prov_accent(p->id, &tc) ? tc : lv_color_hex(0xe8eaed), 0);
             }
             lv_obj_clear_flag(row_icon[i], LV_OBJ_FLAG_HIDDEN);
+            update_cursor_sess_pulse(row_icon[i], cursor_sess_refresh_needed(p));
         } else {
             lv_obj_add_flag(row_icon[i], LV_OBJ_FLAG_HIDDEN);
+            update_cursor_sess_pulse(row_icon[i], false);
         }
 
         if (!p->ok || !p->has_p) {
@@ -1754,8 +1842,9 @@ ui_input_result_t ui_handle_input(const app_evt_t *ev)
                 const stats_provider_t *tp = &st.stats.p[pi];
                 st.nav_provider = pi;
                 strlcpy(st.nav_id, tp->id, sizeof st.nav_id);
-                // LM Studio opens CARD_COST (TODAY) like Pi; others open Cost if available
-                if (strcmp(tp->id, "lmstudio") == 0) {
+                // LM Studio / Cursor (cu) open CARD_COST (TODAY); others open Cost if available
+                if (strcmp(tp->id, "lmstudio") == 0
+                    || (strcmp(tp->id, "cursor") == 0 && tp->has_cu)) {
                     st.nav_card = CARD_COST;
                 } else {
                     st.nav_card = tp->has_cost ? CARD_COST : CARD_LIMITS;
@@ -1772,15 +1861,17 @@ ui_input_result_t ui_handle_input(const app_evt_t *ev)
     case NAV_PAGE:
         if (ev->type == APP_EVT_TAP) {
             // All providers: 2-card toggle (like other providers).
-            if (strcmp(st.stats.p[st.nav_provider].id, "lmstudio") == 0) {
+            const stats_provider_t *np = &st.stats.p[st.nav_provider];
+            if (strcmp(np->id, "lmstudio") == 0) {
                 st.nav_card = (st.nav_card == CARD_COST) ? CARD_LIMITS
-                    : (st.stats.p[st.nav_provider].has_cost ? CARD_COST : CARD_LIMITS);
-                st.dirty = true;
+                    : (np->has_cost ? CARD_COST : CARD_LIMITS);
+            } else if (strcmp(np->id, "cursor") == 0 && np->has_cu) {
+                st.nav_card = (st.nav_card == CARD_COST) ? CARD_LIMITS : CARD_COST;
             } else {
                 st.nav_card = (st.nav_card == CARD_COST) ? CARD_LIMITS
-                    : (st.stats.p[st.nav_provider].has_cost ? CARD_COST : CARD_LIMITS);
-                st.dirty = true;
+                    : (np->has_cost ? CARD_COST : CARD_LIMITS);
             }
+            st.dirty = true;
         } else if (ev->type == APP_EVT_SWIPE_LEFT) {   // back to the list
             st.nav_level = NAV_SUMMARY;
             st.dirty = true;

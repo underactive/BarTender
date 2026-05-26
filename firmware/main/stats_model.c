@@ -237,6 +237,32 @@ stats_parse_t stats_model_parse(const char *body, stats_t *out)
                 }
                 if (any_lm) p->has_lm = true;
             }
+            // v2 optional `cu` block: Cursor publishes Mac-local token rollup
+            // from cursor-stats.sh (no cost/requests).
+            const cJSON *cu = cJSON_GetObjectItemCaseSensitive(e, "cu");
+            if (strcmp(p->id, "cursor") == 0 && cJSON_IsObject(cu)) {
+                const cJSON *x;
+                bool any_cu = false;
+                p->cu_sess_ok = true;
+                x = cJSON_GetObjectItemCaseSensitive(cu, "sess");
+                if (cJSON_IsBool(x) && !cJSON_IsTrue(x)) p->cu_sess_ok = false;
+                x = cJSON_GetObjectItemCaseSensitive(cu, "tk");
+                if (cJSON_IsNumber(x)) { p->cu_tok_today = i64_clamp(x->valuedouble); any_cu = true; }
+                x = cJSON_GetObjectItemCaseSensitive(cu, "mxt");
+                if (cJSON_IsNumber(x)) { p->cu_tok_month_max = i64_clamp(x->valuedouble); any_cu = true; }
+                const cJSON *ht = cJSON_GetObjectItemCaseSensitive(cu, "ht");
+                if (cJSON_IsArray(ht)) {
+                    const cJSON *hv;
+                    cJSON_ArrayForEach(hv, ht) {
+                        if (p->cu_ht_n >= STATS_HIST_MAX) break;
+                        if (cJSON_IsNumber(hv)) {
+                            p->cu_ht[p->cu_ht_n++] = i64_clamp(hv->valuedouble);
+                            any_cu = true;
+                        }
+                    }
+                }
+                if (any_cu) p->has_cu = true;
+            }
             // v2 optional `ph`: 24h usage-% history (provider-level,
             // sibling of `cost`). Absent => pct_hist_n stays 0 (memset).
             // For Pi provider: represents Current vs Max (today vs peak usage).

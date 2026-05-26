@@ -37,6 +37,24 @@ printf 'UPSTASH_REST_URL=https://<db>.upstash.io\nUPSTASH_KEY=codexbar\n' \
   > ~/.config/codexbar-toy/config
 ./scripts/codexbar-publish.sh --set-token      # paste the WRITE token
 ./scripts/codexbar-publish.sh --install        # launchd publishes every 5 min
+
+# 3. (optional) Cursor token stats on the device (CURSOR TODAY page)
+chmod +x scripts/cursor-stats.sh
+./scripts/codexbar-publish.sh --set-cursor-session-clipboard   # after copying Cookie (see below)
+./scripts/cursor-stats.sh                            # should print ok:true with cu:{...}
+./scripts/codexbar-publish.sh --once                 # merges cu onto cursor limits row
+```
+
+**Cursor session (if `cursor-stats.sh` prints HTTP 403 or `no usable Cursor token data`):** log in at [cursor.com](https://cursor.com), open DevTools → **Network**, reload the usage dashboard, click any `cursor.com/api/…` request, and copy the full **`Cookie`** request header (not just `WorkosCursorSessionToken`). Then either:
+
+- `./scripts/codexbar-publish.sh --set-cursor-session-clipboard` (copy first, then run — no typing), or
+- `pbpaste | ./scripts/codexbar-publish.sh --set-cursor-session` (paste the Cookie line only, or the whole “Copy request headers” block — the script extracts the `Cookie:` line).
+
+Diagnose without publishing secrets:
+
+```bash
+./scripts/cursor-stats.sh --check    # keychain / probe / api booleans
+./scripts/cursor-stats.sh --debug    # adds stderr detail (cookie names, API shape)
 ```
 
 ## Usage
@@ -56,6 +74,9 @@ printf 'UPSTASH_REST_URL=https://<db>.upstash.io\nUPSTASH_KEY=codexbar\n' \
 |---------|--------|
 | `codexbar-publish.sh --once` | One publish cycle (default) |
 | `codexbar-publish.sh --set-token` | Store the Upstash write token in the macOS Keychain |
+| `codexbar-publish.sh --set-cursor-session` | Store Cursor Cookie header (visible terminal paste) |
+| `codexbar-publish.sh --set-cursor-session-clipboard` | Store Cursor Cookie from clipboard (`pbpaste`) |
+| `cursor-stats.sh` | Emit `cu` token rollup JSON (merged by the publisher onto `cursor`) |
 | `codexbar-publish.sh --install` / `--uninstall` | Add/remove the launchd schedule |
 | `codexbar-publish.sh --status` | Job state, target, token readiness, recent log |
 | `codexbar-publish.sh --print-plist` | Preview the launchd plist that `--install` would write |
