@@ -29,7 +29,7 @@ typedef enum { UI_PROVISION, UI_STATS } ui_mode_t;
 // Sub-state of UI_STATS: the scrollable summary list, or a per-provider page
 // (Cost/Limit, toggled by tap; entered by tapping a summary row).
 typedef enum { NAV_SUMMARY, NAV_PAGE } nav_level_t;
-typedef enum { CARD_COST, CARD_LIMITS, CARD_LM_STATS_2, CARD_LM_STATS_3 } card_kind_t;
+typedef enum { CARD_COST, CARD_LIMITS } card_kind_t;
 
 #define SCREENSAVER_IDLE_MS     (5LL * 60LL * 1000LL)
 #define SCREENSAVER_ACTIVE_MS   (8LL * 60LL * 60LL * 1000LL)
@@ -107,10 +107,7 @@ static lv_obj_t *lim_card, *lim_hdr, *lim_logo,
 static lv_obj_t      *lim_chart;
 static lv_chart_series_t *lim_ser;
 
-// LM Studio card 2: top-10 models table
-static lv_obj_t *lm2_card, *lm2_hdr, *lm2_logo, *lm2_table;
-// LM Studio card 3: 7-day daily usage table
-static lv_obj_t *lm3_card, *lm3_hdr, *lm3_logo, *lm3_table;
+
 
 // Animation state — ui_task only, no mutex needed
 static nav_level_t s_prev_nav_level    = NAV_SUMMARY;
@@ -237,8 +234,6 @@ static bool provider_card_available(const stats_provider_t *p, card_kind_t card)
     switch (card) {
         case CARD_COST:         return p->has_cost || p->has_lm;
         case CARD_LIMITS:       return provider_has_limits_card(p) || p->has_lm;
-        case CARD_LM_STATS_2:   return p->has_lm;
-        case CARD_LM_STATS_3:   return p->has_lm;
     }
     return false;
 }
@@ -354,9 +349,9 @@ static void saver_advance_locked(int64_t now)
     } else {
         int pi = find_provider_id(st.saver_id);
         if (pi >= 0 && strcmp(st.stats.p[pi].id, "lmstudio") == 0) {
-            // LM Studio: cycle through all 4 cards
-            int next_card = ((int)st.saver_card + 1) % 4;
-            if (next_card == 0 && st.saver_card == CARD_LM_STATS_3) {
+            // LM Studio: 2-card cycle
+            int next_card = ((int)st.saver_card + 1) % 2;
+            if (next_card == 0 && st.saver_card == CARD_LIMITS) {
                 // Wrapped around — check next provider or summary
                 int start = 0;
                 for (int i = 0; i < STATS_MAX_PROVIDERS; i++)
@@ -914,55 +909,6 @@ static void build_widgets(void)
     lv_obj_set_style_bg_color(lim_x_bar, lv_color_hex(0x3a3a3a), 0);
     lv_obj_set_style_bg_opa(lim_x_bar, LV_OPA_COVER, 0);
 
-    // ---- LM Studio card 2: top-10 models table ----
-    lm2_card = lv_obj_create(scr);
-    lv_obj_set_size(lm2_card, W, H);
-    lv_obj_set_pos(lm2_card, 0, 0);
-    lv_obj_set_style_bg_color(lm2_card, lv_color_hex(0x0b0b0b), 0);
-    lv_obj_set_style_bg_opa(lm2_card, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(lm2_card, 0, 0);
-    lv_obj_set_style_radius(lm2_card, 0, 0);
-    lv_obj_set_style_pad_all(lm2_card, 0, 0);
-    lv_obj_clear_flag(lm2_card, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(lm2_card, LV_OBJ_FLAG_HIDDEN);
-    create_card_hdr(lm2_card, &lm2_hdr, &lm2_logo);
-    lm2_table = lv_table_create(lm2_card);
-    lv_obj_set_pos(lm2_table, 12, 34);
-    lv_obj_set_size(lm2_table, W - 24, H - 44);
-    lv_table_set_col_cnt(lm2_table, 3);
-    lv_table_set_cell_value(lm2_table, 0, 0, "#");
-    lv_table_set_cell_value(lm2_table, 0, 1, "Model");
-    lv_table_set_cell_value(lm2_table, 0, 2, "Req");
-    lv_obj_set_style_text_color(lm2_table, lv_color_hex(0xe8eaed), 0);
-    lv_obj_set_style_border_width(lm2_table, 0, 0);
-    lv_obj_set_style_radius(lm2_table, 0, 0);
-    lv_obj_set_style_pad_all(lm2_table, 0, 0);
-
-    // ---- LM Studio card 3: 7-day daily usage table ----
-    lm3_card = lv_obj_create(scr);
-    lv_obj_set_size(lm3_card, W, H);
-    lv_obj_set_pos(lm3_card, 0, 0);
-    lv_obj_set_style_bg_color(lm3_card, lv_color_hex(0x0b0b0b), 0);
-    lv_obj_set_style_bg_opa(lm3_card, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(lm3_card, 0, 0);
-    lv_obj_set_style_radius(lm3_card, 0, 0);
-    lv_obj_set_style_pad_all(lm3_card, 0, 0);
-    lv_obj_clear_flag(lm3_card, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(lm3_card, LV_OBJ_FLAG_HIDDEN);
-    create_card_hdr(lm3_card, &lm3_hdr, &lm3_logo);
-    lm3_table = lv_table_create(lm3_card);
-    lv_obj_set_pos(lm3_table, 12, 34);
-    lv_obj_set_size(lm3_table, W - 24, H - 44);
-    lv_table_set_col_cnt(lm3_table, 5);
-    lv_table_set_cell_value(lm3_table, 0, 0, "Date");
-    lv_table_set_cell_value(lm3_table, 0, 1, "Req");
-    lv_table_set_cell_value(lm3_table, 0, 2, "Toks");
-    lv_table_set_cell_value(lm3_table, 0, 3, "Cp%");
-    lv_table_set_cell_value(lm3_table, 0, 4, "Hit%");
-    lv_obj_set_style_text_color(lm3_table, lv_color_hex(0xe8eaed), 0);
-    lv_obj_set_style_border_width(lm3_table, 0, 0);
-    lv_obj_set_style_radius(lm3_table, 0, 0);
-    lv_obj_set_style_pad_all(lm3_table, 0, 0);
 }
 
 // ---- navigation helpers --------------------------------------------------
@@ -1026,8 +972,6 @@ static void hide_cards(void)     // hide all card panels (chrome stays)
     update_bar_pulse(lim_x_bar, 0.0f);
     lv_obj_add_flag(cost_card, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(lim_card,  LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(lm2_card,  LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(lm3_card,  LV_OBJ_FLAG_HIDDEN);
 }
 
 static void hide_summary_chrome(void)  // hide title/status/rows before a card
@@ -1337,85 +1281,14 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
         return;
     }
 
-    // LM Studio card 2: top-10 models table
-    if (st.nav_card == CARD_LM_STATS_2 && is_lmstudio) {
-        lv_obj_add_flag(cost_card, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(lim_card, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(lm2_card, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(lm3_card, LV_OBJ_FLAG_HIDDEN);
-        render_card_hdr(lm2_hdr, lm2_logo, p->id, "MODELS");
-        const int scr_w = lv_display_get_horizontal_resolution(lv_display_get_default());
-        int n = p->lm_models_n;
-        lv_table_set_row_cnt(lm2_table, (uint32_t)(n > 0 ? n + 1 : 1));
-        for (int i = 1; i <= n && i < LM_MODELS_MAX; i++) {
-            char rank[4], rq[12];
-            snprintf(rank, sizeof rank, "%d", i);
-            snprintf(rq, sizeof rq, "%d", (int)p->lm_models_req[i - 1]);
-            lv_table_set_cell_value(lm2_table, i, 0, rank);
-            lv_table_set_cell_value(lm2_table, i, 1, p->lm_models_id[i - 1]);
-            lv_table_set_cell_value(lm2_table, i, 2, rq);
-        }
-        if (n == 0) {
-            lv_table_set_cell_value(lm2_table, 1, 0, "--");
-            lv_table_set_cell_value(lm2_table, 1, 1, "no models");
-            lv_table_set_cell_value(lm2_table, 1, 2, "--");
-        }
-        lv_table_set_col_width(lm2_table, 0, 36);
-        lv_table_set_col_width(lm2_table, 1, scr_w - 110);
-        lv_table_set_col_width(lm2_table, 2, 50);
-        return;
-    }
-
-    // LM Studio card 3: 7-day daily usage table
-    if (st.nav_card == CARD_LM_STATS_3 && is_lmstudio) {
-        lv_obj_add_flag(cost_card, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(lim_card, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(lm2_card, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(lm3_card, LV_OBJ_FLAG_HIDDEN);
-        render_card_hdr(lm3_hdr, lm3_logo, p->id, "WEEK");
-        int n = p->lm_week_n;
-        lv_table_set_row_cnt(lm3_table, (uint32_t)(n > 0 ? n + 1 : 1));
-        for (int i = 1; i <= n && i < LM_WEEK_MAX; i++) {
-            lv_table_set_cell_value(lm3_table, i, 0, p->lm_week_d[i - 1]);
-            char rq[12], tk[12], cp[8], ch[8];
-            snprintf(rq, sizeof rq, "%d", (int)p->lm_week_rq[i - 1]);
-            lv_table_set_cell_value(lm3_table, i, 1, rq);
-            fmt_tokens(tk, sizeof tk, p->lm_week_tk[i - 1]);
-            lv_table_set_cell_value(lm3_table, i, 2, tk);
-            if (p->lm_week_cp[i - 1] > 0)
-                snprintf(cp, sizeof cp, "%.0f%%", (double)p->lm_week_cp[i - 1]);
-            else
-                snprintf(cp, sizeof cp, "N/A");
-            lv_table_set_cell_value(lm3_table, i, 3, cp);
-            if (p->lm_week_ch[i - 1] > 0)
-                snprintf(ch, sizeof ch, "%.0f%%", (double)p->lm_week_ch[i - 1]);
-            else
-                snprintf(ch, sizeof ch, "N/A");
-            lv_table_set_cell_value(lm3_table, i, 4, ch);
-        }
-        if (n == 0) {
-            lv_table_set_cell_value(lm3_table, 1, 0, "--");
-            lv_table_set_cell_value(lm3_table, 1, 1, "--");
-            lv_table_set_cell_value(lm3_table, 1, 2, "--");
-            lv_table_set_cell_value(lm3_table, 1, 3, "--");
-            lv_table_set_cell_value(lm3_table, 1, 4, "--");
-        }
-        lv_table_set_col_width(lm3_table, 0, 48);
-        lv_table_set_col_width(lm3_table, 1, 48);
-        lv_table_set_col_width(lm3_table, 2, 54);
-        lv_table_set_col_width(lm3_table, 3, 48);
-        lv_table_set_col_width(lm3_table, 4, 48);
-        return;
-    }
-
     // CARD_LIMITS — works for any provider (uses p/pr/s/sr already on device)
     lv_obj_add_flag(cost_card, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(lim_card, LV_OBJ_FLAG_HIDDEN);
     char pb[12];
 
     if (is_lmstudio) {
-        // LM Studio STATS 1: tokens % (session) + requests % (weekly)
-        render_card_hdr(lim_hdr, lim_logo, p->id, "STATS 1");
+        // LM Studio STATS: tokens % (session) + requests % (weekly)
+        render_card_hdr(lim_hdr, lim_logo, p->id, "STATS");
         lv_obj_add_flag(lim_a_lbl, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(lim_a_big, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(lim_a_bar, LV_OBJ_FLAG_HIDDEN);
@@ -1898,9 +1771,10 @@ ui_input_result_t ui_handle_input(const app_evt_t *ev)
 
     case NAV_PAGE:
         if (ev->type == APP_EVT_TAP) {
-            // LM Studio: 4-card wrap-around. Others: 2-card toggle.
+            // All providers: 2-card toggle (like other providers).
             if (strcmp(st.stats.p[st.nav_provider].id, "lmstudio") == 0) {
-                st.nav_card = (card_kind_t)(((int)st.nav_card + 1) % 4);
+                st.nav_card = (st.nav_card == CARD_COST) ? CARD_LIMITS
+                    : (st.stats.p[st.nav_provider].has_cost ? CARD_COST : CARD_LIMITS);
                 st.dirty = true;
             } else {
                 st.nav_card = (st.nav_card == CARD_COST) ? CARD_LIMITS
