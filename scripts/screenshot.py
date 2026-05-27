@@ -60,16 +60,49 @@ def receive_frame(ser):
 
     chunks = []
     received = 0
+    raw_received = 0
+    pending_crs = 0
+
+    # The device writes the binary frame to stdout, which may be configured as
+    # a text console. ESP-IDF's console path can expand every payload LF byte
+    # (0x0a) into CRLF (0x0d 0x0a). If the host reads exactly data_len raw bytes
+    # the extra CR bytes shift later RGB565 pixels, showing up as colored lines
+    # and corrupted text. Decode until we have data_len payload bytes after
+    # undoing that expansion.
     while received < data_len:
-        chunk = ser.read(min(data_len - received, 4096))
-        if not chunk:
+        raw = ser.read(min(data_len - received, 4096))
+        if not raw:
             raise TimeoutError(
-                f"Stalled: received {received}/{data_len} bytes")
-        chunks.append(chunk)
-        received += len(chunk)
+                f"Stalled: received {received}/{data_len} payload bytes "
+                f"({raw_received} raw bytes)")
+        raw_received += len(raw)
+
+        out = bytearray()
+        for byte in raw:
+            if byte == 0x0D:
+                pending_crs += 1
+            elif byte == 0x0A and pending_crs:
+                out.extend(b"\x0D" * (pending_crs - 1))
+                out.append(0x0A)
+                pending_crs = 0
+            else:
+                if pending_crs:
+                    out.extend(b"\x0D" * pending_crs)
+                    pending_crs = 0
+                out.append(byte)
+
+        if out:
+            take = min(len(out), data_len - received)
+            chunks.append(bytes(out[:take]))
+            received += take
+
         sys.stdout.write(f"\r  Progress: {received:,}/{data_len:,} bytes")
         sys.stdout.flush()
-    print()
+
+    if raw_received != data_len:
+        print(f"\n  Decoded {raw_received:,} raw bytes from text-mode stream")
+    else:
+        print()
 
     return w, h, b"".join(chunks)
 
