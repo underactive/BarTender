@@ -1321,12 +1321,13 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
             const int scr_h = lv_display_get_vertical_resolution(lv_display_get_default());
             if (is_pi) {
                 lv_obj_add_flag(cost_cap, LV_OBJ_FLAG_HIDDEN);
-                lv_obj_set_pos(cost_30, 12, scr_h - 22); // use the freed bottom caption slot
+                lv_obj_set_pos(cost_30, 12, scr_h - 14); // lowered to clear chart bars by ~14px
             } else {
                 lv_obj_clear_flag(cost_cap, LV_OBJ_FLAG_HIDDEN);
-                lv_obj_set_pos(cost_30, 12, scr_h - 38);
+                lv_obj_set_pos(cost_cap, 12, scr_h - 20); // lowered to clear chart bars
+                lv_obj_set_pos(cost_30, 12, scr_h - 36);
             }
-            lv_obj_set_size(cost_chart, scr_w - 24, scr_h - (is_pi ? 150 : 166));
+            lv_obj_set_size(cost_chart, scr_w - 24, scr_h - (is_pi ? 164 : 176));
             char m[16], tk[16], m30[16], tk30[16];
             fmt_money(m, sizeof m, p->cost_today_c);
             if (card_entered) {
