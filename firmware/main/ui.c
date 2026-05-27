@@ -1222,8 +1222,8 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
                 lv_obj_clear_flag(show[i], LV_OBJ_FLAG_HIDDEN);
             const int scr_w = lv_display_get_horizontal_resolution(lv_display_get_default());
             const int scr_h = lv_display_get_vertical_resolution(lv_display_get_default());
-            lv_obj_set_pos(cost_30, 12, scr_h - 22);
-            lv_obj_set_size(cost_chart, scr_w - 24, scr_h - 162);
+            lv_obj_set_pos(cost_30, 12, scr_h - 16);
+            lv_obj_set_size(cost_chart, scr_w - 24, scr_h - 172);
             char tk[16], rq[16], tk30[16], rq30[16];
             fmt_tokens(tk, sizeof tk, p->lm_tok_today);
             snprintf(rq, sizeof rq, "%d", (int)p->lm_req_today);
@@ -1261,8 +1261,8 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
                 lv_obj_clear_flag(show[i], LV_OBJ_FLAG_HIDDEN);
             const int scr_w = lv_display_get_horizontal_resolution(lv_display_get_default());
             const int scr_h = lv_display_get_vertical_resolution(lv_display_get_default());
-            lv_obj_set_pos(cost_30, 12, scr_h - 22);
-            lv_obj_set_size(cost_chart, scr_w - 24, scr_h - 162);
+            lv_obj_set_pos(cost_30, 12, scr_h - 16);
+            lv_obj_set_size(cost_chart, scr_w - 24, scr_h - 172);
             char tk[16], tk30[16];
             fmt_tokens(tk, sizeof tk, p->cu_tok_today);
             lv_label_set_text(cost_big, tk);
