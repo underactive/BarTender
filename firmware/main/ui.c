@@ -1863,10 +1863,10 @@ ui_input_result_t ui_handle_input(const app_evt_t *ev)
         if (ev->type == APP_EVT_TAP) {
             // All providers: 2-card toggle (like other providers).
             const stats_provider_t *np = &st.stats.p[st.nav_provider];
-            if (strcmp(np->id, "lmstudio") == 0) {
-                st.nav_card = (st.nav_card == CARD_COST) ? CARD_LIMITS
-                    : (np->has_cost ? CARD_COST : CARD_LIMITS);
-            } else if (strcmp(np->id, "cursor") == 0 && np->has_cu) {
+            if (strcmp(np->id, "lmstudio") == 0
+                || (strcmp(np->id, "cursor") == 0 && np->has_cu)) {
+                // Both pages always present — unconditional toggle so taps
+                // keep cycling Today <-> Stats / Today <-> Limits.
                 st.nav_card = (st.nav_card == CARD_COST) ? CARD_LIMITS : CARD_COST;
             } else {
                 st.nav_card = (st.nav_card == CARD_COST) ? CARD_LIMITS
