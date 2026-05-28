@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <!-- LM Studio: full-color isometric cube -->
-  <!-- Left face (darkest) -->
-  <polygon points="16,14 5,8 5,21 16,27 16,14" fill="#5B2FCF"/>
-  <!-- Right face (lighter) -->
-  <polygon points="16,14 27,8 27,21 16,27 16,14" fill="#8773DF"/>
-  <!-- Top face (lightest) -->
-  <polygon points="16,2 27,8 16,14 5,8 16,2" fill="#EDEBFB"/>
-</svg>

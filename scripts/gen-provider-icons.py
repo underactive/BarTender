@@ -27,6 +27,12 @@ OUT_H = os.path.join(HERE, "..", "firmware", "main", "provider_icons.h")
 # Everything else is rendered as A8 (silhouette, tinted by firmware).
 FULL_COLOR_SVGS = {"lmstudio"}
 
+# Wide logos with heavy transparent padding: crop to opaque bounds, then
+# scale to fill ICON_PX. Optional boost >1.0 nudges wide marks to match
+# square silhouettes (lmstudio.png has ~35% vertical slack at 1.0).
+CONTENT_FIT_SVGS = {"lmstudio"}
+CONTENT_FIT_BOOST = {"lmstudio": 1.15}
+
 # provider id (UsageProvider raw value == payload `id`) -> svg basename.
 # Several ids legitimately share one logo.
 ID_TO_SVG = {
@@ -45,20 +51,39 @@ ID_TO_SVG = {
 }
 
 
-def rasterize(svg_path):
-    """SVG -> ICON_PX square RGBA, aspect-preserved, centered, transparent."""
-    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-        png = tmp.name
-    try:
-        # -w only: rsvg scales height proportionally (aspect preserved).
-        subprocess.run(
-            ["rsvg-convert", "-w", str(ICON_PX * 4),
-             "--background-color", "none", svg_path, "-o", png],
-            check=True, capture_output=True)
-        im = Image.open(png).convert("RGBA")
-    finally:
-        os.unlink(png)
-    im.thumbnail((ICON_PX, ICON_PX), Image.LANCZOS)
+def _load_rgba(path):
+    if path.lower().endswith(".svg"):
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+            png = tmp.name
+        try:
+            subprocess.run(
+                ["rsvg-convert", "-w", str(ICON_PX * 4),
+                 "--background-color", "none", path, "-o", png],
+                check=True, capture_output=True)
+            return Image.open(png).convert("RGBA")
+        finally:
+            os.unlink(png)
+    return Image.open(path).convert("RGBA")
+
+
+def rasterize(path, base=None):
+    """SVG or PNG -> ICON_PX square RGBA, aspect-preserved, centered, transparent."""
+    im = _load_rgba(path)
+    boost = CONTENT_FIT_BOOST.get(base, 1.0) if base else 1.0
+    if base in CONTENT_FIT_SVGS:
+        bb = im.split()[-1].getbbox()
+        if bb:
+            im = im.crop(bb)
+            cw, ch = im.size
+            target = ICON_PX * boost
+            scale = target / max(cw, ch)
+            nw = max(1, int(cw * scale))
+            nh = max(1, int(ch * scale))
+            im = im.resize((nw, nh), Image.LANCZOS)
+        else:
+            im.thumbnail((ICON_PX, ICON_PX), Image.LANCZOS)
+    else:
+        im.thumbnail((ICON_PX, ICON_PX), Image.LANCZOS)
     canvas = Image.new("RGBA", (ICON_PX, ICON_PX), (0, 0, 0, 0))
     canvas.paste(im, ((ICON_PX - im.width) // 2,
                       (ICON_PX - im.height) // 2))
@@ -86,11 +111,14 @@ def main():
     maps = {}        # svg basename -> tuple(list[int], str)
                       #   (data bytes, color_format_string)
     for base in svgs:
-        path = os.path.join(SVG_DIR, base + ".svg")
+        # Support both .svg and .png source assets
+        svg_path = os.path.join(SVG_DIR, base + ".svg")
+        png_path = os.path.join(SVG_DIR, base + ".png")
+        path = svg_path if os.path.isfile(svg_path) else png_path
         if not os.path.isfile(path):
             print(f"skip {base}: no svg", file=sys.stderr)
             continue
-        rgba = rasterize(path)
+        rgba = rasterize(path, base)
         if base in FULL_COLOR_SVGS:
             data = rgba_to_argb8888(rgba)
             cf = "LV_COLOR_FORMAT_ARGB8888"
