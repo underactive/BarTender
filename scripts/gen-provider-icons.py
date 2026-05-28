@@ -25,7 +25,7 @@ OUT_H = os.path.join(HERE, "..", "firmware", "main", "provider_icons.h")
 
 # SVG basenames whose native colors should be preserved (ARGB8888).
 # Everything else is rendered as A8 (silhouette, tinted by firmware).
-FULL_COLOR_SVGS = {"lmstudio"}
+FULL_COLOR_SVGS = {"claude", "lmstudio"}
 
 # Wide logos with heavy transparent padding: crop to opaque bounds, then
 # scale to fill ICON_PX. Optional boost >1.0 nudges wide marks to match
