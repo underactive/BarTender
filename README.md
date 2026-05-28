@@ -22,15 +22,40 @@ JSON reduction.
 
 - macOS with [CodexBar](https://github.com/steipete/CodexBar) installed and at
   least one provider enabled (`~/.codexbar/config.json`).
+- ESP32-S3 (Freenove FNK0104) connected via USB-C (for first flash).
 - No build step. Scripts are self-contained zsh.
 
+New here? Start with the [setup guide](docs/ONBOARDING.md) or run:
+
+```sh
+./scripts/preflight.sh   # checks deps, guides setup, optional --install / --flash
+```
+
+### First-time setup checklist
+
+1. Install CodexBar → enable at least one provider
+2. (Optional) Install ESP-IDF → `idf.py` on PATH
+3. Create an Upstash Redis DB → copy REST URL + tokens
+4. Configure: `mkdir -p ~/.config/codexbar-toy && chmod 700 $_`
+5. `./scripts/preflight.sh --install` (launchd schedule) or `--flash` (firmware)
+
 ## Quick start
+
+### One-command setup
+
+```sh
+./scripts/preflight.sh    # check deps + guide mode
+./scripts/preflight.sh --install   # check + auto-install launchd
+./scripts/preflight.sh --flash     # check + flash firmware
+```
+
+### Manual setup
 
 ```sh
 # 1. See your stats in the terminal (~2s)
 ./scripts/codexbar-stats.sh
 
-# 2. (Prompt 2) publish to Upstash on a schedule
+# 2. Publish to Upstash on a schedule
 #    a. create an Upstash Redis DB; copy its REST URL + a write token
 mkdir -p ~/.config/codexbar-toy && chmod 700 ~/.config/codexbar-toy
 printf 'UPSTASH_REST_URL=https://<db>.upstash.io\nUPSTASH_KEY=codexbar\n' \
@@ -80,6 +105,26 @@ Diagnose without publishing secrets:
 | `codexbar-publish.sh --install` / `--uninstall` | Add/remove the launchd schedule |
 | `codexbar-publish.sh --status` | Job state, target, token readiness, recent log |
 | `codexbar-publish.sh --print-plist` | Preview the launchd plist that `--install` would write |
+
+### `scripts/preflight.sh` — setup assistant
+
+| Command | Effect |
+|---------|--------|
+| `preflight.sh` | Check deps + guide mode |
+| `preflight.sh --check` | Read-only dependency check |
+| `preflight.sh --install` | Check + guide + auto-install launchd + flash |
+| `preflight.sh --flash` | Check deps + flash firmware to ESP32 |
+
+### `scripts/uninstall.sh` — cleanup
+
+| Command | Effect |
+|---------|--------|
+| `uninstall.sh` | Full uninstall (interactive) |
+| `uninstall.sh --dry-run` | Preview without changes |
+| `uninstall.sh --launchd-only` | Remove only the launchd schedule |
+| `uninstall.sh --keys-only` | Wipe only Keychain tokens |
+| `uninstall.sh --scripts-only` | Delete scripts from disk |
+| `uninstall.sh --config-only` | Remove config dir + logs |
 
 The **v2** payload carries usage % + reset hints + extra-usage $, and — for
 Claude/Codex — total spend, token counts, and per-day spend history rolled up
