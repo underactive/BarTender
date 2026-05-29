@@ -1463,14 +1463,25 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
             cost_hero_caption(&hero, "SPEND");
             if (is_pi) {
                 lv_obj_add_flag(cost_cap, LV_OBJ_FLAG_HIDDEN);
-                lv_obj_set_pos(cost_30, footer.x + 12, footer.y + 10);
+                // 30 DAY MAX summary in row 9 — the strip just below the 8-row
+                // grid (y=300), clearing the rows 4..8 chart above it.
+                const ui_rect_t footer_r = ui_grid_span(&g, 0, 8, 2, 1);
+                lv_obj_set_pos(cost_30, footer_r.x + 12, footer_r.y + 2);
             } else {
                 lv_obj_clear_flag(cost_cap, LV_OBJ_FLAG_HIDDEN);
                 lv_obj_set_pos(cost_cap, footer.x + 12, footer.y + 4);
                 lv_obj_set_pos(cost_30, footer.x + 12, footer.y + 20);
             }
-            lv_obj_set_size(cost_chart, body.w - 24, body.h - (is_pi ? 18 : 30));
-            lv_obj_set_pos(cost_chart, body.x + 12, body.y + 4);
+            if (is_pi) {
+                // Pi chart spans grid rows 4..8 (1-indexed) — ui_grid_span row 3,
+                // 5 rows tall.
+                const ui_rect_t chart_r = ui_grid_span(&g, 0, 3, 2, 5);
+                lv_obj_set_size(cost_chart, chart_r.w - 24, chart_r.h - 8);
+                lv_obj_set_pos(cost_chart, chart_r.x + 12, chart_r.y + 4);
+            } else {
+                lv_obj_set_size(cost_chart, body.w - 24, body.h - 30);
+                lv_obj_set_pos(cost_chart, body.x + 12, body.y + 4);
+            }
             char m[16], tk[16], m30[16], tk30[16];
             fmt_money(m, sizeof m, p->cost_today_c);
             if (card_entered) {
