@@ -122,11 +122,18 @@ static int s_scr_h = 320;   // cached screen height (set in build_widgets);
 typedef struct { int x, y, w, h; } ui_rect_t;
 typedef struct { ui_rect_t content; int cell_w; int cell_h; } ui_page_grid_t;
 
-#define UI_GRID_COLS    2
-#define UI_GRID_ROWS    8
-#define UI_CHROME_TOP   20
+#define UI_GRID_COLS     2
+#define UI_GRID_ROWS     8
+#define UI_CHROME_TOP    20
 #define UI_CHROME_BOTTOM 16
-#define UI_SUMMARY_GAP  8
+#define UI_SUMMARY_GAP   8
+#define UI_GRID_COLOR    0x8da4c0
+#define UI_GRID_OPA      LV_OPA_90
+
+static lv_obj_t *grid_h[UI_GRID_ROWS + 1];
+static lv_obj_t *grid_v[UI_GRID_COLS - 1];
+static lv_point_precise_t grid_h_pts[UI_GRID_ROWS + 1][2];
+static lv_point_precise_t grid_v_pts[UI_GRID_COLS - 1][2];
 
 static ui_page_grid_t ui_grid_from_height(int screen_w, int screen_h)
 {
@@ -146,6 +153,29 @@ static ui_rect_t ui_grid_span(const ui_page_grid_t *g, int col, int row, int col
         .w = cols * g->cell_w,
         .h = rows * g->cell_h,
     };
+}
+
+static void ui_update_grid_overlay(const ui_page_grid_t *g)
+{
+    for (int i = 0; i <= UI_GRID_ROWS; i++) {
+        lv_obj_t *line = grid_h[i];
+        if (!line) continue;
+        grid_h_pts[i][0] = (lv_point_precise_t){ g->content.x, g->content.y + i * g->cell_h };
+        grid_h_pts[i][1] = (lv_point_precise_t){ g->content.x + g->content.w, g->content.y + i * g->cell_h };
+        lv_line_set_points(line, grid_h_pts[i], 2);
+        lv_obj_clear_flag(line, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(line);
+    }
+    for (int i = 0; i < UI_GRID_COLS - 1; i++) {
+        lv_obj_t *line = grid_v[i];
+        if (!line) continue;
+        const int x = g->content.x + (i + 1) * g->cell_w;
+        grid_v_pts[i][0] = (lv_point_precise_t){ x, g->content.y };
+        grid_v_pts[i][1] = (lv_point_precise_t){ x, g->content.y + g->content.h };
+        lv_line_set_points(line, grid_v_pts[i], 2);
+        lv_obj_clear_flag(line, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(line);
+    }
 }
 
 static int summary_vis_rows_from_grid(const ui_page_grid_t *g)
@@ -613,8 +643,15 @@ static void fmt_money(char *buf, size_t n, int32_t cents)
 }
 
 
+typedef struct {
+    const char *title;
+    const char *subtitle;
+    const char *icon_id;
+} ui_page_chrome_desc_t;
+
 static void create_card_hdr(lv_obj_t *card, lv_obj_t **hdr_out, lv_obj_t **logo_out);
-static void render_card_hdr(lv_obj_t *hdr, lv_obj_t *logo, const char *id, const char *page);
+static void render_page_chrome(lv_obj_t *hdr, lv_obj_t *logo,
+                               const ui_page_chrome_desc_t *desc);
 static void bar_opa_cb(void *obj, int32_t opa);
 static void update_bar_pulse(lv_obj_t *bar, float pct);
 
@@ -648,14 +685,14 @@ static void build_widgets(void)
     title = lv_label_create(scr);
     lv_obj_set_style_text_color(title, lv_color_hex(0xffffff), 0);
     lv_obj_set_style_text_font(title, &lv_font_montserrat_18, 0);
-    lv_label_set_text(title, "BARTENDER");
     lv_obj_set_pos(title, 8, 6);
+    lv_label_set_text(title, "BARTENDER");
 
     status = lv_label_create(scr);
     lv_obj_set_style_text_color(status, lv_color_hex(0x9aa0a6), 0);
     lv_obj_set_style_text_font(status, &lv_font_montserrat_12, 0);
-    lv_label_set_text(status, "starting...");
     lv_obj_set_pos(status, 8, 4);
+    lv_label_set_text(status, "starting...");
 
     for (int i = 0; i < ROWS; i++) {
         int y = ROW_Y0 + i * ROW_H;
@@ -710,6 +747,29 @@ static void build_widgets(void)
     lv_obj_set_width(prov_box, W - 20);
     lv_obj_set_pos(prov_box, 10, 50);
     lv_obj_add_flag(prov_box, LV_OBJ_FLAG_HIDDEN);
+
+    const ui_page_grid_t grid = ui_grid_from_height(W, H);
+    for (int i = 0; i <= UI_GRID_ROWS; i++) {
+        grid_h[i] = lv_line_create(scr);
+        lv_obj_clear_flag(grid_h[i], LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_clear_flag(grid_h[i], LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_style_line_color(grid_h[i], lv_color_hex(UI_GRID_COLOR), 0);
+        lv_obj_set_style_line_opa(grid_h[i], UI_GRID_OPA, 0);
+        lv_obj_set_style_line_width(grid_h[i], 1, 0);
+        lv_obj_set_style_line_dash_width(grid_h[i], 1, 0);
+        lv_obj_set_style_line_dash_gap(grid_h[i], 5, 0);
+    }
+    for (int i = 0; i < UI_GRID_COLS - 1; i++) {
+        grid_v[i] = lv_line_create(scr);
+        lv_obj_clear_flag(grid_v[i], LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_clear_flag(grid_v[i], LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_style_line_color(grid_v[i], lv_color_hex(UI_GRID_COLOR), 0);
+        lv_obj_set_style_line_opa(grid_v[i], UI_GRID_OPA, 0);
+        lv_obj_set_style_line_width(grid_v[i], 1, 0);
+        lv_obj_set_style_line_dash_width(grid_v[i], 1, 0);
+        lv_obj_set_style_line_dash_gap(grid_v[i], 5, 0);
+    }
+    ui_update_grid_overlay(&grid);
 
     // (The old swipe menu/submenu widgets were removed: the summary list is
     // now scrolled directly and provider pages are reached by tapping a row.)
@@ -982,7 +1042,7 @@ static void up_id(char *dst, size_t n, const char *src)
 static void create_card_hdr(lv_obj_t *card, lv_obj_t **hdr_out, lv_obj_t **logo_out)
 {
     *logo_out = lv_image_create(card);
-    lv_obj_set_pos(*logo_out, 12, 11);
+    lv_obj_set_pos(*logo_out, 2, 2);
     lv_obj_set_style_image_recolor_opa(*logo_out, LV_OPA_COVER, 0);
     lv_image_set_pivot(*logo_out, 0, 0);
     lv_image_set_scale(*logo_out, 112);   // 32px * (112/256) ≈ 14px = font_14 height
@@ -991,36 +1051,39 @@ static void create_card_hdr(lv_obj_t *card, lv_obj_t **hdr_out, lv_obj_t **logo_
     *hdr_out = lv_label_create(card);
     lv_obj_set_style_text_color(*hdr_out, lv_color_hex(0x9aa0a6), 0);
     lv_obj_set_style_text_font(*hdr_out, &lv_font_montserrat_14, 0);
-    lv_obj_set_pos(*hdr_out, 12, 10);
+    lv_obj_set_pos(*hdr_out, 2, 2);
 }
 
-static void render_card_hdr(lv_obj_t *hdr, lv_obj_t *logo,
-                             const char *id, const char *page)
+static void render_page_chrome(lv_obj_t *hdr, lv_obj_t *logo,
+                               const ui_page_chrome_desc_t *desc)
 {
-    char up[STATS_ID_MAX];
-    up_id(up, sizeof up, id);
-    lv_label_set_text_fmt(hdr, "%s  %s", up, page);
+    if (hdr) {
+        if (desc && desc->subtitle)
+            lv_label_set_text_fmt(hdr, "%s  %s", desc->title, desc->subtitle);
+        else if (desc)
+            lv_label_set_text(hdr, desc->title);
+    }
+    if (!logo || !desc || !desc->icon_id) return;
 
-    const lv_image_dsc_t *ic = provider_icon(id);
+    const lv_image_dsc_t *ic = provider_icon(desc->icon_id);
     if (ic) {
         lv_image_set_src(logo, ic);
-        if (provider_icon_is_full_color(id)) {
-            lv_obj_set_style_image_recolor_opa(
-                logo, LV_OPA_TRANSP, 0);
+        if (provider_icon_is_full_color(desc->icon_id)) {
+            lv_obj_set_style_image_recolor_opa(logo, LV_OPA_TRANSP, 0);
         } else {
             lv_color_t tc;
-            lv_obj_set_style_image_recolor_opa(
-                logo, LV_OPA_COVER, 0);
+            lv_obj_set_style_image_recolor_opa(logo, LV_OPA_COVER, 0);
             lv_obj_set_style_image_recolor(logo,
-                prov_accent(id, &tc) ? tc : lv_color_hex(0xe8eaed), 0);
+                prov_accent(desc->icon_id, &tc) ? tc : lv_color_hex(0xe8eaed), 0);
         }
         lv_obj_clear_flag(logo, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_set_pos(hdr, 30, 10);
+        lv_obj_set_pos(hdr, 22, 2);
     } else {
         lv_obj_add_flag(logo, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_set_pos(hdr, 12, 10);
+        lv_obj_set_pos(hdr, 2, 2);
     }
 }
+
 
 static void hide_cards(void)     // hide all card panels (chrome stays)
 {
@@ -1235,10 +1298,20 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
     const ui_rect_t body = ui_grid_span(&g, 0, 2, 2, 4);
     const ui_rect_t footer = ui_grid_span(&g, 0, 6, 2, 2);
 
+    ui_update_grid_overlay(&g);
+
     if (st.nav_card == CARD_COST) {
         lv_obj_add_flag(lim_card, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(cost_card, LV_OBJ_FLAG_HIDDEN);
-        render_card_hdr(cost_hdr, cost_logo, p->id, "TODAY");
+        {
+            char up[STATS_ID_MAX];
+            up_id(up, sizeof up, p->id);
+            render_page_chrome(cost_hdr, cost_logo, &(ui_page_chrome_desc_t){
+                .title = up,
+                .subtitle = "TODAY",
+                .icon_id = p->id,
+            });
+        }
 
         if (!p->has_cost && !p->has_lm && !p->has_cu) {
             lv_obj_clear_flag(cost_na, LV_OBJ_FLAG_HIDDEN);
@@ -1417,7 +1490,15 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
 
     if (is_lmstudio) {
         // LM Studio STATS: tokens % (session) + requests % (weekly)
-        render_card_hdr(lim_hdr, lim_logo, p->id, "STATS");
+        {
+            char up[STATS_ID_MAX];
+            up_id(up, sizeof up, p->id);
+            render_page_chrome(lim_hdr, lim_logo, &(ui_page_chrome_desc_t){
+                .title = up,
+                .subtitle = "STATS",
+                .icon_id = p->id,
+            });
+        }
         lv_obj_set_pos(lim_s_lbl, hero.x + 12, hero.y + 14);
         lv_obj_set_pos(lim_s_big, hero.x + 12, hero.y + 28);
         lv_obj_set_pos(lim_s_bar, hero.x + 12, hero.y + 84);
@@ -1463,7 +1544,15 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
         return;
     }
 
-    render_card_hdr(lim_hdr, lim_logo, p->id, "LIMITS");
+    {
+        char up[STATS_ID_MAX];
+        up_id(up, sizeof up, p->id);
+        render_page_chrome(lim_hdr, lim_logo, &(ui_page_chrome_desc_t){
+            .title = up,
+            .subtitle = "LIMITS",
+            .icon_id = p->id,
+        });
+    }
     lv_obj_set_pos(lim_s_lbl, hero.x + 12, hero.y + 14);
     lv_obj_set_pos(lim_s_big, hero.x + 12, hero.y + 28);
     lv_obj_set_pos(lim_s_bar, hero.x + 12, hero.y + 84);
@@ -1708,14 +1797,15 @@ static void render(void)   // ui_task only
         {
             const ui_rect_t r = ui_grid_span(&g, 0, i, 2, 1);
             bool cu_warn = cursor_sess_refresh_needed(p);
-            lv_obj_set_pos(row_icon[i], r.x + 8, r.y + (r.h - ROW_ICON_PX) / 2);
-            lv_obj_set_pos(row_id[i], r.x + ROW_TXT_X, r.y + 6);
+            lv_obj_set_size(row_icon[i], 32, 32);
+            lv_obj_set_pos(row_icon[i], r.x + 8, r.y + 1);
+            lv_obj_set_pos(row_id[i], r.x + ROW_TXT_X, r.y + 2);
             lv_obj_set_width(row_id[i], r.w - ROW_TXT_X - 8);
-            lv_obj_set_pos(row_bar[i], r.x + ROW_TXT_X, r.y + 30);
-            lv_obj_set_size(row_bar[i], r.w - ROW_TXT_X - 60, 7);
-            lv_obj_set_pos(row_val[i], r.x + r.w - 52, r.y + 26);
-            lv_obj_set_pos(row_bar_w[i], r.x + ROW_TXT_X, r.y + 39);
-            lv_obj_set_size(row_bar_w[i], r.w - ROW_TXT_X - 60, 3);
+            lv_obj_set_pos(row_bar[i], r.x + ROW_TXT_X, r.y + 21);
+            lv_obj_set_size(row_bar[i], r.w - ROW_TXT_X - 60, 5);
+            lv_obj_set_pos(row_val[i], r.x + r.w - 52, r.y + 15);
+            lv_obj_set_pos(row_bar_w[i], r.x + ROW_TXT_X, r.y + 28);
+            lv_obj_set_size(row_bar_w[i], r.w - ROW_TXT_X - 60, 2);
             lv_label_set_text(row_id[i], p->id);
             lv_obj_set_style_text_color(row_id[i],
                 cu_warn ? lv_color_hex(CURSOR_SESS_AMBER) : lv_color_hex(0xe8eaed), 0);
@@ -1723,7 +1813,7 @@ static void render(void)   // ui_task only
 
         // Provider logo: A8 silhouette (tinted via recolor) or ARGB8888
         // full-color image (no tinting). Hidden if no icon for this id.
-        const lv_image_dsc_t *ic = provider_icon(p->id);
+        const lv_image_dsc_t *ic = provider_summary_icon(p->id);
         if (ic) {
             lv_image_set_src(row_icon[i], ic);
             if (provider_icon_is_full_color(p->id)) {

@@ -9,6 +9,9 @@
 // ARGB8888 icons carry their own colors (check is_full_color).
 const lv_image_dsc_t *provider_icon(const char *id);
 
+// Compact icon variant for the summary provider rows.
+const lv_image_dsc_t *provider_summary_icon(const char *id);
+
 // Returns true if the icon for `id` is ARGB8888 (full color).
 // When true, do NOT apply image_recolor to the icon.
 bool provider_icon_is_full_color(const char *id);
