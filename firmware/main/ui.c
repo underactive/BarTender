@@ -115,8 +115,46 @@ static int         s_prev_nav_provider = -1;
 static card_kind_t s_prev_nav_card     = CARD_COST;
 static int         s_prev_row_bar[ROWS];   // last fill value per summary slot; -1 = unset
 
+static int s_scr_w = 240;   // cached screen width (set in build_widgets);
 static int s_scr_h = 320;   // cached screen height (set in build_widgets);
                             // read by ui_handle_input -> NO LVGL call off-task
+
+typedef struct { int x, y, w, h; } ui_rect_t;
+typedef struct { ui_rect_t content; int cell_w; int cell_h; } ui_page_grid_t;
+
+#define UI_GRID_COLS    2
+#define UI_GRID_ROWS    8
+#define UI_CHROME_TOP   20
+#define UI_CHROME_BOTTOM 16
+#define UI_SUMMARY_GAP  8
+
+static ui_page_grid_t ui_grid_from_height(int screen_w, int screen_h)
+{
+    const int content_h = screen_h - UI_CHROME_TOP - UI_CHROME_BOTTOM;
+    return (ui_page_grid_t){
+        .content = { 0, UI_CHROME_TOP, screen_w, content_h },
+        .cell_w = screen_w / UI_GRID_COLS,
+        .cell_h = content_h / UI_GRID_ROWS,
+    };
+}
+
+static ui_rect_t ui_grid_span(const ui_page_grid_t *g, int col, int row, int cols, int rows)
+{
+    return (ui_rect_t){
+        .x = g->content.x + col * g->cell_w,
+        .y = g->content.y + row * g->cell_h,
+        .w = cols * g->cell_w,
+        .h = rows * g->cell_h,
+    };
+}
+
+static int summary_vis_rows_from_grid(const ui_page_grid_t *g)
+{
+    int rows = g->content.h / g->cell_h;
+    if (rows < 1) rows = 1;
+    if (rows > ROWS) rows = ROWS;
+    return rows;
+}
 
 // Forward declarations for functions defined later but used by screensaver helpers.
 static bool is_hidden_provider(const char *id);
@@ -494,10 +532,8 @@ static int bar_fill(int pct)
 // How many provider rows fit on screen below the title/status band.
 static int summary_vis_rows(void)
 {
-    int r = (s_scr_h - ROW_Y0) / ROW_H;     // 320px: (320-46)/48 = 5
-    if (r < 1)    r = 1;
-    if (r > ROWS) r = ROWS;
-    return r;
+    const ui_page_grid_t g = ui_grid_from_height(s_scr_w, s_scr_h);
+    return summary_vis_rows_from_grid(&g);
 }
 
 // Summary rows are compacted over visible providers: hidden providers must not
@@ -537,10 +573,11 @@ static void clamp_scroll(void)
 // on a miss / the inter-row gap. MUST mirror summary render geometry.
 static int summary_hit_test(int y)
 {
-    if (y < ROW_Y0) return -1;
-    int slot = (y - ROW_Y0) / ROW_H;
-    if (slot < 0 || slot >= summary_vis_rows()) return -1;
-    if ((y - ROW_Y0) % ROW_H > ROW_H - 8) return -1;   // 8 px inter-row gap
+    const ui_page_grid_t g = ui_grid_from_height(s_scr_w, s_scr_h);
+    if (y < g.content.y || y >= g.content.y + g.content.h) return -1;
+    const int slot = (y - g.content.y) / g.cell_h;
+    if (slot < 0 || slot >= summary_vis_rows_from_grid(&g)) return -1;
+    if ((y - g.content.y) % g.cell_h > g.cell_h - UI_SUMMARY_GAP) return -1;
     return summary_provider_at(st.scroll + slot);
 }
 
@@ -603,6 +640,7 @@ static void build_widgets(void)
     // LVGL display, not BOARD_LCD_H_RES, to keep ui.c board-agnostic.
     const int W = lv_display_get_horizontal_resolution(lv_display_get_default());
     const int H = lv_display_get_vertical_resolution(lv_display_get_default());
+    s_scr_w = W;
     s_scr_h = H;
     memset(s_prev_row_bar, -1, sizeof s_prev_row_bar);
     const int val_x = W - 52;          // right-anchored % column (line 2)
@@ -1192,6 +1230,10 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
     bool is_pi = (strcmp(p->id, "pi") == 0);
     bool is_lmstudio = (strcmp(p->id, "lmstudio") == 0);
     bool is_cursor = (strcmp(p->id, "cursor") == 0);
+    const ui_page_grid_t g = ui_grid_from_height(s_scr_w, s_scr_h);
+    const ui_rect_t hero = ui_grid_span(&g, 0, 0, 2, 2);
+    const ui_rect_t body = ui_grid_span(&g, 0, 2, 2, 4);
+    const ui_rect_t footer = ui_grid_span(&g, 0, 6, 2, 2);
 
     if (st.nav_card == CARD_COST) {
         lv_obj_add_flag(lim_card, LV_OBJ_FLAG_HIDDEN);
@@ -1220,10 +1262,13 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
             lv_obj_t *show[] = { cost_big, cost_tok, cost_tok_unit, cost_30, cost_chart };
             for (unsigned i = 0; i < sizeof show / sizeof *show; i++)
                 lv_obj_clear_flag(show[i], LV_OBJ_FLAG_HIDDEN);
-            const int scr_w = lv_display_get_horizontal_resolution(lv_display_get_default());
-            const int scr_h = lv_display_get_vertical_resolution(lv_display_get_default());
-            lv_obj_set_pos(cost_30, 12, scr_h - 16);
-            lv_obj_set_size(cost_chart, scr_w - 24, scr_h - 172);
+            lv_obj_set_pos(cost_big, hero.x + 12, hero.y + 28);
+            lv_obj_set_pos(cost_tok, hero.x + 12, hero.y + 84);
+            lv_obj_set_pos(cost_tok_unit, hero.x + 12, hero.y + 104);
+            lv_obj_set_pos(cost_30, footer.x + 12, footer.y + 6);
+            lv_obj_set_pos(cost_cap, footer.x + 12, footer.y + 22);
+            lv_obj_set_size(cost_chart, body.w - 24, body.h - 8);
+            lv_obj_set_pos(cost_chart, body.x + 12, body.y + 4);
             char tk[16], rq[16], tk30[16], rq30[16];
             fmt_tokens(tk, sizeof tk, p->lm_tok_today);
             snprintf(rq, sizeof rq, "%d", (int)p->lm_req_today);
@@ -1259,10 +1304,10 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
             lv_obj_t *show[] = { cost_big, cost_30, cost_chart };
             for (unsigned i = 0; i < sizeof show / sizeof *show; i++)
                 lv_obj_clear_flag(show[i], LV_OBJ_FLAG_HIDDEN);
-            const int scr_w = lv_display_get_horizontal_resolution(lv_display_get_default());
-            const int scr_h = lv_display_get_vertical_resolution(lv_display_get_default());
-            lv_obj_set_pos(cost_30, 12, scr_h - 16);
-            lv_obj_set_size(cost_chart, scr_w - 24, scr_h - 172);
+            lv_obj_set_pos(cost_big, hero.x + 12, hero.y + 28);
+            lv_obj_set_pos(cost_30, footer.x + 12, footer.y + 6);
+            lv_obj_set_size(cost_chart, body.w - 24, body.h - 8);
+            lv_obj_set_pos(cost_chart, body.x + 12, body.y + 4);
             char tk[16], tk30[16];
             fmt_tokens(tk, sizeof tk, p->cu_tok_today);
             lv_label_set_text(cost_big, tk);
@@ -1298,15 +1343,18 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
                 lv_label_set_text(cost_big, tod);
             }
             lv_obj_clear_flag(cost_big, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_pos(cost_big, hero.x + 12, hero.y + 28);
             fmt_money(bal, sizeof bal, p->credits_remaining_c);
             lv_label_set_text(cost_tok, bal);
             lv_obj_clear_flag(cost_tok, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_pos(cost_tok, hero.x + 12, hero.y + 84);
             lv_label_set_text(cost_tok_unit, "balance");
             lv_obj_align_to(cost_tok_unit, cost_tok, LV_ALIGN_OUT_RIGHT_BOTTOM, 5, 0);
             lv_obj_clear_flag(cost_tok_unit, LV_OBJ_FLAG_HIDDEN);
             fmt_money(wk, sizeof wk, p->cost_week_c);
             lv_label_set_text_fmt(cost_30, "THIS WEEK  %s", wk);
             lv_obj_clear_flag(cost_30, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_pos(cost_30, footer.x + 12, footer.y + 6);
         } else {
             // Claude/Codex/Pi layout: shared money/token/chart widgets. Pi uses
             // today's reduced usage for the hero numbers and 30-day max metrics
@@ -1314,20 +1362,19 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
             lv_obj_t *or_only[] = { cost_or_lbl, cost_or_row1, cost_or_row2 };
             for (unsigned i = 0; i < sizeof or_only / sizeof *or_only; i++)
                 lv_obj_add_flag(or_only[i], LV_OBJ_FLAG_HIDDEN);
-            lv_obj_t *body[] = { cost_big, cost_tok, cost_tok_unit, cost_30, cost_chart };
-            for (unsigned i = 0; i < sizeof body / sizeof *body; i++)
-                lv_obj_clear_flag(body[i], LV_OBJ_FLAG_HIDDEN);
-            const int scr_w = lv_display_get_horizontal_resolution(lv_display_get_default());
-            const int scr_h = lv_display_get_vertical_resolution(lv_display_get_default());
+            lv_obj_t *body_widgets[] = { cost_big, cost_tok, cost_tok_unit, cost_30, cost_chart };
+            for (unsigned i = 0; i < sizeof body_widgets / sizeof *body_widgets; i++)
+                lv_obj_clear_flag(body_widgets[i], LV_OBJ_FLAG_HIDDEN);
             if (is_pi) {
                 lv_obj_add_flag(cost_cap, LV_OBJ_FLAG_HIDDEN);
-                lv_obj_set_pos(cost_30, 12, scr_h - 14); // lowered to clear chart bars by ~14px
+                lv_obj_set_pos(cost_30, footer.x + 12, footer.y + 10);
             } else {
                 lv_obj_clear_flag(cost_cap, LV_OBJ_FLAG_HIDDEN);
-                lv_obj_set_pos(cost_cap, 12, scr_h - 20); // lowered to clear chart bars
-                lv_obj_set_pos(cost_30, 12, scr_h - 36);
+                lv_obj_set_pos(cost_cap, footer.x + 12, footer.y + 4);
+                lv_obj_set_pos(cost_30, footer.x + 12, footer.y + 20);
             }
-            lv_obj_set_size(cost_chart, scr_w - 24, scr_h - (is_pi ? 164 : 176));
+            lv_obj_set_size(cost_chart, body.w - 24, body.h - (is_pi ? 18 : 30));
+            lv_obj_set_pos(cost_chart, body.x + 12, body.y + 4);
             char m[16], tk[16], m30[16], tk30[16];
             fmt_money(m, sizeof m, p->cost_today_c);
             if (card_entered) {
@@ -1371,6 +1418,16 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
     if (is_lmstudio) {
         // LM Studio STATS: tokens % (session) + requests % (weekly)
         render_card_hdr(lim_hdr, lim_logo, p->id, "STATS");
+        lv_obj_set_pos(lim_s_lbl, hero.x + 12, hero.y + 14);
+        lv_obj_set_pos(lim_s_big, hero.x + 12, hero.y + 28);
+        lv_obj_set_pos(lim_s_bar, hero.x + 12, hero.y + 84);
+        lv_obj_set_pos(lim_s_rst, hero.x + 12, hero.y + 96);
+        lv_obj_set_size(lim_chart, body.w - 24, body.h - 10);
+        lv_obj_set_pos(lim_chart, body.x + 12, body.y + 4);
+        lv_obj_set_pos(lim_w_lbl, footer.x + 12, footer.y + 4);
+        lv_obj_set_pos(lim_w_big, footer.x + 12, footer.y + 18);
+        lv_obj_set_pos(lim_w_bar, footer.x + 12, footer.y + 44);
+        lv_obj_set_pos(lim_w_rst, footer.x + 12, footer.y + 54);
         lv_obj_add_flag(lim_a_lbl, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(lim_a_big, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(lim_a_bar, LV_OBJ_FLAG_HIDDEN);
@@ -1407,6 +1464,23 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
     }
 
     render_card_hdr(lim_hdr, lim_logo, p->id, "LIMITS");
+    lv_obj_set_pos(lim_s_lbl, hero.x + 12, hero.y + 14);
+    lv_obj_set_pos(lim_s_big, hero.x + 12, hero.y + 28);
+    lv_obj_set_pos(lim_s_bar, hero.x + 12, hero.y + 84);
+    lv_obj_set_pos(lim_s_rst, hero.x + 12, hero.y + 96);
+    lv_obj_set_size(lim_chart, body.w - 24, body.h - 10);
+    lv_obj_set_pos(lim_chart, body.x + 12, body.y + 4);
+    lv_obj_set_pos(lim_a_lbl, body.x + 12, body.y + 4);
+    lv_obj_set_pos(lim_a_big, body.x + 12, body.y + 18);
+    lv_obj_set_pos(lim_a_bar, body.x + 12, body.y + 44);
+    lv_obj_set_pos(lim_a_rst, body.x + 12, body.y + 54);
+    lv_obj_set_pos(lim_w_lbl, footer.x + 12, footer.y + 4);
+    lv_obj_set_pos(lim_w_big, footer.x + 12, footer.y + 18);
+    lv_obj_set_pos(lim_w_bar, footer.x + 12, footer.y + 44);
+    lv_obj_set_pos(lim_w_rst, footer.x + 12, footer.y + 54);
+    lv_obj_set_pos(lim_x_lbl, footer.x + 12, footer.y + 74);
+    lv_obj_set_pos(lim_x_val, footer.x + 12, footer.y + 74);
+    lv_obj_set_pos(lim_x_bar, footer.x + 12, footer.y + 90);
 
     lv_label_set_text(lim_s_lbl, has_balance ? "API KEY" : (p->has_t ? "TOTAL" : "SESSION"));
     fmt_pct(pb, sizeof pb, p->has_p, p->p);
@@ -1617,6 +1691,7 @@ static void render(void)   // ui_task only
         lv_label_set_text(status, st.status);
     }
 
+    const ui_page_grid_t g = ui_grid_from_height(s_scr_w, s_scr_h);
     for (int i = 0; i < ROWS; i++) {
         int pi = summary_provider_at(st.scroll + i); // i = visual slot, pi = stats.p[] index
         if (i >= vis || pi < 0) {
@@ -1631,7 +1706,16 @@ static void render(void)   // ui_task only
         lv_obj_clear_flag(row_id[i],  LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(row_val[i], LV_OBJ_FLAG_HIDDEN);
         {
+            const ui_rect_t r = ui_grid_span(&g, 0, i, 2, 1);
             bool cu_warn = cursor_sess_refresh_needed(p);
+            lv_obj_set_pos(row_icon[i], r.x + 8, r.y + (r.h - ROW_ICON_PX) / 2);
+            lv_obj_set_pos(row_id[i], r.x + ROW_TXT_X, r.y + 6);
+            lv_obj_set_width(row_id[i], r.w - ROW_TXT_X - 8);
+            lv_obj_set_pos(row_bar[i], r.x + ROW_TXT_X, r.y + 30);
+            lv_obj_set_size(row_bar[i], r.w - ROW_TXT_X - 60, 7);
+            lv_obj_set_pos(row_val[i], r.x + r.w - 52, r.y + 26);
+            lv_obj_set_pos(row_bar_w[i], r.x + ROW_TXT_X, r.y + 39);
+            lv_obj_set_size(row_bar_w[i], r.w - ROW_TXT_X - 60, 3);
             lv_label_set_text(row_id[i], p->id);
             lv_obj_set_style_text_color(row_id[i],
                 cu_warn ? lv_color_hex(CURSOR_SESS_AMBER) : lv_color_hex(0xe8eaed), 0);
