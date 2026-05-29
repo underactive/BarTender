@@ -122,6 +122,11 @@ static int s_scr_h = 320;   // cached screen height (set in build_widgets);
 typedef struct { int x, y, w, h; } ui_rect_t;
 typedef struct { ui_rect_t content; int cell_w; int cell_h; } ui_page_grid_t;
 
+// A hero_amount is a caption + big number placed together as one unit, so the
+// two can never drift apart. One instance per card.
+typedef struct { lv_obj_t *caption; lv_obj_t *num; } hero_amount_t;
+static hero_amount_t cost_hero, lim_hero;
+
 #define UI_GRID_COLS     2
 #define UI_GRID_ROWS     8
 #define UI_CHROME_TOP    20
@@ -650,6 +655,7 @@ typedef struct {
 } ui_page_chrome_desc_t;
 
 static void create_card_hdr(lv_obj_t *card, lv_obj_t **hdr_out, lv_obj_t **logo_out);
+static hero_amount_t make_hero_amount(lv_obj_t *parent);
 static void render_page_chrome(lv_obj_t *hdr, lv_obj_t *logo,
                                const ui_page_chrome_desc_t *desc);
 static void bar_opa_cb(void *obj, int32_t opa);
@@ -802,6 +808,7 @@ static void build_widgets(void)
     lv_obj_set_style_text_color(cost_big, lv_color_hex(0xffffff), 0);
     lv_obj_set_style_text_font(cost_big, &font_lemonmilk_48, 0);
     lv_obj_set_pos(cost_big, 12, 48);
+    cost_hero = make_hero_amount(cost_card);   // hero_amount instance (drop-in for cost_big)
 
     cost_tok = lv_label_create(cost_card);
     lv_obj_set_style_text_color(cost_tok, lv_color_hex(0x9aa0a6), 0);
@@ -909,6 +916,7 @@ static void build_widgets(void)
     lv_obj_set_style_text_color(lim_s_big, lv_color_hex(0xffffff), 0);
     lv_obj_set_style_text_font(lim_s_big, &font_lemonmilk_48, 0);
     lv_obj_set_pos(lim_s_big, 12, 48);
+    lim_hero = make_hero_amount(lim_card);   // hero_amount instance (Pi Limits)
     lim_s_bar = lv_bar_create(lim_card);
     lv_obj_set_size(lim_s_bar, W - 24, 9);
     lv_obj_set_pos(lim_s_bar, 12, 104);
@@ -1280,11 +1288,64 @@ static void set_reset_lbl(lv_obj_t *lbl, const char *ts)
 // the -8-leading-trimmed number set unconditionally in render_card(). New
 // providers that want a caption call this instead of hand-placing cost_lbl, so
 // the position can't drift out of sync with the amount.
-static void cost_hero_caption(const ui_rect_t *hero, const char *text)
+// Show a small hero caption (e.g. "SPEND", "TOKENS", "SESSION") just below the
+// header chrome at hero.y + 2 — the house style for the label above a hero
+// amount. Parameterized by label so the cost and limits cards share one
+// definition and can't drift apart. `lbl` is cost_lbl, lim_s_lbl, etc.
+static void hero_caption(lv_obj_t *lbl, const ui_rect_t *hero, const char *text)
 {
-    lv_obj_clear_flag(cost_lbl, LV_OBJ_FLAG_HIDDEN);
-    lv_label_set_text(cost_lbl, text);
-    lv_obj_set_pos(cost_lbl, hero->x + 12, hero->y + 2);
+    lv_obj_clear_flag(lbl, LV_OBJ_FLAG_HIDDEN);
+    lv_label_set_text(lbl, text);
+    lv_obj_set_pos(lbl, hero->x + 12, hero->y + 2);
+}
+
+// Set the hero_amount number to a value wrapped in an optional prefix symbol
+// (e.g. "$" -> "$3.59") and/or suffix symbol (e.g. "%" -> "41%"). The symbols
+// render in the same font/size as the number. Pass NULL to omit. For animated
+// values, drive h->num with anim_count_up() instead.
+static void set_hero_amount(hero_amount_t *h, const char *prefix,
+                            const char *num, const char *suffix)
+{
+    lv_label_set_text_fmt(h->num, "%s%s%s",
+                          prefix ? prefix : "", num, suffix ? suffix : "");
+}
+
+// Create a hero_amount on `parent`: a small caption (montserrat-12, gray) above
+// a big number (lemonmilk-48, white, -8 leading trim). Both hidden by default.
+// The canonical hero widget; one instance per card. Caption + number are owned
+// together so they can't be positioned inconsistently.
+static hero_amount_t make_hero_amount(lv_obj_t *parent)
+{
+    hero_amount_t h;
+    h.caption = lv_label_create(parent);
+    lv_obj_set_style_text_color(h.caption, lv_color_hex(0x9aa0a6), 0);
+    lv_obj_set_style_text_font(h.caption, &lv_font_montserrat_12, 0);
+    lv_obj_add_flag(h.caption, LV_OBJ_FLAG_HIDDEN);
+    h.num = lv_label_create(parent);
+    lv_obj_set_style_text_color(h.num, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_text_font(h.num, &font_lemonmilk_48, 0);
+    lv_obj_set_style_pad_top(h.num, -8, 0);
+    lv_obj_add_flag(h.num, LV_OBJ_FLAG_HIDDEN);
+    return h;
+}
+
+// Place a hero_amount as a unit: caption at hero.y + 2, number at hero.y + 28,
+// both shown, with the caption text set. The caller then fills the number via
+// set_hero_amount() or anim_count_up(h->num, ...). Because this is the only way
+// the pair is positioned, the caption can never drift from the number again.
+static void place_hero_amount(hero_amount_t *h, const ui_rect_t *hero, const char *caption)
+{
+    lv_obj_clear_flag(h->caption, LV_OBJ_FLAG_HIDDEN);
+    lv_label_set_text(h->caption, caption);
+    lv_obj_set_pos(h->caption, hero->x + 12, hero->y + 2);
+    lv_obj_clear_flag(h->num, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_pos(h->num, hero->x + 12, hero->y + 28);
+}
+
+static void hide_hero_amount(hero_amount_t *h)
+{
+    lv_obj_add_flag(h->caption, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(h->num, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
@@ -1343,6 +1404,10 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
         // are raised to hero.y + 2 to match.
         lv_obj_set_style_pad_top(cost_big, -8, 0);
 
+        // cost_hero (hero_amount) is used by providers migrated off cost_big
+        // (Pi, LM Studio); hide the pair by default so it can't leak onto others.
+        hide_hero_amount(&cost_hero);
+
         // Secondary metric line (tokens / requests / balance) — same height on
         // every card. hero.y + 76 centers it in body-row 2 so it clears the
         // grid divider lines above (y=90) and below (y=125). cost_tok_unit is
@@ -1352,14 +1417,13 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
         if (is_lmstudio) {
             // LM Studio TODAY: hero tokens, hero requests, 30-day bar chart, 30-day max
             lv_obj_t *hide[] = { cost_or_lbl, cost_or_row1, cost_or_row2,
-                                 cost_bar, cost_bar_lbl, cost_cap };
+                                 cost_bar, cost_bar_lbl, cost_cap, cost_big, cost_lbl };
             for (unsigned i = 0; i < sizeof hide / sizeof *hide; i++)
                 lv_obj_add_flag(hide[i], LV_OBJ_FLAG_HIDDEN);
-            cost_hero_caption(&hero, "TOKENS");
-            lv_obj_t *show[] = { cost_big, cost_tok, cost_tok_unit, cost_30, cost_chart };
+            place_hero_amount(&cost_hero, &hero, "TOKENS");
+            lv_obj_t *show[] = { cost_tok, cost_tok_unit, cost_30, cost_chart };
             for (unsigned i = 0; i < sizeof show / sizeof *show; i++)
                 lv_obj_clear_flag(show[i], LV_OBJ_FLAG_HIDDEN);
-            lv_obj_set_pos(cost_big, hero.x + 12, hero.y + 28);
             lv_obj_set_pos(cost_30, footer.x + 12, footer.y + 6);
             lv_obj_set_pos(cost_cap, footer.x + 12, footer.y + 22);
             lv_obj_set_size(cost_chart, body.w - 24, body.h - 8);
@@ -1367,7 +1431,7 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
             char tk[16], rq[16], tk30[16], rq30[16];
             fmt_tokens(tk, sizeof tk, p->lm_tok_today);
             snprintf(rq, sizeof rq, "%d", (int)p->lm_req_today);
-            lv_label_set_text(cost_big, tk);
+            set_hero_amount(&cost_hero, NULL, tk, NULL);   // plain token count, no affix
             lv_label_set_text(cost_tok, rq);
             lv_label_set_text(cost_tok_unit, "requests");
             lv_obj_align_to(cost_tok_unit, cost_tok, LV_ALIGN_OUT_RIGHT_BOTTOM, 5, 0);
@@ -1394,7 +1458,7 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
                                  cost_tok, cost_tok_unit };
             for (unsigned i = 0; i < sizeof hide / sizeof *hide; i++)
                 lv_obj_add_flag(hide[i], LV_OBJ_FLAG_HIDDEN);
-            cost_hero_caption(&hero, "TOKENS");
+            hero_caption(cost_lbl, &hero, "TOKENS");
             lv_obj_t *show[] = { cost_big, cost_30, cost_chart };
             for (unsigned i = 0; i < sizeof show / sizeof *show; i++)
                 lv_obj_clear_flag(show[i], LV_OBJ_FLAG_HIDDEN);
@@ -1438,7 +1502,7 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
             }
             lv_obj_clear_flag(cost_big, LV_OBJ_FLAG_HIDDEN);
             lv_obj_set_pos(cost_big, hero.x + 12, hero.y + 28);
-            cost_hero_caption(&hero, "SPEND");
+            hero_caption(cost_lbl, &hero, "SPEND");
             fmt_money(bal, sizeof bal, p->credits_remaining_c);
             lv_label_set_text(cost_tok, bal);
             lv_obj_clear_flag(cost_tok, LV_OBJ_FLAG_HIDDEN);
@@ -1456,18 +1520,24 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
             lv_obj_t *or_only[] = { cost_or_lbl, cost_or_row1, cost_or_row2 };
             for (unsigned i = 0; i < sizeof or_only / sizeof *or_only; i++)
                 lv_obj_add_flag(or_only[i], LV_OBJ_FLAG_HIDDEN);
-            lv_obj_t *body_widgets[] = { cost_big, cost_tok, cost_tok_unit, cost_30, cost_chart };
+            lv_obj_t *body_widgets[] = { cost_tok, cost_tok_unit, cost_30, cost_chart };
             for (unsigned i = 0; i < sizeof body_widgets / sizeof *body_widgets; i++)
                 lv_obj_clear_flag(body_widgets[i], LV_OBJ_FLAG_HIDDEN);
-            // Claude, Codex and Pi all caption the hero amount "SPEND".
-            cost_hero_caption(&hero, "SPEND");
             if (is_pi) {
+                // Pi: hero amount via the hero_amount pair (caption + number).
+                lv_obj_add_flag(cost_big, LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(cost_lbl, LV_OBJ_FLAG_HIDDEN);
+                place_hero_amount(&cost_hero, &hero, "SPEND");
                 lv_obj_add_flag(cost_cap, LV_OBJ_FLAG_HIDDEN);
                 // 30 DAY MAX summary in row 9 — the strip just below the 8-row
                 // grid (y=300), clearing the rows 4..8 chart above it.
                 const ui_rect_t footer_r = ui_grid_span(&g, 0, 8, 2, 1);
                 lv_obj_set_pos(cost_30, footer_r.x + 12, footer_r.y + 2);
             } else {
+                // Claude/Codex: hero amount still uses cost_big + cost_lbl.
+                lv_obj_clear_flag(cost_big, LV_OBJ_FLAG_HIDDEN);
+                lv_obj_set_pos(cost_big, hero.x + 12, hero.y + 28);
+                hero_caption(cost_lbl, &hero, "SPEND");
                 lv_obj_clear_flag(cost_cap, LV_OBJ_FLAG_HIDDEN);
                 lv_obj_set_pos(cost_cap, footer.x + 12, footer.y + 4);
                 lv_obj_set_pos(cost_30, footer.x + 12, footer.y + 20);
@@ -1484,7 +1554,18 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
             }
             char m[16], tk[16], m30[16], tk30[16];
             fmt_money(m, sizeof m, p->cost_today_c);
-            if (card_entered) {
+            if (is_pi) {
+                // hero_amount number with a "$" prefix; count_cents_cb emits the
+                // same "$N.NN" during the count-up animation.
+                if (card_entered) {
+                    anim_count_up(cost_hero.num, p->cost_today_c, count_cents_cb);
+                } else {
+                    int32_t c = p->cost_today_c < 0 ? 0 : p->cost_today_c;
+                    char num[16];   // matches fmt_money's buffer sizing
+                    snprintf(num, sizeof num, "%d.%02d", (int)(c / 100), (int)(c % 100));
+                    set_hero_amount(&cost_hero, "$", num, NULL);
+                }
+            } else if (card_entered) {
                 anim_count_up(cost_big, p->cost_today_c, count_cents_cb);
             } else {
                 lv_label_set_text(cost_big, m);
@@ -1522,6 +1603,11 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
     lv_obj_clear_flag(lim_card, LV_OBJ_FLAG_HIDDEN);
     char pb[12];
 
+    // lim_hero is only used by providers migrated to hero_amount (Pi, LM
+    // Studio); hide by default so it can't leak onto the others. Those branches
+    // re-show it.
+    hide_hero_amount(&lim_hero);
+
     if (is_lmstudio) {
         // LM Studio STATS: tokens % (session) + requests % (weekly)
         {
@@ -1551,12 +1637,17 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
         lv_obj_add_flag(lim_x_lbl, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(lim_x_val, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(lim_x_bar, LV_OBJ_FLAG_HIDDEN);
-        fmt_pct(pb, sizeof pb, p->has_lm, p->p);
-        lv_label_set_text(lim_s_lbl, "TOKENS");
+        lv_obj_add_flag(lim_s_lbl, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(lim_s_big, LV_OBJ_FLAG_HIDDEN);
+        place_hero_amount(&lim_hero, &hero, "TOKENS");
         if (card_entered && p->has_lm) {
-            anim_count_up(lim_s_big, (int32_t)(p->p * 10.0f + 0.5f), count_pct_cb);
+            anim_count_up(lim_hero.num, (int32_t)(p->p * 10.0f + 0.5f), count_pct_cb);
         } else {
-            lv_label_set_text(lim_s_big, pb);
+            int tenths = (int)(p->p * 10.0f + 0.5f);
+            if (tenths < 0) tenths = 0; else if (tenths > 1000) tenths = 1000;
+            char nb[8];
+            snprintf(nb, sizeof nb, "%d.%d", tenths / 10, tenths % 10);
+            set_hero_amount(&lim_hero, NULL, nb, "%");
         }
         set_bar(lim_s_bar, p->has_lm, p->p, p);
         lv_obj_add_flag(lim_s_rst, LV_OBJ_FLAG_HIDDEN);
@@ -1605,12 +1696,33 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
     lv_obj_set_pos(lim_x_val, footer.x + 12, footer.y + 74);
     lv_obj_set_pos(lim_x_bar, footer.x + 12, footer.y + 90);
 
-    lv_label_set_text(lim_s_lbl, has_balance ? "API KEY" : (p->has_t ? "TOTAL" : "SESSION"));
-    fmt_pct(pb, sizeof pb, p->has_p, p->p);
-    if (card_entered && p->has_p) {
-        anim_count_up(lim_s_big, (int32_t)(p->p * 10.0f + 0.5f), count_pct_cb);
+    if (is_pi) {
+        // Pi Limits: hero_amount pair ("SESSION" / "NN.N%") replaces lim_s_lbl
+        // + lim_s_big. The "%" is a suffix symbol.
+        lv_obj_add_flag(lim_s_lbl, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(lim_s_big, LV_OBJ_FLAG_HIDDEN);
+        place_hero_amount(&lim_hero, &hero, "SESSION");
+        if (card_entered && p->has_p) {
+            // count_pct_cb renders "NN.N%" each frame — same output as
+            // set_hero_amount(NULL, num, "%") for the static case below.
+            anim_count_up(lim_hero.num, (int32_t)(p->p * 10.0f + 0.5f), count_pct_cb);
+        } else {
+            int tenths = (int)(p->p * 10.0f + 0.5f);
+            if (tenths < 0) tenths = 0; else if (tenths > 1000) tenths = 1000;
+            char nb[8];
+            snprintf(nb, sizeof nb, "%d.%d", tenths / 10, tenths % 10);
+            set_hero_amount(&lim_hero, NULL, nb, "%");
+        }
     } else {
-        lv_label_set_text(lim_s_big, pb);
+        lv_obj_clear_flag(lim_s_lbl, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(lim_s_big, LV_OBJ_FLAG_HIDDEN);
+        lv_label_set_text(lim_s_lbl, has_balance ? "API KEY" : (p->has_t ? "TOTAL" : "SESSION"));
+        fmt_pct(pb, sizeof pb, p->has_p, p->p);
+        if (card_entered && p->has_p) {
+            anim_count_up(lim_s_big, (int32_t)(p->p * 10.0f + 0.5f), count_pct_cb);
+        } else {
+            lv_label_set_text(lim_s_big, pb);
+        }
     }
     set_bar(lim_s_bar, p->has_p, p->p, p);
     if (has_balance) {
