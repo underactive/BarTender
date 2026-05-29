@@ -1275,6 +1275,18 @@ static void set_reset_lbl(lv_obj_t *lbl, const char *ts)
     lv_obj_clear_flag(lbl, LV_OBJ_FLAG_HIDDEN);
 }
 
+// Show cost_lbl as the caption above the hero amount (e.g. "SPEND", "TOKENS").
+// Anchored at hero.y + 2 — just below the header chrome — so it always clears
+// the -8-leading-trimmed number set unconditionally in render_card(). New
+// providers that want a caption call this instead of hand-placing cost_lbl, so
+// the position can't drift out of sync with the amount.
+static void cost_hero_caption(const ui_rect_t *hero, const char *text)
+{
+    lv_obj_clear_flag(cost_lbl, LV_OBJ_FLAG_HIDDEN);
+    lv_label_set_text(cost_lbl, text);
+    lv_obj_set_pos(cost_lbl, hero->x + 12, hero->y + 2);
+}
+
 static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
 {
     bool card_entered = (s_prev_nav_level    != NAV_PAGE        ||
@@ -1324,20 +1336,30 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
         }
         lv_obj_add_flag(cost_na, LV_OBJ_FLAG_HIDDEN);
 
+        // lemonmilk-48 reserves ~8px of top leading inside its 49px line box,
+        // which pushes the hero amount past the bottom of the 2x2 grid region.
+        // Trim it for every provider so the number stays in bounds and sits at
+        // a consistent height across cards. Captions above it (SPEND/TOKENS)
+        // are raised to hero.y + 2 to match.
+        lv_obj_set_style_pad_top(cost_big, -8, 0);
+
+        // Secondary metric line (tokens / requests / balance) — same height on
+        // every card. hero.y + 76 centers it in body-row 2 so it clears the
+        // grid divider lines above (y=90) and below (y=125). cost_tok_unit is
+        // aligned to it per-branch once its text width is known.
+        lv_obj_set_pos(cost_tok, hero.x + 12, hero.y + 76);
+
         if (is_lmstudio) {
             // LM Studio TODAY: hero tokens, hero requests, 30-day bar chart, 30-day max
             lv_obj_t *hide[] = { cost_or_lbl, cost_or_row1, cost_or_row2,
                                  cost_bar, cost_bar_lbl, cost_cap };
             for (unsigned i = 0; i < sizeof hide / sizeof *hide; i++)
                 lv_obj_add_flag(hide[i], LV_OBJ_FLAG_HIDDEN);
-            lv_obj_clear_flag(cost_lbl, LV_OBJ_FLAG_HIDDEN);
-            lv_label_set_text(cost_lbl, "TOKENS");
+            cost_hero_caption(&hero, "TOKENS");
             lv_obj_t *show[] = { cost_big, cost_tok, cost_tok_unit, cost_30, cost_chart };
             for (unsigned i = 0; i < sizeof show / sizeof *show; i++)
                 lv_obj_clear_flag(show[i], LV_OBJ_FLAG_HIDDEN);
             lv_obj_set_pos(cost_big, hero.x + 12, hero.y + 28);
-            lv_obj_set_pos(cost_tok, hero.x + 12, hero.y + 84);
-            lv_obj_set_pos(cost_tok_unit, hero.x + 12, hero.y + 104);
             lv_obj_set_pos(cost_30, footer.x + 12, footer.y + 6);
             lv_obj_set_pos(cost_cap, footer.x + 12, footer.y + 22);
             lv_obj_set_size(cost_chart, body.w - 24, body.h - 8);
@@ -1372,8 +1394,7 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
                                  cost_tok, cost_tok_unit };
             for (unsigned i = 0; i < sizeof hide / sizeof *hide; i++)
                 lv_obj_add_flag(hide[i], LV_OBJ_FLAG_HIDDEN);
-            lv_obj_clear_flag(cost_lbl, LV_OBJ_FLAG_HIDDEN);
-            lv_label_set_text(cost_lbl, "TOKENS");
+            cost_hero_caption(&hero, "TOKENS");
             lv_obj_t *show[] = { cost_big, cost_30, cost_chart };
             for (unsigned i = 0; i < sizeof show / sizeof *show; i++)
                 lv_obj_clear_flag(show[i], LV_OBJ_FLAG_HIDDEN);
@@ -1417,10 +1438,10 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
             }
             lv_obj_clear_flag(cost_big, LV_OBJ_FLAG_HIDDEN);
             lv_obj_set_pos(cost_big, hero.x + 12, hero.y + 28);
+            cost_hero_caption(&hero, "SPEND");
             fmt_money(bal, sizeof bal, p->credits_remaining_c);
             lv_label_set_text(cost_tok, bal);
             lv_obj_clear_flag(cost_tok, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_set_pos(cost_tok, hero.x + 12, hero.y + 84);
             lv_label_set_text(cost_tok_unit, "balance");
             lv_obj_align_to(cost_tok_unit, cost_tok, LV_ALIGN_OUT_RIGHT_BOTTOM, 5, 0);
             lv_obj_clear_flag(cost_tok_unit, LV_OBJ_FLAG_HIDDEN);
@@ -1438,6 +1459,8 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
             lv_obj_t *body_widgets[] = { cost_big, cost_tok, cost_tok_unit, cost_30, cost_chart };
             for (unsigned i = 0; i < sizeof body_widgets / sizeof *body_widgets; i++)
                 lv_obj_clear_flag(body_widgets[i], LV_OBJ_FLAG_HIDDEN);
+            // Claude, Codex and Pi all caption the hero amount "SPEND".
+            cost_hero_caption(&hero, "SPEND");
             if (is_pi) {
                 lv_obj_add_flag(cost_cap, LV_OBJ_FLAG_HIDDEN);
                 lv_obj_set_pos(cost_30, footer.x + 12, footer.y + 10);
