@@ -1422,8 +1422,13 @@ void render(void)   // ui_task only
     }
     clamp_scroll();
 
-    if (st.nav_level == NAV_PAGE)
-        led_set_provider(st.nav_id);
+    if (st.nav_level == NAV_PAGE) {
+        // During screensaver transitions, led_transition_tick() drives the
+        // interpolation — skip led_set_provider() while a transition is in
+        // flight so repeated renders don't restart it.
+        if (!st.saver_active || !led_is_transitioning())
+            led_set_provider(st.nav_id);
+    }
 
     if (st.nav_level == NAV_PAGE) {
         if (boot_img) lv_obj_add_flag(boot_img, LV_OBJ_FLAG_HIDDEN);

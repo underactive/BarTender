@@ -15,6 +15,24 @@ static led_strip_handle_t s_strip;
 static int64_t s_summary_anchor_ms;
 static int     s_summary_n;
 
+// ── Color transition (screensaver provider changes) ──────────────────
+#define LED_TRANSITION_MS 700   // matches SCREENSAVER_FADE_MS
+
+typedef struct {
+    bool active;
+    uint8_t from_r, from_g, from_b;
+    uint8_t to_r, to_g, to_b;
+    int64_t start_ms, duration_ms;
+} led_xfade_t;
+
+static bool     s_transition_enabled;
+static led_xfade_t s_xfade;
+// Write cache — mirrors the last RGB value pushed to the LED so that
+// transitions can interpolate from the current colour.  Updated by
+// led_write_rgb(); reset to (0,0,0) by led_off().
+static bool    s_last_written;
+static uint8_t s_last_r, s_last_g, s_last_b;
+
 void led_init(void)
 {
     led_strip_config_t strip_cfg = {
@@ -59,14 +77,11 @@ static const uint8_t GAMMA8[256] = {
 static void led_write_rgb(uint8_t r, uint8_t g, uint8_t b)
 {
     if (!s_strip) return;
-    // Fix L: cache the last-written values and skip set_pixel + refresh when
+    // Cache the last-written values and skip set_pixel + refresh when
     // they are identical (avoids a blocking RMT TX on every tick with no change).
-    // Sentinel: s_last_written is false until the first call.
-    static bool    s_written = false;
-    static uint8_t s_last_r, s_last_g, s_last_b;
-    if (s_written && r == s_last_r && g == s_last_g && b == s_last_b) return;
+    if (s_last_written && r == s_last_r && g == s_last_g && b == s_last_b) return;
     s_last_r = r; s_last_g = g; s_last_b = b;
-    s_written = true;
+    s_last_written = true;
     led_strip_set_pixel(s_strip, 0,
         (uint8_t)(GAMMA8[r] * 9 / 10),
         (uint8_t)(GAMMA8[g] * 9 / 10),
@@ -78,14 +93,30 @@ void led_set_provider(const char *id)
 {
     if (!s_strip) return;
     uint32_t h = prov_color_hex(id);
-    if (!h) { led_strip_clear(s_strip); return; }
-    led_write_rgb((h >> 16) & 0xFF, (h >> 8) & 0xFF, h & 0xFF);
+    if (!h) { led_off(); return; }
+
+    uint8_t tr = (h >> 16) & 0xFF, tg = (h >> 8) & 0xFF, tb = h & 0xFF;
+
+    if (s_transition_enabled && s_last_written) {
+        // Start smooth interpolation from current colour to new provider colour.
+        s_xfade = (led_xfade_t){
+            .active   = true,
+            .from_r   = s_last_r, .from_g = s_last_g, .from_b = s_last_b,
+            .to_r     = tr,       .to_g   = tg,       .to_b   = tb,
+            .start_ms = 0,        // set on first tick
+            .duration_ms = LED_TRANSITION_MS,
+        };
+        return;
+    }
+    led_write_rgb(tr, tg, tb);
 }
 
 void led_off(void)
 {
     if (!s_strip) return;
-    led_strip_clear(s_strip);
+    // Use led_write_rgb so the internal cache is updated to (0,0,0);
+    // a subsequent transition then starts from black rather than stale colour.
+    led_write_rgb(0, 0, 0);
 }
 
 void led_summary_reset(void)
@@ -133,3 +164,33 @@ void led_summary_cycle_tick(int64_t now_ms, const char *const *ids, int n)
     const uint8_t b = (uint8_t)(b0 + (((int)b1 - (int)b0) * (int)frac) / 255);
     led_write_rgb(r, g, b);
 }
+
+// ── Colour transition API (screensaver provider changes) ─────────────
+void led_transition_enable(void) { s_transition_enabled = true; }
+bool led_is_transitioning(void) { return s_xfade.active; }
+void led_transition_disable(void)
+{
+    s_transition_enabled = false;
+    s_xfade.active = false;
+}
+
+void led_transition_tick(int64_t now_ms)
+{
+    if (!s_xfade.active) return;
+    if (s_xfade.start_ms == 0) s_xfade.start_ms = now_ms;
+    int64_t elapsed = now_ms - s_xfade.start_ms;
+    if (elapsed >= s_xfade.duration_ms) {
+        led_write_rgb(s_xfade.to_r, s_xfade.to_g, s_xfade.to_b);
+        s_xfade.active = false;
+        return;
+    }
+    uint32_t frac = (uint32_t)(elapsed * 255 / s_xfade.duration_ms);
+    uint8_t r = (uint8_t)(s_xfade.from_r +
+                   (((int)s_xfade.to_r - (int)s_xfade.from_r) * (int)frac) / 255);
+    uint8_t g = (uint8_t)(s_xfade.from_g +
+                   (((int)s_xfade.to_g - (int)s_xfade.from_g) * (int)frac) / 255);
+    uint8_t b = (uint8_t)(s_xfade.from_b +
+                   (((int)s_xfade.to_b - (int)s_xfade.from_b) * (int)frac) / 255);
+    led_write_rgb(r, g, b);
+}
+

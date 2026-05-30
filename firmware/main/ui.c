@@ -125,8 +125,10 @@ static void ui_task(void *arg)
             boot_step_fade_locked(now);
             if (st.boot_fade == BOOT_FADE_NONE)
                 saver_step_fade_locked(now);
-            if (st.mode == UI_STATS && !st.saver_active && st.last_input_ms > 0 && now - st.last_input_ms >= SCREENSAVER_IDLE_MS)
+            if (st.mode == UI_STATS && !st.saver_active && st.last_input_ms > 0 && now - st.last_input_ms >= SCREENSAVER_IDLE_MS) {
                 saver_enter_locked(now);
+                led_transition_enable();
+            }
             saver_advance_locked(now);
             // Re-render every 10 s in stats mode so the "updated Ns ago"
             // counter ticks even without new data. render() recomputes the
@@ -138,6 +140,12 @@ static void ui_task(void *arg)
             if (st.mode == UI_STATS && st.nav_level == NAV_SUMMARY && now >= next_led) {
                 next_led = now + LED_TICK_INTERVAL_MS;
                 led_summary_tick_locked(now);
+            }
+            // Screensaver rear-LED: smooth colour transition on provider change.
+            if (st.mode == UI_STATS && st.saver_active &&
+                st.nav_level == NAV_PAGE && now >= next_led) {
+                next_led = now + LED_TICK_INTERVAL_MS;
+                led_transition_tick(now);
             }
             if (st.dirty) { render(); st.dirty = false; }
             do_shot = st.shot_req;
@@ -236,7 +244,7 @@ ui_input_result_t ui_handle_input(const app_evt_t *ev)
     }
 
     st.last_input_ms = esp_timer_get_time() / 1000;
-    if (st.saver_active) { saver_exit_locked(st.last_input_ms); r = UI_INPUT_CONSUMED; goto out; }
+    if (st.saver_active) { saver_exit_locked(st.last_input_ms); led_transition_disable(); r = UI_INPUT_CONSUMED; goto out; }
 
     switch (st.nav_level) {
     case NAV_SUMMARY:
