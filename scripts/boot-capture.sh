@@ -19,7 +19,7 @@
 #   esptool for --reset (ESP-IDF or: pip3 install esptool)
 #
 # Close idf.py monitor on the serial port before running.
-set -u
+set -euo pipefail
 
 err()  { print -r -- "error: $*" >&2; }
 warn() { print -r -- "warning: $*" >&2; }
@@ -50,10 +50,10 @@ while (( $# > 0 )); do
       shift; BC_FRAMES="${1:-}"; [[ "$BC_FRAMES" == <-> ]] || { err "--frames requires a number"; exit 2; }
       ;;
     --interval)
-      shift; BC_INTERVAL="${1:-}"; [[ "$BC_INTERVAL" == <-> ]] || { err "--interval requires a number"; exit 2; }
+      shift; BC_INTERVAL="${1:-}"; [[ "$BC_INTERVAL" =~ ^[0-9]+(\.[0-9]+)?$ ]] || { err "--interval requires a number"; exit 2; }
       ;;
     --delay)
-      shift; BC_DELAY="${1:-}"; [[ "$BC_DELAY" == <-> ]] || { err "--delay requires a number"; exit 2; }
+      shift; BC_DELAY="${1:-}"; [[ "$BC_DELAY" =~ ^[0-9]+(\.[0-9]+)?$ ]] || { err "--delay requires a number"; exit 2; }
       ;;
     --fps)
       shift; BC_FPS="${1:-}"; [[ "$BC_FPS" == <-> ]] || { err "--fps requires a number"; exit 2; }

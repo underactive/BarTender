@@ -30,7 +30,7 @@ static const char *TAG = "wifi";
                                    // >= MIN test matters; cap prevents int wrap
                                    // over months of uptime with no known AP
 // Escalating delay between failed scan sweeps; saturates at 60 s so a relocated
-// toy still rescans well inside the 300 s (FETCH_INTERVAL_S) poll window.
+// toy still rescans well inside the 60 s (FETCH_INTERVAL_S) poll window.
 static const int s_backoff_s[] = { 5, 15, 60 };
 
 // WHY (unchanged invariant): single word, sole writer = WiFi event task, read

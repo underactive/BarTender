@@ -12,8 +12,8 @@
 #   ./scripts/uninstall.sh --help
 #
 # All destructive operations require explicit confirmation.
-# The config file at ~/.config/codexbar-toy/config is preserved by default
-# (set --full to delete it too).
+# Default (no flag / --full): full removal — launchd, Keychain tokens, scripts, and config.
+# Use --config-only to remove only the config directory and logs.
 
 set -euo pipefail
 
@@ -80,8 +80,8 @@ wipe_keychain_tokens() {
 
   # Write token
   info "Removing Upstash write token (service=$KC_SERVICE, account=$KC_ACCOUNT) ..."
-  security delete-generic-password -s "$KC_SERVICE" -a "$KC_ACCOUNT" 2>/dev/null
-  if [[ $? -eq 0 || $? -eq 44 ]]; then
+  security delete-generic-password -s "$KC_SERVICE" -a "$KC_ACCOUNT" 2>/dev/null && rc=0 || rc=$?
+  if [[ $rc -eq 0 || $rc -eq 44 ]]; then
     # exit 44 = "item not found" — fine, means it was already gone
     ok "Upstash write token removed"
   else
@@ -90,8 +90,8 @@ wipe_keychain_tokens() {
 
   # Cursor session token (if any)
   info "Removing Cursor session token (service=$KC_SERVICE, account=$CURSOR_KC_ACCOUNT) ..."
-  security delete-generic-password -s "$KC_SERVICE" -a "$CURSOR_KC_ACCOUNT" 2>/dev/null
-  if [[ $? -eq 0 || $? -eq 44 ]]; then
+  security delete-generic-password -s "$KC_SERVICE" -a "$CURSOR_KC_ACCOUNT" 2>/dev/null && rc=0 || rc=$?
+  if [[ $rc -eq 0 || $rc -eq 44 ]]; then
     ok "Cursor session token removed"
   else
     warn "Cursor session token — could not verify removal (may already be gone)"

@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <limits.h>
+#include <math.h>
 
 static const char *TAG = "stats";
 
@@ -22,6 +23,7 @@ static void json_str_copy(char *dst, size_t n, const cJSON *s)
 // negative/garbage cost or token count.
 static int32_t i32_clamp(double v)
 {
+    if (isnan(v)) return 0;
     if (v <= (double)INT32_MIN) return INT32_MIN;
     if (v >= (double)INT32_MAX) return INT32_MAX;
     return (int32_t)v;
@@ -32,6 +34,7 @@ static int32_t i32_clamp(double v)
 // the gap between 9.2e18 and the true limit 9223372036854775808.0.
 static int64_t i64_clamp(double v)
 {
+    if (isnan(v)) return 0;
     if (v < -9223372036854775808.0) return INT64_MIN;
     if (v >=  9223372036854775808.0) return INT64_MAX;
     return (int64_t)v;

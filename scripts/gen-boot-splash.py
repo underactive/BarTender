@@ -8,7 +8,10 @@
 # Default source: scripts/assets/boot-splash.png
 import os
 import sys
-from PIL import Image
+try:
+    from PIL import Image
+except ImportError:
+    sys.exit("Pillow not installed — pip install Pillow")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_SRC = os.path.join(HERE, "assets", "boot-splash.png")

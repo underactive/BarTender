@@ -623,7 +623,11 @@ main() {
   case "$mode" in
     --install) do_install=1 ;;
     --flash)   do_flash=1 ;;
-    --check|-h|--help|"") ;;  # default mode
+    --check|"") ;;  # default mode
+    -h|--help)
+      awk 'NR>=2 && /^#/{sub(/^# ?/,"");print;next} NR>=2{exit}' "$0"
+      exit 0
+      ;;
     *) echo "Unknown option: $mode (try --check, --install, --flash, --help)"; exit 2 ;;
   esac
 

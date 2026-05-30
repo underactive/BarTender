@@ -5,7 +5,7 @@
 #include <stdbool.h>
 #include "lvgl.h"
 
-// Initialize SPI bus, ST7789 panel, LVGL display, and tick timer.
+// Initialize SPI bus, the configured LCD panel (ST7789/ILI9341 per board_config.h), LVGL display, and tick timer.
 // Returns the LVGL display object. Starts backlight.
 lv_display_t *display_init(void);
 

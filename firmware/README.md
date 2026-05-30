@@ -1,14 +1,14 @@
 # CodexBar Toy firmware (Prompt 3 of 3)
 
 ESP-IDF firmware for the **Freenove ESP32-S3 2.8" (FNK0104)** — joins WiFi,
-polls the Upstash key over HTTPS every 5 min, and renders the CodexBar usage
+polls the Upstash key over HTTPS every 60 s (FETCH_INTERVAL_S), and renders the CodexBar usage
 stats on the ILI9341 screen. The board bring-up (ILI9341 + LVGL 9, FT6336
 touch, shared I2C, NVS) is **vendored from the proven `clawd-tank` project**;
 only WiFi / HTTPS / JSON / the stats UI / captive-portal provisioning are new.
 
 ## Prerequisites
 
-- ESP-IDF **5.3+** (`idf.py` on PATH, e.g. via the project's `.envrc`/direnv)
+- ESP-IDF **5.3+** (`idf.py` on PATH, e.g. via `source $IDF_PATH/export.sh`)
 - The FNK0104 board over USB-C
 - An Upstash Redis DB with a **read-only** token (created in Prompt 2)
 
@@ -57,7 +57,7 @@ Nothing secret is ever compiled into the binary or committed to the repo.
 
 ## Normal operation
 
-- Polls `GET {url}/get/{key}` every `FETCH_INTERVAL_S` (300 s) over TLS
+- Polls `GET {url}/get/{key}` every `FETCH_INTERVAL_S` (60 s) over TLS
   (Mozilla CA bundle — no cert pinning).
 - Renders one row per provider: id, a colored bar + % for the primary
   window; `off` (dimmed) when that provider is `ok:false`. A status line
@@ -69,7 +69,7 @@ Nothing secret is ever compiled into the binary or committed to the repo.
   an autoscaled bar graph; Non-Claude Cost pages show "COST DATA NOT
   AVAILABLE YET".
 - **Swipe right→left** → back to the summary list.
-- Refresh is automatic (the 300 s poll); there is no tap-to-refresh.
+- Refresh is automatic (the 60 s poll); there is no tap-to-refresh.
 - **Long-press (~1.5 s) on the summary** → open the captive portal to
   **add a WiFi network** (the FNK0104 has no BOOT button). **Non-
   destructive:** all remembered networks **and** Upstash are kept. Honored

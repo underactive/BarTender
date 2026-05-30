@@ -15,7 +15,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 
-#define FETCH_INTERVAL_S    60   // matches the macOS publisher cadence
+#define FETCH_INTERVAL_S    60   // device poll cadence; faster than the 300 s macOS publisher so updates appear promptly
 #define FETCH_RETRY_S       20   // after a failed fetch
 #define CONNECT_GRACE_S    180   // never-connected-this-boot: open the add-
                                  // network portal after this long ONLY IF

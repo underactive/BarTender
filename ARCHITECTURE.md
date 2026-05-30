@@ -1,4 +1,4 @@
-# {{PROJECT_NAME}} Architecture
+# BarTender Architecture
 
 ## System overview
 
@@ -33,9 +33,6 @@ and the firmware accepts both (`v1‖v2`).
 
 ## Domain layers
 
-<!-- Define your dependency layers. The key principle: dependency flows in
-     one direction only. Adapt these layers to your architecture. -->
-
 | Layer        | Responsibility                                    | May depend on        |
 |--------------|---------------------------------------------------|----------------------|
 | **Types**    | Shared interfaces, enums, schemas                 | Nothing              |
@@ -50,9 +47,6 @@ via a shared interface. Domains should not import cross-cutting code directly.
 
 ## Domains
 
-<!-- List every bounded domain in your system. Update this table when adding
-     or removing domains. -->
-
 | Domain            | Purpose                                           | Status      |
 |-------------------|---------------------------------------------------|-------------|
 | `codexbar-stats` (`scripts/codexbar-stats.sh`) | Read CodexBar locally; text report + `--json` v2 (usage % + extra-usage $) | Implemented |
@@ -60,10 +54,6 @@ via a shared interface. Domains should not import cross-cutting code directly.
 | `firmware` (`firmware/`) | ESP32-S3 reads Upstash, scrollable summary + tap-cycle Cost/Usage pages on ILI9341; captive provisioning; remembers ≤5 WiFi nets (LRU) and scans+autoconnects when relocated, Upstash decoupled from WiFi | Implemented (POC, user-flashed) |
 
 ## Key design decisions
-
-<!-- Record architectural decisions that agents need to understand.
-     Focus on "why" — agents can read the code to learn "what".
-     Number them sequentially and never remove entries (mark superseded instead). -->
 
 1. **JSON is authoritative, not exit codes.** CodexBar exits non-zero if any
    provider fails but still emits valid JSON; every consumer trusts the parsed
@@ -104,7 +94,7 @@ via a shared interface. Domains should not import cross-cutting code directly.
    Cost page; tap cycles Cost↔Limit; swipe-left returns. `fetch.c` acts ONLY
    when `ui_handle_input` returns PASS, which now means a LONG-PRESS on the
    summary → open the add-network portal. Tap-to-refresh was dropped as a
-   deliberate consequence; the 300 s poll keeps pages live.)*
+   deliberate consequence; the 60 s device poll (FETCH_INTERVAL_S) keeps pages live.)*
 10. **Upstash and WiFi are decoupled; WiFi is an MRU ≤5-network roaming
    store.** WiFi creds live in one versioned NVS blob (`cbtoy/wnets`,
    `wifi_creds_t`), written with a single `nvs_set_blob`+commit so an LRU
@@ -114,7 +104,7 @@ via a shared interface. Domains should not import cross-cutting code directly.
    never re-prompts for the token and a corrupt WiFi blob can't endanger it
    (blob validated on read; failure ⇒ "zero networks", never erase/brick).
    A net_wifi-owned manager task scans **only while disconnected** (the toy
-   polls every 300 s, so it never needs to roam mid-link; relocating just
+   polls every 60 s (FETCH_INTERVAL_S; the macOS publisher writes every 300 s), so it never needs to roam mid-link; relocating just
    produces a real disconnect → scan) and the WiFi event handler is a **pure
    signaller** — this is what preserves the lock-free `s_connected`
    single-writer invariant (#net_wifi.c:12-15) while adding scan/select/MRU

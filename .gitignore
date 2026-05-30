@@ -19,6 +19,13 @@ firmware/managed_components/
 # The sdkconfig.defaults* files ARE committed.
 firmware/sdkconfig
 firmware/sdkconfig.old
+# native test harness build output (compiled locally from the committed sources)
+firmware/test/**/runtests
+firmware/test/**/*.dSYM/
+
+# ---- Local-only capture artifacts ----
+# Timestamped screenshots dumped at repo root by the capture scripts.
+/screenshot_*.png
 
 # ---- Local-only capture fixtures (SECURITY-CRITICAL — never commit) ----
 # These contain the account email / spend aggregates / private project paths.

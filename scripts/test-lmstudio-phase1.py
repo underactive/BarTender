@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
-Phase 1 manual verification test: stats_model_parse logic validation.
+Phase 1 manual verification test: JSON schema shape validation.
 
 Tests the 4 manual success criteria by constructing test JSON payloads
-and verifying the C parsing logic would handle them correctly.
+and verifying the expected schema shape (fixtures only). This validates
+the JSON payload structure and schema file, NOT the C stats_model_parse
+parser itself.
 """
 
 import json
@@ -142,14 +144,15 @@ def test_cache_fields_default_absent():
 
 def test_schema_validates():
     """Verify the JSON schema validates the payload."""
-    schema_path = "docs/generated/codexbar-payload.schema.json"
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    schema_path = os.path.join(repo_root, "docs", "generated", "codexbar-payload.schema.json")
     with open(schema_path) as f:
         schema = json.load(f)
     
     # Schema is a valid JSON document
     assert "$schema" in schema
     assert schema["title"] is not None
-    print(f"  ✅ Schema file ({schema_path}) is valid JSON")
+    print(f"  ✅ Schema file (docs/generated/codexbar-payload.schema.json) is valid JSON")
 
     # Verify lm sub-object schema
     props = schema["properties"]["providers"]["items"]["properties"]

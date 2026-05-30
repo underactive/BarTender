@@ -1,5 +1,6 @@
 // firmware/main/config_store.c
 #include "config_store.h"
+#include "wifi_lru.h"       // pure array-LRU helpers (header-only, no NVS)
 #include "nvs.h"            // nvs_flash_init lives in main.c; we only need nvs.h
 #include "esp_log.h"
 #include "esp_random.h"
@@ -179,12 +180,11 @@ size_t config_store_wifi_get(uint8_t i, char *ssid, size_t sn,
     return strnlen(w.e[i].ssid, CFG_SSID_MAX);
 }
 
-// Find an exact SSID match in e[0..count-1]; -1 if absent.
-static int wifi_find(const wifi_creds_t *w, const char *ssid)
+// wifi_find: thin wrapper kept so callers (add_or_update, promote) read cleanly.
+// The actual loop lives in wifi_lru.h (wifi_lru_find) for host-testability.
+static inline int wifi_find(const wifi_creds_t *w, const char *ssid)
 {
-    for (uint8_t i = 0; i < w->count; i++)
-        if (strncmp(w->e[i].ssid, ssid, CFG_SSID_MAX) == 0) return (int)i;
-    return -1;
+    return wifi_lru_find(w, ssid);
 }
 
 bool config_store_wifi_add_or_update(const char *ssid, const char *pass)
@@ -201,22 +201,7 @@ bool config_store_wifi_add_or_update(const char *ssid, const char *pass)
     strlcpy(ne.ssid, ssid, sizeof ne.ssid);
     strlcpy(ne.pass, pass ? pass : "", sizeof ne.pass);
 
-    int j = wifi_find(&w, ssid);
-    if (j >= 0) {
-        // Promote the existing slot to MRU, replacing its password in place.
-        for (int k = j; k > 0; k--) w.e[k] = w.e[k - 1];
-        w.e[0] = ne;                                 // count unchanged
-    } else {
-        // Prepend; if full, the shift drops e[count-1] (the LRU entry).
-        uint8_t keep = w.count;
-        if (keep == CFG_WIFI_MAX_ENTRIES) keep = CFG_WIFI_MAX_ENTRIES - 1;
-        for (int k = keep; k > 0; k--) w.e[k] = w.e[k - 1];
-        w.e[0] = ne;
-        if (w.count < CFG_WIFI_MAX_ENTRIES) w.count++;
-    }
-    for (uint8_t i = w.count; i < CFG_WIFI_MAX_ENTRIES; i++)
-        memset(&w.e[i], 0, sizeof w.e[i]);           // no stale pass residue
-    w.magic = CFG_WIFI_BLOB_MAGIC;
+    wifi_lru_upsert(&w, &ne, CFG_WIFI_MAX_ENTRIES);  // promote/append/evict + zero tail
 
     bool ok = blob_save(&w);
     ESP_LOGI(TAG, "wifi add/update '%s' -> count=%u %s",
@@ -232,9 +217,7 @@ bool config_store_wifi_promote(const char *ssid)
     int j = wifi_find(&w, ssid);
     if (j < 0)  return false;
     if (j == 0) return true;                         // already MRU; skip commit
-    wifi_entry_t e = w.e[j];
-    for (int k = j; k > 0; k--) w.e[k] = w.e[k - 1];
-    w.e[0] = e;
+    wifi_lru_promote(&w, j);
     bool ok = blob_save(&w);
     ESP_LOGI(TAG, "wifi promote '%s' (was idx %d) %s", ssid, j, ok ? "ok" : "FAIL");
     return ok;

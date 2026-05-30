@@ -158,7 +158,7 @@ ESP32-S3 boot
   │     1. GET {url}/get/{key} with read-only bearer token
   │     2. Parse {"result":"<json>"} envelope → inner JSON → flat stats_t struct
   │     3. ui_set_stats(&st, now_ms()) → mutex-protected copy to UI task
-  │     4. Sleep FETCH_INTERVAL (300s) / FETCH_RETRY_S on error
+  │     4. Sleep FETCH_INTERVAL (60s) / FETCH_RETRY_S on error
   │
   └─ ui_task → LVGL rendering (all LVGL calls on one thread):
        summary: per-provider row (bar + %, logo, id), status line

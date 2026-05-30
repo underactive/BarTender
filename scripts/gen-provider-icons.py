@@ -15,7 +15,10 @@
 #
 #   python3 scripts/gen-provider-icons.py
 import os, subprocess, sys, tempfile
-from PIL import Image
+try:
+    from PIL import Image
+except ImportError:
+    sys.exit("Pillow not installed — pip install Pillow")
 
 ICON_PX = 32
 SUMMARY_ICON_PX = 32
@@ -72,10 +75,13 @@ def _load_rgba(path):
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
             png = tmp.name
         try:
-            subprocess.run(
-                ["rsvg-convert", "-w", str(ICON_PX * 4),
-                 "--background-color", "none", path, "-o", png],
-                check=True, capture_output=True)
+            try:
+                subprocess.run(
+                    ["rsvg-convert", "-w", str(ICON_PX * 4),
+                     "--background-color", "none", path, "-o", png],
+                    check=True, capture_output=True)
+            except FileNotFoundError:
+                sys.exit("rsvg-convert not found — install with: brew install librsvg")
             return Image.open(png).convert("RGBA")
         finally:
             os.unlink(png)

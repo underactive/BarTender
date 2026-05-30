@@ -45,7 +45,7 @@ New here? Start with the [setup guide](docs/ONBOARDING.md) or run:
 
 ```sh
 ./scripts/preflight.sh    # check deps + guide mode
-./scripts/preflight.sh --install   # check + auto-install launchd
+./scripts/preflight.sh --install   # check + install launchd + flash firmware
 ./scripts/preflight.sh --flash     # check + flash firmware
 ```
 
@@ -144,7 +144,7 @@ toy keeps its last good value. The write token lives in the Keychain; the ESP32
 ### `firmware/` — ESP32-S3 desk toy
 
 ESP-IDF firmware for the Freenove ESP32-S3 2.8" (FNK0104): joins WiFi, polls
-the Upstash key over HTTPS every 5 min, renders the stats on the ILI9341.
+the Upstash key over HTTPS every 60 s (the device poll; the macOS publisher writes every 5 min), renders the stats on the ILI9341.
 A captive-portal handles setup so nothing secret is ever compiled in. It
 remembers up to **5 WiFi networks** and autoconnects to whichever is in range
 (home / work / café — no re-setup when you move); Upstash is stored
@@ -167,7 +167,7 @@ plan in [docs/exec-plans/active/](docs/exec-plans/active/).
 
 ## Contributing
 
-See [AGENTS.md](AGENTS.md) for repo conventions, workflow, and orientation.
+See [docs/REPO_CONVENTIONS.md](docs/REPO_CONVENTIONS.md) for repo conventions, workflow, and orientation.
 
 ## License
 
