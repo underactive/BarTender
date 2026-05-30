@@ -2183,8 +2183,9 @@ static void render(void)   // ui_task only
                 lv_label_set_text_fmt(row_val[i], "%d.%d%%",
                                       tenths / 10, tenths % 10);
             }
-            // Weekly bar under session bar (Claude / Codex / LM Studio).
-            // For LM Studio, `s` is requests % (vs 30-day max).
+            // Secondary bar under the primary session/API bar.
+            // Claude/Codex use weekly %, LM Studio uses requests %, and
+            // OpenRouter uses the same budget bar shown on its LIMITS page.
             if (((strcmp(p->id, "claude") == 0 || strcmp(p->id, "codex") == 0)
                  && p->has_s)
                 || strcmp(p->id, "lmstudio") == 0) {
@@ -2193,6 +2194,12 @@ static void render(void)   // ui_task only
                 lv_bar_set_value(row_bar_w[i], bar_fill(wv), LV_ANIM_ON);
                 lv_obj_set_style_bg_color(row_bar_w[i], bar_color(p, p->s), LV_PART_INDICATOR);
                 update_bar_pulse(row_bar_w[i], p->s);
+                lv_obj_clear_flag(row_bar_w[i], LV_OBJ_FLAG_HIDDEN);
+            } else if (strcmp(p->id, "openrouter") == 0 && p->has_cost && p->extra_limit_c > 0) {
+                int xv = extra_pct(p);
+                lv_bar_set_value(row_bar_w[i], bar_fill(xv), LV_ANIM_ON);
+                lv_obj_set_style_bg_color(row_bar_w[i], bar_color(p, (float)xv), LV_PART_INDICATOR);
+                update_bar_pulse(row_bar_w[i], (float)xv);
                 lv_obj_clear_flag(row_bar_w[i], LV_OBJ_FLAG_HIDDEN);
             } else {
                 lv_obj_add_flag(row_bar_w[i], LV_OBJ_FLAG_HIDDEN);
