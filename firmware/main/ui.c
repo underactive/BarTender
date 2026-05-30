@@ -7,7 +7,9 @@
 #include "display.h"
 #include "config_store.h"
 extern const lv_font_t font_lemonmilk_48;
+extern const lv_font_t font_lemonmilk_36;
 extern const lv_font_t font_lemonmilk_24;
+extern const lv_font_t font_lemonmilk_23;
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
@@ -87,7 +89,7 @@ static struct {
 } st;
 
 // Widgets (created once, mutated only on ui_task)
-static lv_obj_t *scr, *title, *status, *prov_box;
+static lv_obj_t *scr, *title, *status, *prov_box, *summary_top;
 static lv_obj_t *row_id[ROWS], *row_bar[ROWS], *row_val[ROWS], *row_icon[ROWS], *row_bar_w[ROWS];
 
 // Cost card
@@ -131,9 +133,12 @@ static hero_amount_t cost_hero, lim_hero;
 #define UI_GRID_ROWS     8
 #define UI_CHROME_TOP    20
 #define UI_CHROME_BOTTOM 16
-#define UI_SUMMARY_GAP   8
+#define UI_SUMMARY_GAP      8
+#define UI_SUMMARY_TOP_ROWS 2   // content-grid rows reserved above provider list
 #define UI_GRID_COLOR    0x8da4c0
 #define UI_GRID_OPA      LV_OPA_90
+
+static const bool UI_SHOW_GRID_LINES = false;  // flip true for layout debug overlay
 
 static lv_obj_t *grid_h[UI_GRID_ROWS + 1];
 static lv_obj_t *grid_v[UI_GRID_COLS - 1];
@@ -168,8 +173,12 @@ static void ui_update_grid_overlay(const ui_page_grid_t *g)
         grid_h_pts[i][0] = (lv_point_precise_t){ g->content.x, g->content.y + i * g->cell_h };
         grid_h_pts[i][1] = (lv_point_precise_t){ g->content.x + g->content.w, g->content.y + i * g->cell_h };
         lv_line_set_points(line, grid_h_pts[i], 2);
-        lv_obj_clear_flag(line, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_move_foreground(line);
+        if (UI_SHOW_GRID_LINES) {
+            lv_obj_clear_flag(line, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_move_foreground(line);
+        } else {
+            lv_obj_add_flag(line, LV_OBJ_FLAG_HIDDEN);
+        }
     }
     for (int i = 0; i < UI_GRID_COLS - 1; i++) {
         lv_obj_t *line = grid_v[i];
@@ -178,8 +187,12 @@ static void ui_update_grid_overlay(const ui_page_grid_t *g)
         grid_v_pts[i][0] = (lv_point_precise_t){ x, g->content.y };
         grid_v_pts[i][1] = (lv_point_precise_t){ x, g->content.y + g->content.h };
         lv_line_set_points(line, grid_v_pts[i], 2);
-        lv_obj_clear_flag(line, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_move_foreground(line);
+        if (UI_SHOW_GRID_LINES) {
+            lv_obj_clear_flag(line, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_move_foreground(line);
+        } else {
+            lv_obj_add_flag(line, LV_OBJ_FLAG_HIDDEN);
+        }
     }
 }
 
@@ -188,6 +201,8 @@ static int summary_vis_rows_from_grid(const ui_page_grid_t *g)
     int rows = g->content.h / g->cell_h;
     if (rows < 1) rows = 1;
     if (rows > ROWS) rows = ROWS;
+    rows -= UI_SUMMARY_TOP_ROWS;
+    if (rows < 0) rows = 0;
     return rows;
 }
 
@@ -610,7 +625,9 @@ static int summary_hit_test(int y)
 {
     const ui_page_grid_t g = ui_grid_from_height(s_scr_w, s_scr_h);
     if (y < g.content.y || y >= g.content.y + g.content.h) return -1;
-    const int slot = (y - g.content.y) / g.cell_h;
+    const int grid_row = (y - g.content.y) / g.cell_h;
+    if (grid_row < UI_SUMMARY_TOP_ROWS) return -1;
+    const int slot = grid_row - UI_SUMMARY_TOP_ROWS;
     if (slot < 0 || slot >= summary_vis_rows_from_grid(&g)) return -1;
     if ((y - g.content.y) % g.cell_h > g.cell_h - UI_SUMMARY_GAP) return -1;
     return summary_provider_at(st.scroll + slot);
@@ -619,6 +636,40 @@ static int summary_hit_test(int y)
 // tokens -> "123.2M" / "45.6K" / "789" using ONLY integer math (LVGL/newlib
 // nano printf has no %lld and no float; everything here fits int32 after the
 // divide: 30-day counts are < ~2e9 so /1000 or /1e6 is safe).
+// Today's token count for one provider (field varies by provider shape).
+static int64_t provider_tok_today(const stats_provider_t *p)
+{
+    if (strcmp(p->id, "lmstudio") == 0)
+        return p->has_lm ? p->lm_tok_today : 0;
+    if (strcmp(p->id, "cursor") == 0)
+        return p->has_cu ? p->cu_tok_today : 0;
+    return p->has_cost ? p->tok_today : 0;
+}
+
+// Sum of today's tokens across all summary-visible providers.
+static int64_t summary_tok_today_total(void)
+{
+    int64_t sum = 0;
+    for (int i = 0; i < st.stats.n; i++) {
+        const stats_provider_t *p = &st.stats.p[i];
+        if (is_hidden_provider(p->id)) continue;
+        sum += provider_tok_today(p);
+    }
+    return sum;
+}
+
+static const char *summary_provider_name(const char *id)
+{
+    if (!id) return "";
+    if (strcmp(id, "pi") == 0) return "Pi";
+    if (strcmp(id, "lmstudio") == 0) return "LM Studio";
+    if (strcmp(id, "openrouter") == 0) return "OpenRouter";
+    if (strcmp(id, "claude") == 0) return "Claude";
+    if (strcmp(id, "codex") == 0) return "Codex";
+    if (strcmp(id, "cursor") == 0) return "Cursor";
+    return id;
+}
+
 static void fmt_tokens(char *buf, size_t n, int64_t t)
 {
     if (t < 0) t = 0;
@@ -636,6 +687,34 @@ static void fmt_tokens(char *buf, size_t n, int64_t t)
     } else {
         snprintf(buf, n, "%d", (int)t);
     }
+}
+
+// tokens -> "76,234,567" (full value, comma-separated; integer math only).
+static void fmt_tokens_full(char *buf, size_t n, int64_t t)
+{
+    if (n == 0) return;
+    if (t < 0) t = 0;
+    if (t == 0) {
+        snprintf(buf, n, "0");
+        return;
+    }
+    char tmp[32];
+    int pos = (int)sizeof tmp - 1;
+    tmp[pos] = '\0';
+    int group = 0;
+    while (t > 0 && pos > 0) {
+        if (group == 3) {
+            tmp[--pos] = ',';
+            group = 0;
+        }
+        tmp[--pos] = (char)('0' + (t % 10));
+        t /= 10;
+        group++;
+    }
+    size_t len = sizeof tmp - 1 - (size_t)pos;
+    if (len >= n) len = n - 1;
+    memcpy(buf, tmp + pos, len);
+    buf[len] = '\0';
 }
 
 
@@ -656,6 +735,8 @@ typedef struct {
 
 static void create_card_hdr(lv_obj_t *card, lv_obj_t **hdr_out, lv_obj_t **logo_out);
 static hero_amount_t make_hero_amount(lv_obj_t *parent);
+static void hide_hero_amount(hero_amount_t *h);
+static void cost_hero_set_parent(lv_obj_t *parent);
 static void render_page_chrome(lv_obj_t *hdr, lv_obj_t *logo,
                                const ui_page_chrome_desc_t *desc);
 static void bar_opa_cb(void *obj, int32_t opa);
@@ -696,7 +777,7 @@ static void build_widgets(void)
 
     status = lv_label_create(scr);
     lv_obj_set_style_text_color(status, lv_color_hex(0x9aa0a6), 0);
-    lv_obj_set_style_text_font(status, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_font(status, &lv_font_montserrat_10, 0);
     lv_obj_set_pos(status, 8, 4);
     lv_label_set_text(status, "starting...");
 
@@ -753,6 +834,13 @@ static void build_widgets(void)
     lv_obj_set_width(prov_box, W - 20);
     lv_obj_set_pos(prov_box, 10, 50);
     lv_obj_add_flag(prov_box, LV_OBJ_FLAG_HIDDEN);
+
+    summary_top = lv_obj_create(scr);
+    lv_obj_set_style_bg_opa(summary_top, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(summary_top, 0, 0);
+    lv_obj_set_style_pad_all(summary_top, 0, 0);
+    lv_obj_clear_flag(summary_top, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(summary_top, LV_OBJ_FLAG_HIDDEN);
 
     const ui_page_grid_t grid = ui_grid_from_height(W, H);
     for (int i = 0; i <= UI_GRID_ROWS; i++) {
@@ -1087,9 +1175,14 @@ static void hide_cards(void)     // hide all card panels (chrome stays)
 
 static void hide_summary_chrome(void)  // hide title/status/rows before a card
 {
-    lv_obj_add_flag(title,    LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(status,   LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(prov_box, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(title,       LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(status,      LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(prov_box,    LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(summary_top, LV_OBJ_FLAG_HIDDEN);
+    hide_hero_amount(&cost_hero);
+    lv_obj_set_style_text_font(cost_hero.num, &font_lemonmilk_48, 0);
+    lv_obj_set_style_pad_top(cost_hero.num, -8, 0);
+    cost_hero_set_parent(cost_card);
     for (int i = 0; i < ROWS; i++) {
         update_bar_pulse(row_bar[i], 0.0f);
         update_bar_pulse(row_bar_w[i], 0.0f);
@@ -1335,10 +1428,33 @@ static void place_hero_amount(hero_amount_t *h, const ui_rect_t *hero, const cha
     lv_obj_set_pos(h->num, hero->x + 12, hero->y + 28);
 }
 
+// Summary hero: lemonmilk-36 + comma glyph — largest size that fits 11-char counts on 240px.
+static void place_summary_hero_amount(hero_amount_t *h, const ui_rect_t *hero,
+                                        const char *caption)
+{
+    lv_obj_clear_flag(h->caption, LV_OBJ_FLAG_HIDDEN);
+    lv_label_set_text(h->caption, caption);
+    lv_obj_set_style_text_font(h->caption, &font_lemonmilk_23, 0);
+    lv_obj_set_pos(h->caption, hero->x + 12, hero->y - 8);
+    lv_obj_clear_flag(h->num, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_style_text_font(h->num, &font_lemonmilk_36, 0);
+    lv_obj_set_style_pad_top(h->num, -6, 0);
+    lv_obj_set_pos(h->num, hero->x + 12, hero->y + 22);
+}
+
 static void hide_hero_amount(hero_amount_t *h)
 {
     lv_obj_add_flag(h->caption, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(h->num, LV_OBJ_FLAG_HIDDEN);
+}
+
+// cost_hero lives on cost_card by default; the summary page reparents it onto scr.
+static void cost_hero_set_parent(lv_obj_t *parent)
+{
+    if (lv_obj_get_parent(cost_hero.caption) != parent)
+        lv_obj_set_parent(cost_hero.caption, parent);
+    if (lv_obj_get_parent(cost_hero.num) != parent)
+        lv_obj_set_parent(cost_hero.num, parent);
 }
 
 // cost_tok / cost_tok_unit live on cost_card by default; LM Studio STATS
@@ -1896,15 +2012,11 @@ static void render(void)   // ui_task only
     // (a local buffer — never mutate shared st.status). This removes the old
     // save/restore-under-mutex hack and the freshness gap where the counter
     // froze ~10 s after a fetch.
+    // --- Footer Widget (Age Suffix) ---
     if (st.fetched_ms > 0) {
         int age = (int)((esp_timer_get_time() / 1000 - st.fetched_ms) / 1000);
         if (age < 0) age = 0;
         char line[128];  // st.status(<=63) + " • updated <int>s ago" + hint
-        // Audit UI§HIGH: separator must be a glyph compiled into
-        // lv_font_montserrat_12. That font ships with only 0x20-0x7F,
-        // 0xB0, 0x2022 (see lv_font_montserrat_12.c gen opts), so the old
-        // U+00B7 MIDDLE DOT (·) had no glyph and rendered as a tofu box.
-        // LV_SYMBOL_BULLET is U+2022, which *is* in the font.
         snprintf(line, sizeof line,
                  "%s " LV_SYMBOL_BULLET " updated %ds ago%s",
                  st.status, age, hint);
@@ -1918,6 +2030,34 @@ static void render(void)   // ui_task only
     }
 
     const ui_page_grid_t g = ui_grid_from_height(s_scr_w, s_scr_h);
+    ui_update_grid_overlay(&g);
+
+    // Footer slot: use the bottom chrome area below grid row 8.
+    const ui_rect_t footer_slot = {
+        .x = g.content.x,
+        .y = g.content.y + g.content.h,
+        .w = g.content.w,
+        .h = UI_CHROME_BOTTOM,
+    };
+    lv_obj_set_pos(status, footer_slot.x + 8, footer_slot.y + 2);
+    lv_obj_set_width(status, footer_slot.w - 16);
+    lv_obj_set_style_text_align(status, LV_TEXT_ALIGN_CENTER, 0);
+
+    {
+        const ui_rect_t top_r = ui_grid_span(&g, 0, 0, 2, UI_SUMMARY_TOP_ROWS);
+        lv_obj_set_pos(summary_top, top_r.x, top_r.y);
+        lv_obj_set_size(summary_top, top_r.w, top_r.h);
+        if (st.fetched_ms > 0 && st.stats.n > 0) {
+            lv_obj_clear_flag(summary_top, LV_OBJ_FLAG_HIDDEN);
+            cost_hero_set_parent(scr);
+            place_summary_hero_amount(&cost_hero, &top_r, "I/O TOKENS TODAY");
+            char tk[32];
+            fmt_tokens_full(tk, sizeof tk, summary_tok_today_total());
+            set_hero_amount(&cost_hero, NULL, tk, NULL);
+        } else {
+            lv_obj_add_flag(summary_top, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
     for (int i = 0; i < ROWS; i++) {
         int pi = summary_provider_at(st.scroll + i); // i = visual slot, pi = stats.p[] index
         if (i >= vis || pi < 0) {
@@ -1932,7 +2072,7 @@ static void render(void)   // ui_task only
         lv_obj_clear_flag(row_id[i],  LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(row_val[i], LV_OBJ_FLAG_HIDDEN);
         {
-            const ui_rect_t r = ui_grid_span(&g, 0, i, 2, 1);
+            const ui_rect_t r = ui_grid_span(&g, 0, UI_SUMMARY_TOP_ROWS + i, 2, 1);
             bool cu_warn = cursor_sess_refresh_needed(p);
             lv_obj_set_size(row_icon[i], 32, 32);
             lv_obj_set_pos(row_icon[i], r.x + 8, r.y + 1);
@@ -1943,7 +2083,7 @@ static void render(void)   // ui_task only
             lv_obj_set_pos(row_val[i], r.x + r.w - 52, r.y + 15);
             lv_obj_set_pos(row_bar_w[i], r.x + ROW_TXT_X, r.y + 28);
             lv_obj_set_size(row_bar_w[i], r.w - ROW_TXT_X - 60, 2);
-            lv_label_set_text(row_id[i], p->id);
+            lv_label_set_text(row_id[i], summary_provider_name(p->id));
             lv_obj_set_style_text_color(row_id[i],
                 cu_warn ? lv_color_hex(CURSOR_SESS_AMBER) : lv_color_hex(0xe8eaed), 0);
         }
