@@ -555,6 +555,19 @@ static bool is_hidden_provider(const char *id)
     return false;
 }
 
+// Summary-page rear LED: crossfade across visible providers (led.c).
+static void led_summary_tick_locked(int64_t now_ms)
+{
+    const char *ids[STATS_MAX_PROVIDERS];
+    int n = 0;
+    for (int i = 0; i < st.stats.n && i < STATS_MAX_PROVIDERS; i++) {
+        if (is_hidden_provider(st.stats.p[i].id)) continue;
+        if (!prov_color_hex(st.stats.p[i].id)) continue;
+        ids[n++] = st.stats.p[i].id;
+    }
+    led_summary_cycle_tick(now_ms, ids, n);
+}
+
 // Progress-bar indicator color: the provider's theme accent if it has one,
 // else the green/amber/red usage ramp.
 static lv_color_t bar_color(const stats_provider_t *p, float v)
@@ -2021,15 +2034,17 @@ static void render(void)   // ui_task only
         int j = -1;
         for (int i = 0; i < st.stats.n && i < STATS_MAX_PROVIDERS; i++)
             if (strcmp(st.stats.p[i].id, st.nav_id) == 0) { j = i; break; }
-        if (j < 0) st.nav_level = NAV_SUMMARY;   // provider gone
-        else       st.nav_provider = j;          // follow reorder by identity
+        if (j < 0) {
+            st.nav_level = NAV_SUMMARY;   // provider gone
+            led_summary_reset();
+        } else {
+            st.nav_provider = j;          // follow reorder by identity
+        }
     }
     clamp_scroll();
 
     if (st.nav_level == NAV_PAGE)
         led_set_provider(st.nav_id);
-    else
-        led_off();
 
     if (st.nav_level == NAV_PAGE) {
         render_card();
@@ -2232,6 +2247,8 @@ static void ui_task(void *arg)
                 next_age = now + 10000;
                 st.dirty = true;
             }
+            if (st.mode == UI_STATS && st.nav_level == NAV_SUMMARY)
+                led_summary_tick_locked(now);
             if (st.dirty) { render(); st.dirty = false; }
             do_shot = st.shot_req;
             if (do_shot) st.shot_req = false;
@@ -2308,6 +2325,8 @@ void ui_set_stats(const stats_t *s, int64_t fetched_uptime_ms)
     st.mode = UI_STATS;
     if (s) { update_provider_activity_locked(s, fetched_uptime_ms); st.stats = *s; stats_model_reorder(&st.stats); }
     st.fetched_ms = fetched_uptime_ms;
+    if (st.nav_level == NAV_SUMMARY)
+        led_summary_reset();
     mark();
     xSemaphoreGive(s_mtx);
 }
@@ -2381,6 +2400,7 @@ ui_input_result_t ui_handle_input(const app_evt_t *ev)
             st.dirty = true;
         } else if (ev->type == APP_EVT_SWIPE_LEFT) {   // back to the list
             st.nav_level = NAV_SUMMARY;
+            led_summary_reset();
             st.dirty = true;
         }
         /* swipe up/down/long-press on a page: swallowed (CONSUMED) */
