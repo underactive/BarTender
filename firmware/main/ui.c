@@ -1367,6 +1367,8 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
     // Avoids hardcoding "openrouter" and works for any future provider with the same shape.
     bool has_balance = (p->credits_limit_c > 0 || p->credits_remaining_c > 0);
     bool is_pi = (strcmp(p->id, "pi") == 0);
+    bool is_claude = (strcmp(p->id, "claude") == 0);
+    bool is_codex = (strcmp(p->id, "codex") == 0);
     bool is_lmstudio = (strcmp(p->id, "lmstudio") == 0);
     bool is_cursor = (strcmp(p->id, "cursor") == 0);
     const ui_page_grid_t g = ui_grid_from_height(s_scr_w, s_scr_h);
@@ -1379,6 +1381,8 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
     if (st.nav_card == CARD_COST) {
         lv_obj_add_flag(lim_card, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(cost_card, LV_OBJ_FLAG_HIDDEN);
+        // LIMITS/STATS reparent cost_tok onto lim_card; restore before showing TODAY.
+        cost_tok_set_parent(cost_card);
         {
             char up[STATS_ID_MAX];
             up_id(up, sizeof up, p->id);
@@ -1463,9 +1467,12 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
             lv_obj_t *show[] = { cost_30, cost_chart };
             for (unsigned i = 0; i < sizeof show / sizeof *show; i++)
                 lv_obj_clear_flag(show[i], LV_OBJ_FLAG_HIDDEN);
-            lv_obj_set_pos(cost_30, footer.x + 12, footer.y + 6);
-            lv_obj_set_size(cost_chart, body.w - 24, body.h - 8);
-            lv_obj_set_pos(cost_chart, body.x + 12, body.y + 4);
+            // Chart: grid rows 4..8; 30-day max on row 9 (below 8-row grid).
+            const ui_rect_t chart_r = ui_grid_span(&g, 0, 3, 2, 5);
+            const ui_rect_t footer_r = ui_grid_span(&g, 0, 8, 2, 1);
+            lv_obj_set_size(cost_chart, chart_r.w - 24, chart_r.h - 8);
+            lv_obj_set_pos(cost_chart, chart_r.x + 12, chart_r.y + 4);
+            lv_obj_set_pos(cost_30, footer_r.x + 12, footer_r.y + 2);
             char tk[16], tk30[16];
             fmt_tokens(tk, sizeof tk, p->cu_tok_today);
             set_hero_amount(&cost_hero, NULL, tk, NULL);
@@ -1484,12 +1491,13 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
         }
 
         if (has_balance) {
-            // OpenRouter: today cost is hero; balance is secondary (token-count style);
-            // this-week cost is a caption at the bottom reusing cost_30 (H-38).
+            // OpenRouter TODAY: hero = today spend; row 2 = this week; row 7 = balance.
             lv_obj_t *or_unused[] = { cost_cap, cost_chart, cost_bar, cost_bar_lbl,
-                                      cost_or_lbl, cost_or_row1, cost_or_row2 };
+                                      cost_30, cost_or_lbl };
             for (unsigned i = 0; i < sizeof or_unused / sizeof *or_unused; i++)
                 lv_obj_add_flag(or_unused[i], LV_OBJ_FLAG_HIDDEN);
+            const ui_rect_t week_r = ui_grid_span(&g, 0, 2, 2, 1);
+            const ui_rect_t bal_r = ui_grid_span(&g, 0, 7, 2, 1);
             char bal[16], wk[16];
             place_hero_amount(&cost_hero, &hero, "SPEND");
             if (card_entered) {
@@ -1497,16 +1505,24 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
             } else {
                 set_hero_money(&cost_hero, p->cost_today_c);
             }
-            fmt_money(bal, sizeof bal, p->credits_remaining_c);
-            lv_label_set_text(cost_tok, bal);
+            fmt_money(wk, sizeof wk, p->cost_week_c);
+            lv_obj_set_pos(cost_tok, week_r.x + 12, week_r.y + 2);
+            lv_label_set_text(cost_tok, wk);
             lv_obj_clear_flag(cost_tok, LV_OBJ_FLAG_HIDDEN);
-            lv_label_set_text(cost_tok_unit, "balance");
+            lv_label_set_text(cost_tok_unit, "this week");
             lv_obj_align_to(cost_tok_unit, cost_tok, LV_ALIGN_OUT_RIGHT_BOTTOM, 5, 0);
             lv_obj_clear_flag(cost_tok_unit, LV_OBJ_FLAG_HIDDEN);
-            fmt_money(wk, sizeof wk, p->cost_week_c);
-            lv_label_set_text_fmt(cost_30, "THIS WEEK  %s", wk);
-            lv_obj_clear_flag(cost_30, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_set_pos(cost_30, footer.x + 12, footer.y + 6);
+            fmt_money(bal, sizeof bal, p->credits_remaining_c);
+            lv_obj_set_pos(cost_or_row1, bal_r.x + 12, bal_r.y + 2);
+            lv_obj_set_style_text_font(cost_or_row1, &font_lemonmilk_24, 0);
+            lv_obj_set_style_text_color(cost_or_row1, lv_color_hex(0x9aa0a6), 0);
+            lv_label_set_text(cost_or_row1, bal);
+            lv_obj_clear_flag(cost_or_row1, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_set_style_text_font(cost_or_row2, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(cost_or_row2, lv_color_hex(0x9aa0a6), 0);
+            lv_label_set_text(cost_or_row2, "balance");
+            lv_obj_align_to(cost_or_row2, cost_or_row1, LV_ALIGN_OUT_RIGHT_BOTTOM, 5, 0);
+            lv_obj_clear_flag(cost_or_row2, LV_OBJ_FLAG_HIDDEN);
         } else {
             // Claude/Codex/Pi layout: shared money/token/chart widgets. Pi uses
             // today's reduced usage for the hero numbers and 30-day max metrics
@@ -1519,9 +1535,9 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
                 lv_obj_clear_flag(body_widgets[i], LV_OBJ_FLAG_HIDDEN);
             // Claude, Codex and Pi all show the SPEND hero amount via cost_hero.
             place_hero_amount(&cost_hero, &hero, "SPEND");
-            if (is_pi) {
-                // Pi: no extra-usage cap; 30 DAY MAX summary drops to row 9 — the
-                // strip just below the 8-row grid, clearing the rows 4..8 chart.
+            if (is_pi || is_claude || is_codex) {
+                // Pi / Claude / Codex: no N-day spend cap; 30-day summary on row 9 —
+                // the strip below the 8-row grid (chart uses rows 4..8).
                 lv_obj_add_flag(cost_cap, LV_OBJ_FLAG_HIDDEN);
                 const ui_rect_t footer_r = ui_grid_span(&g, 0, 8, 2, 1);
                 lv_obj_set_pos(cost_30, footer_r.x + 12, footer_r.y + 2);
@@ -1530,9 +1546,7 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
                 lv_obj_set_pos(cost_cap, footer.x + 12, footer.y + 4);
                 lv_obj_set_pos(cost_30, footer.x + 12, footer.y + 20);
             }
-            if (is_pi) {
-                // Pi chart spans grid rows 4..8 (1-indexed) — ui_grid_span row 3,
-                // 5 rows tall.
+            if (is_pi || is_claude || is_codex) {
                 const ui_rect_t chart_r = ui_grid_span(&g, 0, 3, 2, 5);
                 lv_obj_set_size(cost_chart, chart_r.w - 24, chart_r.h - 8);
                 lv_obj_set_pos(cost_chart, chart_r.x + 12, chart_r.y + 4);
@@ -1567,7 +1581,7 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
             int32_t mx = render_cost_bar_chart(cost_chart, cost_ser, p->hist, n,
                 prov_accent(p->id, &cc) ? cc : lv_color_hex(0xe06c4b));
             if (card_entered) anim_chart_fadein(cost_chart);
-            if (!is_pi) {
+            if (!is_pi && !is_claude && !is_codex) {
                 char cmx[16];
                 fmt_money(cmx, sizeof cmx, mx);
                 lv_label_set_text_fmt(cost_cap, "%d DAY SPEND (max): %s", n, cmx);
@@ -1660,10 +1674,13 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
     lv_obj_set_pos(lim_s_rst, hero.x + 12, hero.y + 96);
     lv_obj_set_size(lim_chart, body.w - 24, body.h - 10);
     lv_obj_set_pos(lim_chart, body.x + 12, body.y + 4);
-    lv_obj_set_pos(lim_a_lbl, body.x + 12, body.y + 4);
-    lv_obj_set_pos(lim_a_big, body.x + 12, body.y + 18);
-    lv_obj_set_pos(lim_a_bar, body.x + 12, body.y + 44);
-    lv_obj_set_pos(lim_a_rst, body.x + 12, body.y + 54);
+    {
+        const ui_rect_t week_r = ui_grid_span(&g, 0, 4, 2, 1);
+        lv_obj_set_pos(lim_a_lbl, week_r.x + 12, week_r.y + 4);
+        lv_obj_set_pos(lim_a_big, week_r.x + 12, week_r.y + 18);
+        lv_obj_set_pos(lim_a_bar, week_r.x + 12, week_r.y + 44);
+        lv_obj_set_pos(lim_a_rst, week_r.x + 12, week_r.y + 54);
+    }
     lv_obj_set_pos(lim_w_lbl, footer.x + 12, footer.y + 4);
     lv_obj_set_pos(lim_w_big, footer.x + 12, footer.y + 18);
     lv_obj_set_pos(lim_w_bar, footer.x + 12, footer.y + 44);
@@ -1690,7 +1707,8 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
     }
 
     // Auto section: occupies chart area when no sparkline data and secondary exists.
-    if (p->pct_hist_n == 0 && p->has_s) {
+    // OpenRouter (has_balance) uses hero + budget only — no secondary tier.
+    if (!has_balance && p->pct_hist_n == 0 && p->has_s) {
         lv_obj_clear_flag(lim_a_lbl, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(lim_a_big, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(lim_a_bar, LV_OBJ_FLAG_HIDDEN);
@@ -1734,24 +1752,39 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
     }
 
     if (p->has_cost && p->extra_limit_c > 0) {
-        lv_obj_clear_flag(lim_x_lbl, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(lim_x_val, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(lim_x_bar, LV_OBJ_FLAG_HIDDEN);
         int xp = extra_pct(p);
         if (has_balance) {
-            // Budget bar: shows remaining headroom (xu/xl = keyUsage/keyLimit).
-            // Bar fills proportional to remaining so more-left = more-filled.
+            // OpenRouter budget: same cost_tok + cost_tok_unit pair as TODAY balance line.
             int32_t rem = p->extra_limit_c - p->extra_used_c;
             if (rem < 0) rem = 0;
-            char rem_str[16], lim_str[16];
+            char rem_str[16], lim_str[16], bud_unit[32];
             fmt_money(rem_str, sizeof rem_str, rem);
             fmt_money(lim_str, sizeof lim_str, p->extra_limit_c);
-            lv_label_set_text(lim_x_lbl, "BUDGET");
-            lv_label_set_text_fmt(lim_x_val, "%s / %s left", rem_str, lim_str);
-            lv_bar_set_value(lim_x_bar, 100 - xp, LV_ANIM_ON);
-            lv_obj_set_style_bg_color(lim_x_bar, bar_color(p, (float)xp),
-                                      LV_PART_INDICATOR);
+            snprintf(bud_unit, sizeof bud_unit, "/ %s budget", lim_str);
+            cost_tok_set_parent(lim_card);
+            {
+                const ui_rect_t bud_r = ui_grid_span(&g, 0, 3, 2, 1);
+                lv_obj_set_pos(cost_tok, bud_r.x + 12, bud_r.y + 2);
+                lv_obj_set_pos(lim_w_bar, bud_r.x + 12, bud_r.y + bud_r.h - 5);
+            }
+            lv_label_set_text(cost_tok, rem_str);
+            lv_label_set_text(cost_tok_unit, bud_unit);
+            lv_obj_align_to(cost_tok_unit, cost_tok, LV_ALIGN_OUT_RIGHT_BOTTOM, 5, 0);
+            lv_obj_clear_flag(cost_tok, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(cost_tok_unit, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(lim_w_lbl, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(lim_w_big, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(lim_w_rst, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(lim_w_bar, LV_OBJ_FLAG_HIDDEN);
+            set_bar(lim_w_bar, true, (float)xp, p);
+            update_bar_pulse(lim_x_bar, 0.0f);
+            lv_obj_add_flag(lim_x_lbl, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(lim_x_val, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(lim_x_bar, LV_OBJ_FLAG_HIDDEN);
         } else {
+            lv_obj_clear_flag(lim_x_lbl, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(lim_x_val, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(lim_x_bar, LV_OBJ_FLAG_HIDDEN);
             char a[16], b[16];
             fmt_money(a, sizeof a, p->extra_used_c);
             fmt_money(b, sizeof b, p->extra_limit_c);
@@ -1760,8 +1793,8 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
             lv_bar_set_value(lim_x_bar, bar_fill(xp), LV_ANIM_ON);
             lv_obj_set_style_bg_color(lim_x_bar, bar_color(p, (float)xp),
                                       LV_PART_INDICATOR);
+            update_bar_pulse(lim_x_bar, (float)xp);
         }
-        update_bar_pulse(lim_x_bar, (float)xp);
     } else {
         update_bar_pulse(lim_x_bar, 0.0f);
         lv_obj_add_flag(lim_x_lbl, LV_OBJ_FLAG_HIDDEN);
