@@ -2,6 +2,7 @@
 #include "ui.h"
 #include "provider_icons.h"
 #include "provider_colors.h"
+#include "boot_splash.h"
 #include "led.h"
 #include "lvgl.h"
 #include "display.h"
@@ -42,6 +43,9 @@ typedef enum { CARD_COST, CARD_LIMITS } card_kind_t;
 #define SCREENSAVER_PAGE_MS     (15LL * 1000LL)
 #define SCREENSAVER_FADE_MS     700LL
 #define SCREENSAVER_DIM_DUTY    8
+#define BOOT_FADE_MS            600LL
+
+typedef enum { BOOT_FADE_NONE, BOOT_FADE_OUT, BOOT_FADE_IN } boot_fade_t;
 
 typedef struct {
     char id[STATS_ID_MAX];
@@ -90,10 +94,15 @@ static struct {
     bool saver_next_dim_only;
     bool saver_show_summary;
     bool saver_next_show_summary;
+    // Boot splash: full-grid image until first stats, then backlight fade.
+    bool boot_complete;
+    boot_fade_t boot_fade;
+    uint8_t boot_brightness, boot_target_brightness;
+    int64_t boot_fade_start_ms, boot_fade_end_ms;
 } st;
 
 // Widgets (created once, mutated only on ui_task)
-static lv_obj_t *scr, *title, *status, *prov_box, *summary_top;
+static lv_obj_t *scr, *title, *status, *prov_box, *summary_top, *boot_img;
 static lv_obj_t *row_id[ROWS], *row_bar[ROWS], *row_val[ROWS], *row_icon[ROWS], *row_bar_w[ROWS];
 
 // Cost card
@@ -368,6 +377,46 @@ static void saver_start_fade_locked(uint8_t from, uint8_t to, int64_t now)
     st.saver_fade_start_ms = now;
     st.saver_fade_end_ms = now + SCREENSAVER_FADE_MS;
     display_set_brightness_silent(from);
+}
+
+static void boot_start_fade_locked(uint8_t from, uint8_t to, int64_t now)
+{
+    st.boot_brightness = from;
+    st.boot_target_brightness = to;
+    st.boot_fade_start_ms = now;
+    st.boot_fade_end_ms = now + BOOT_FADE_MS;
+    display_set_brightness_silent(from);
+}
+
+static void boot_step_fade_locked(int64_t now)
+{
+    if (st.boot_fade == BOOT_FADE_NONE || st.boot_fade_end_ms <= 0) return;
+    if (now >= st.boot_fade_end_ms) {
+        display_set_brightness_silent(st.boot_target_brightness);
+        st.boot_brightness = st.boot_target_brightness;
+        st.boot_fade_end_ms = 0;
+        if (st.boot_fade == BOOT_FADE_OUT) {
+            st.boot_fade = BOOT_FADE_IN;
+            st.dirty = true;
+            boot_start_fade_locked(0, config_store_get_brightness(), now);
+        } else {
+            st.boot_fade = BOOT_FADE_NONE;
+            st.boot_complete = true;
+        }
+        return;
+    }
+    int64_t dur = st.boot_fade_end_ms - st.boot_fade_start_ms;
+    int64_t el = now - st.boot_fade_start_ms;
+    int duty = st.boot_brightness +
+        (int)(((int)st.boot_target_brightness - (int)st.boot_brightness) * el / dur);
+    if (duty < 0) duty = 0;
+    else if (duty > 255) duty = 255;
+    display_set_brightness_silent((uint8_t)duty);
+}
+
+static bool boot_splash_visible_locked(void)
+{
+    return st.mode == UI_STATS && !st.boot_complete && st.boot_fade != BOOT_FADE_IN;
 }
 
 static void saver_step_fade_locked(int64_t now)
@@ -859,6 +908,13 @@ static void build_widgets(void)
     lv_obj_set_style_pad_all(summary_top, 0, 0);
     lv_obj_clear_flag(summary_top, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(summary_top, LV_OBJ_FLAG_HIDDEN);
+
+    boot_img = lv_image_create(scr);
+    lv_image_set_src(boot_img, &boot_splash_img);
+    lv_obj_set_style_image_recolor_opa(boot_img, LV_OPA_TRANSP, 0);
+    lv_obj_clear_flag(boot_img, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_clear_flag(boot_img, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(boot_img, LV_OBJ_FLAG_HIDDEN);
 
     const ui_page_grid_t grid = ui_grid_from_height(W, H);
     for (int i = 0; i <= UI_GRID_ROWS; i++) {
@@ -2002,6 +2058,7 @@ static void render(void)   // ui_task only
 {
     if (st.mode == UI_PROVISION) {
         hide_cards();
+        if (boot_img) lv_obj_add_flag(boot_img, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(title,  LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(status, LV_OBJ_FLAG_HIDDEN);
         for (int i = 0; i < ROWS; i++) {
@@ -2047,6 +2104,7 @@ static void render(void)   // ui_task only
         led_set_provider(st.nav_id);
 
     if (st.nav_level == NAV_PAGE) {
+        if (boot_img) lv_obj_add_flag(boot_img, LV_OBJ_FLAG_HIDDEN);
         render_card();
         return;
     }
@@ -2057,6 +2115,48 @@ static void render(void)   // ui_task only
     lv_obj_add_flag(title, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(status, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(prov_box, LV_OBJ_FLAG_HIDDEN);
+
+    const ui_page_grid_t g = ui_grid_from_height(s_scr_w, s_scr_h);
+    ui_update_grid_overlay(&g);
+
+    const ui_rect_t footer_slot = {
+        .x = g.content.x,
+        .y = g.content.y + g.content.h,
+        .w = g.content.w,
+        .h = UI_CHROME_BOTTOM,
+    };
+    lv_obj_set_pos(status, footer_slot.x + 8, footer_slot.y + 2);
+    lv_obj_set_width(status, footer_slot.w - 16);
+    lv_obj_set_style_text_align(status, LV_TEXT_ALIGN_CENTER, 0);
+    lv_label_set_text(status, st.status);
+
+    if (boot_splash_visible_locked()) {
+        const ui_rect_t splash_r = ui_grid_span(&g, 0, 0, 2, UI_GRID_ROWS);
+        lv_obj_set_pos(boot_img, splash_r.x, splash_r.y);
+        lv_obj_set_size(boot_img, splash_r.w, splash_r.h);
+        {
+            const int iw = (int)boot_splash_img.header.w;
+            const int ih = (int)boot_splash_img.header.h;
+            int sx = splash_r.w * 256 / iw;
+            int sy = splash_r.h * 256 / ih;
+            int sc = sx < sy ? sx : sy;
+            if (sc < 1) sc = 1;
+            lv_image_set_scale(boot_img, (uint16_t)sc);
+        }
+        lv_obj_clear_flag(boot_img, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(boot_img);
+        lv_obj_add_flag(summary_top, LV_OBJ_FLAG_HIDDEN);
+        for (int i = 0; i < ROWS; i++) {
+            lv_obj_add_flag(row_id[i],   LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(row_bar[i],  LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(row_val[i],  LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(row_icon[i], LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(row_bar_w[i], LV_OBJ_FLAG_HIDDEN);
+        }
+        led_off();
+        return;
+    }
+    lv_obj_add_flag(boot_img, LV_OBJ_FLAG_HIDDEN);
 
     // Scrollable window: `vis` rows fit; st.scroll is the top visible-provider
     // index in the compact list (hidden providers do not consume slots).
@@ -2091,20 +2191,6 @@ static void render(void)   // ui_task only
     } else {
         lv_label_set_text(status, st.status);
     }
-
-    const ui_page_grid_t g = ui_grid_from_height(s_scr_w, s_scr_h);
-    ui_update_grid_overlay(&g);
-
-    // Footer slot: use the bottom chrome area below grid row 8.
-    const ui_rect_t footer_slot = {
-        .x = g.content.x,
-        .y = g.content.y + g.content.h,
-        .w = g.content.w,
-        .h = UI_CHROME_BOTTOM,
-    };
-    lv_obj_set_pos(status, footer_slot.x + 8, footer_slot.y + 2);
-    lv_obj_set_width(status, footer_slot.w - 16);
-    lv_obj_set_style_text_align(status, LV_TEXT_ALIGN_CENTER, 0);
 
     {
         const ui_rect_t top_r = ui_grid_span(&g, 0, 0, 2, UI_SUMMARY_TOP_ROWS);
@@ -2236,7 +2322,9 @@ static void ui_task(void *arg)
             int64_t now = esp_timer_get_time() / 1000;
             // Screensaver timers.
             if (st.mode != UI_STATS) { st.saver_active = false; st.saver_fade_end_ms = 0; st.saver_transitioning = false; st.saver_show_summary = false; st.saver_next_show_summary = false; }
-            saver_step_fade_locked(now);
+            boot_step_fade_locked(now);
+            if (st.boot_fade == BOOT_FADE_NONE)
+                saver_step_fade_locked(now);
             if (st.mode == UI_STATS && !st.saver_active && st.last_input_ms > 0 && now - st.last_input_ms >= SCREENSAVER_IDLE_MS)
                 saver_enter_locked(now);
             saver_advance_locked(now);
@@ -2325,6 +2413,11 @@ void ui_set_stats(const stats_t *s, int64_t fetched_uptime_ms)
     st.mode = UI_STATS;
     if (s) { update_provider_activity_locked(s, fetched_uptime_ms); st.stats = *s; stats_model_reorder(&st.stats); }
     st.fetched_ms = fetched_uptime_ms;
+    if (!st.boot_complete && st.boot_fade == BOOT_FADE_NONE) {
+        int64_t now = esp_timer_get_time() / 1000;
+        st.boot_fade = BOOT_FADE_OUT;
+        boot_start_fade_locked(config_store_get_brightness(), 0, now);
+    }
     if (st.nav_level == NAV_SUMMARY)
         led_summary_reset();
     mark();
