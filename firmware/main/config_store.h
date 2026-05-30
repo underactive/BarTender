@@ -48,7 +48,15 @@ typedef struct {
 typedef struct {
     uint32_t     magic;        // CFG_WIFI_BLOB_MAGIC; anything else => migrate
     uint8_t      count;        // 0..CFG_WIFI_MAX_ENTRIES
-    uint8_t      _pad[3];
+    // struct_version repurposed from _pad[0] (sizeof unchanged; old blobs have 0 here).
+    // Version 0 == current/baseline layout. On save, always write version 1.
+    // Forward-compat rule: accept version 0 (old save) and 1 (current save);
+    // reject any higher version (produced by a firmware we've never seen).
+    // INVARIANT: ANY change to this struct layout MUST bump magic OR struct_version.
+    // Bumping magic invalidates all existing blobs (treats them as legacy single-SSID).
+    // Bumping struct_version allows graceful migration in blob_load.
+    uint8_t      struct_version;  // was _pad[0]; old saved blobs read 0 here
+    uint8_t      _pad[2];         // was _pad[1..2]; reserved, zero-filled on save
     wifi_entry_t e[CFG_WIFI_MAX_ENTRIES];   // e[0] = MRU
 } wifi_creds_t;                // ~490 B; one NVS value entry
 
@@ -97,9 +105,7 @@ bool config_store_wifi_add_or_update(const char *ssid, const char *pass);
 // One commit only when the order actually changes.
 bool config_store_wifi_promote(const char *ssid);
 
-// Erase the whole remembered list (kept for a future explicit "forget all";
-// NOT used by triple-tap, which is now non-destructive). Upstash untouched.
-void config_store_wifi_clear_all(void);
+// (config_store_wifi_clear_all removed — confirmed zero callers.)
 
 // --- One-shot "open captive portal to ADD a network" request ---
 // Set by the non-destructive triple-tap / self-heal path; consumed exactly
@@ -107,16 +113,12 @@ void config_store_wifi_clear_all(void);
 void config_store_request_portal(void);
 bool config_store_take_portal_request(void);
 
-// --- Legacy (kept for compatibility; no longer called by app code) ---
-// NOTE: the legacy single-SSID NVS keys "ssid"/"pass" ARE still read at boot
-// by config_store_init()'s migration — but it reads them via the internal
-// get_str() helper, NOT via the two public wrappers below. So these wrappers
-// are genuinely unused and safe to delete; the migration path is independent.
-// is_provisioned() == has_upstash() && wifi_count() > 0.
-bool config_store_is_provisioned(void);
-size_t config_store_get_ssid(char *buf, size_t n);   // legacy single-SSID key
-size_t config_store_get_pass(char *buf, size_t n);
-bool config_store_set_provisioning(const char *ssid, const char *pass,
-                                   const char *url, const char *key,
-                                   const char *token);
-void config_store_clear_provisioning(void);          // wipe ALL cred keys
+// --- SoftAP PSK (random, generated once at first boot) ---
+// Loads the stored PSK from NVS; if absent, generates a fresh random PSK,
+// persists it, and returns it. out must be at least n bytes; n must be >= 9
+// (8-char PSK + NUL). Returns true if the PSK is ready in out.
+bool config_store_get_or_create_ap_psk(char *out, size_t n);
+
+// (Legacy compatibility prototypes removed — confirmed zero callers in firmware tree.
+//  The migration path in config_store_init() reads "ssid"/"pass" directly via
+//  the internal get_str() helper and is not affected by this removal.)

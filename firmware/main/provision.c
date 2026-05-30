@@ -45,25 +45,29 @@ static void urldecode(char *s)
 }
 
 // Extract field `name` from a urlencoded body into out (NUL-terminated).
-static void field(const char *body, const char *name, char *out, size_t n)
+// Returns false if the raw (pre-decode) value length would exceed n-1, in
+// which case out is left empty (""). Callers must check the return value and
+// abort the save rather than persisting a silently-truncated credential.
+static bool field(const char *body, const char *name, char *out, size_t n)
 {
     out[0] = '\0';
     char pat[24];
     snprintf(pat, sizeof pat, "%s=", name);
     const char *k = strstr(body, pat);
-    if (!k) return;
+    if (!k) return true;                        // absent field is OK (caller validates empty)
     if (k != body && k[-1] != '&') {           // avoid matching a substring
         while ((k = strstr(k + 1, pat)))
             if (k[-1] == '&') break;
-        if (!k) return;
+        if (!k) return true;
     }
     k += strlen(pat);
     const char *e = strchr(k, '&');
     size_t len = e ? (size_t)(e - k) : strlen(k);
-    if (len >= n) len = n - 1;
+    if (len >= n) return false;                 // would truncate — signal error
     memcpy(out, k, len);
     out[len] = '\0';
     urldecode(out);
+    return true;
 }
 
 // ---- HTTP handlers ---------------------------------------------------------
@@ -144,8 +148,26 @@ static esp_err_t h_save(httpd_req_t *r)
 
     char ssid[CFG_SSID_MAX], pass[CFG_PASS_MAX], url[CFG_URL_MAX],
          key[CFG_KEY_MAX], tok[CFG_TOKEN_MAX];
-    field(buf, "ssid", ssid, sizeof ssid);
-    field(buf, "pass", pass, sizeof pass);
+    bool no_trunc = true;
+    no_trunc &= field(buf, "ssid", ssid, sizeof ssid);
+    no_trunc &= field(buf, "pass", pass, sizeof pass);
+
+    if (!no_trunc) {
+        httpd_resp_set_type(r, "text/html");
+        httpd_resp_send(r, "<h3>Field too long — go back and shorten it.</h3>",
+                        HTTPD_RESP_USE_STRLEN);
+        return ESP_OK;
+    }
+
+    // Fix B: WPA2 requires either an empty password (open network) or >= 8 chars.
+    size_t pass_len = strlen(pass);
+    if (pass_len > 0 && pass_len < 8) {
+        httpd_resp_set_type(r, "text/html");
+        httpd_resp_send(r, "<h3>WiFi password must be empty (open network) "
+                        "or at least 8 characters — go back.</h3>",
+                        HTTPD_RESP_USE_STRLEN);
+        return ESP_OK;
+    }
 
     bool ok;
     if (s_wifi_only) {
@@ -158,9 +180,15 @@ static esp_err_t h_save(httpd_req_t *r)
         }
         ok = config_store_wifi_add_or_update(ssid, pass);
     } else {
-        field(buf, "url",  url,  sizeof url);
-        field(buf, "key",  key,  sizeof key);
-        field(buf, "token", tok, sizeof tok);
+        no_trunc  = field(buf, "url",   url, sizeof url);
+        no_trunc &= field(buf, "key",   key, sizeof key);
+        no_trunc &= field(buf, "token", tok, sizeof tok);
+        if (!no_trunc) {
+            httpd_resp_set_type(r, "text/html");
+            httpd_resp_send(r, "<h3>Field too long — go back and shorten it.</h3>",
+                            HTTPD_RESP_USE_STRLEN);
+            return ESP_OK;
+        }
         if (!ssid[0] || !url[0] || !tok[0]) {
             httpd_resp_set_type(r, "text/html");
             httpd_resp_send(r, "<h3>Missing required field — go back.</h3>",
@@ -239,7 +267,12 @@ void provision_start(bool upstash_already_set)
     uint8_t mac[6]; esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
     char ssid[33], pass[16];
     snprintf(ssid, sizeof ssid, "CodexBar-Toy-%02X%02X", mac[4], mac[5]);
-    snprintf(pass, sizeof pass, "cbtoy-%02X%02X%02X", mac[3], mac[4], mac[5]); // >=8, WPA2
+    // Fix C: use a random PSK (generated once at first boot and stored in NVS)
+    // instead of a MAC-derived password that is broadcast in beacon frames.
+    if (!config_store_get_or_create_ap_psk(pass, sizeof pass)) {
+        // Fallback should never happen, but if it does keep a safe default.
+        strlcpy(pass, "cbtoy-fallback", sizeof pass);
+    }
 
     wifi_init_config_t ic = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&ic));

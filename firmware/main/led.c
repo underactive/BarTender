@@ -59,6 +59,14 @@ static const uint8_t GAMMA8[256] = {
 static void led_write_rgb(uint8_t r, uint8_t g, uint8_t b)
 {
     if (!s_strip) return;
+    // Fix L: cache the last-written values and skip set_pixel + refresh when
+    // they are identical (avoids a blocking RMT TX on every tick with no change).
+    // Sentinel: s_last_written is false until the first call.
+    static bool    s_written = false;
+    static uint8_t s_last_r, s_last_g, s_last_b;
+    if (s_written && r == s_last_r && g == s_last_g && b == s_last_b) return;
+    s_last_r = r; s_last_g = g; s_last_b = b;
+    s_written = true;
     led_strip_set_pixel(s_strip, 0,
         (uint8_t)(GAMMA8[r] * 9 / 10),
         (uint8_t)(GAMMA8[g] * 9 / 10),

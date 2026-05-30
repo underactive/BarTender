@@ -213,8 +213,15 @@ lv_display_t *display_init(void) {
     }
 
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(s_panel, true));
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, config_store_get_brightness());
-    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+    // Fix N: capture ledc return values — a brightness glitch shouldn't abort,
+    // so log a warning rather than using ESP_ERROR_CHECK.
+    {
+        esp_err_t _e;
+        _e = ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, config_store_get_brightness());
+        if (_e != ESP_OK) ESP_LOGW(TAG, "ledc_set_duty failed: %s", esp_err_to_name(_e));
+        _e = ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+        if (_e != ESP_OK) ESP_LOGW(TAG, "ledc_update_duty failed: %s", esp_err_to_name(_e));
+    }
 
     // LVGL init
     lv_init();
@@ -268,8 +275,12 @@ lv_display_t *display_init(void) {
 
 static void display_apply_brightness(uint8_t duty)
 {
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, duty);
-    ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+    // Fix N: capture ledc return values — log on failure, don't abort.
+    esp_err_t e;
+    e = ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, duty);
+    if (e != ESP_OK) ESP_LOGW(TAG, "ledc_set_duty failed: %s", esp_err_to_name(e));
+    e = ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+    if (e != ESP_OK) ESP_LOGW(TAG, "ledc_update_duty failed: %s", esp_err_to_name(e));
 }
 
 void display_set_brightness_silent(uint8_t duty)

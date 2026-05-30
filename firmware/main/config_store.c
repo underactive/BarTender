@@ -2,6 +2,7 @@
 #include "config_store.h"
 #include "nvs.h"            // nvs_flash_init lives in main.c; we only need nvs.h
 #include "esp_log.h"
+#include "esp_random.h"
 #include <string.h>
 
 static const char *TAG = "cfg";
@@ -29,17 +30,23 @@ static size_t get_str(const char *key, char *buf, size_t n, const char *dflt)
 
 // ---- remembered-WiFi blob ("wnets") ---------------------------------------
 
+// Struct version written to new blobs. Old blobs have struct_version == 0
+// (zero-initialised padding). Accept 0 (baseline) and WIFI_BLOB_VERSION (current).
+// Any higher version means a newer firmware wrote it — reject to avoid misparse.
+#define WIFI_BLOB_VERSION  1u
+
 static void blob_init_empty(wifi_creds_t *w)
 {
     memset(w, 0, sizeof *w);
-    w->magic = CFG_WIFI_BLOB_MAGIC;
-    w->count = 0;
+    w->magic          = CFG_WIFI_BLOB_MAGIC;
+    w->struct_version = WIFI_BLOB_VERSION;
+    w->count          = 0;
 }
 
 // Load + VALIDATE the blob. Any inconsistency (missing, wrong size, bad magic,
-// impossible count, malformed entry) => return false. The caller treats false
-// as "zero remembered networks"; we deliberately never erase a bad blob (a
-// future firmware might recover it) and never abort/brick.
+// impossible count, malformed entry, unknown version) => return false. The
+// caller treats false as "zero remembered networks"; we deliberately never
+// erase a bad blob (a future firmware might recover it) and never abort/brick.
 static bool blob_load(wifi_creds_t *w)
 {
     nvs_handle_t h;
@@ -49,6 +56,9 @@ static bool blob_load(wifi_creds_t *w)
     nvs_close(h);
     if (e != ESP_OK || len != sizeof *w) return false;
     if (w->magic != CFG_WIFI_BLOB_MAGIC)  return false;
+    // Accept version 0 (old blobs with zero-initialised padding) and the
+    // current version. Reject anything higher for forward compatibility.
+    if (w->struct_version > WIFI_BLOB_VERSION) return false;
     if (w->count > CFG_WIFI_MAX_ENTRIES)  return false;
     for (uint8_t i = 0; i < w->count; i++) {
         size_t sl = strnlen(w->e[i].ssid, CFG_SSID_MAX);
@@ -62,9 +72,13 @@ static bool blob_load(wifi_creds_t *w)
 // leaves the prior valid blob, never a half record).
 static bool blob_save(const wifi_creds_t *w)
 {
+    // Stamp the current version before writing so newly saved blobs are always
+    // recognised as version WIFI_BLOB_VERSION on read-back.
+    wifi_creds_t tmp = *w;
+    tmp.struct_version = WIFI_BLOB_VERSION;
     nvs_handle_t h;
     if (nvs_open(NS, NVS_READWRITE, &h) != ESP_OK) return false;
-    esp_err_t e = nvs_set_blob(h, "wnets", w, sizeof *w);
+    esp_err_t e = nvs_set_blob(h, "wnets", &tmp, sizeof tmp);
     if (e == ESP_OK) e = nvs_commit(h);
     nvs_close(h);
     return e == ESP_OK;
@@ -129,6 +143,10 @@ bool config_store_has_upstash(void)
 
 bool config_store_set_upstash(const char *url, const char *key, const char *token)
 {
+    // Fix F: reject values that would silently truncate on read-back.
+    if (url   && strnlen(url,   CFG_URL_MAX)   >= CFG_URL_MAX)   { ESP_LOGE(TAG, "url too long");   return false; }
+    if (key   && strnlen(key,   CFG_KEY_MAX)   >= CFG_KEY_MAX)   { ESP_LOGE(TAG, "key too long");   return false; }
+    if (token && strnlen(token, CFG_TOKEN_MAX) >= CFG_TOKEN_MAX) { ESP_LOGE(TAG, "token too long"); return false; }
     nvs_handle_t h;
     if (nvs_open(NS, NVS_READWRITE, &h) != ESP_OK) return false;
     bool ok = true;
@@ -222,12 +240,42 @@ bool config_store_wifi_promote(const char *ssid)
     return ok;
 }
 
-void config_store_wifi_clear_all(void)
+// (config_store_wifi_clear_all removed — confirmed zero callers in firmware tree.)
+
+// ---- SoftAP PSK (random, generated once at first boot) --------------------
+
+// Alphanumeric charset without ambiguous chars (0/O, 1/I/l).
+// 34 chars -> ~5.09 bits/char; 12 chars -> ~61 bits entropy (well above WPA2 needs).
+static const char AP_PSK_CHARS[] =
+    "23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz";
+#define AP_PSK_LEN  12   // chars; must be >= 8 for WPA2
+
+bool config_store_get_or_create_ap_psk(char *out, size_t n)
 {
-    wifi_creds_t w;
-    blob_init_empty(&w);
-    blob_save(&w);
-    ESP_LOGW(TAG, "wifi list cleared");
+    if (!out || n < AP_PSK_LEN + 1) return false;
+    // Try to load an existing PSK first.
+    nvs_handle_t h;
+    if (nvs_open(NS, NVS_READONLY, &h) == ESP_OK) {
+        size_t len = n;
+        esp_err_t e = nvs_get_str(h, "ap_psk", out, &len);
+        nvs_close(h);
+        if (e == ESP_OK && strnlen(out, n) >= 8) return true;
+    }
+    // None found — generate a fresh random PSK and persist it.
+    const size_t charset_len = sizeof(AP_PSK_CHARS) - 1;  // exclude NUL
+    for (int i = 0; i < AP_PSK_LEN; i++) {
+        // Use esp_random() (true RNG); mask to avoid modulo bias.
+        uint32_t r;
+        do { r = esp_random() & 0xFF; } while (r >= (256u / charset_len) * charset_len);
+        out[i] = AP_PSK_CHARS[r % charset_len];
+    }
+    out[AP_PSK_LEN] = '\0';
+    if (nvs_open(NS, NVS_READWRITE, &h) == ESP_OK) {
+        if (nvs_set_str(h, "ap_psk", out) == ESP_OK) nvs_commit(h);
+        nvs_close(h);
+        ESP_LOGW(TAG, "generated new AP PSK (stored in NVS)");
+    }
+    return true;
 }
 
 // ---- one-shot "open portal to ADD a network" flag -------------------------
@@ -254,33 +302,4 @@ bool config_store_take_portal_request(void)
     return set;
 }
 
-// ---- legacy compatibility (no longer used by app code) --------------------
-
-bool config_store_is_provisioned(void)
-{
-    return config_store_has_upstash() && config_store_wifi_count() > 0;
-}
-
-size_t config_store_get_ssid(char *b, size_t n) { return get_str("ssid", b, n, NULL); }
-size_t config_store_get_pass(char *b, size_t n) { return get_str("pass", b, n, NULL); }
-
-bool config_store_set_provisioning(const char *ssid, const char *pass,
-                                   const char *url, const char *key,
-                                   const char *token)
-{
-    bool ok = config_store_set_upstash(url, key, token);
-    ok &= config_store_wifi_add_or_update(ssid, pass);
-    return ok;
-}
-
-void config_store_clear_provisioning(void)
-{
-    nvs_handle_t h;
-    if (nvs_open(NS, NVS_READWRITE, &h) != ESP_OK) return;
-    nvs_erase_key(h, "ssid"); nvs_erase_key(h, "pass");
-    nvs_erase_key(h, "url");  nvs_erase_key(h, "rkey");
-    nvs_erase_key(h, "tok");  nvs_erase_key(h, "wnets");
-    nvs_commit(h);
-    nvs_close(h);
-    ESP_LOGW(TAG, "ALL credentials cleared");
-}
+// (Legacy compatibility functions removed — confirmed zero callers in firmware tree.)

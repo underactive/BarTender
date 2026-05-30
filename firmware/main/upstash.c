@@ -48,6 +48,13 @@ upstash_status_t upstash_get(const char *url, const char *key,
     if (!url || !*url || !token || !*token || !out || out_sz < 2)
         return UPSTASH_ERR_NET;
 
+    // Fix M: require https:// — an http:// URL would send the bearer token in
+    // cleartext. Reject before any connection attempt.
+    if (strncmp(url, "https://", 8) != 0) {
+        ESP_LOGW(TAG, "upstash URL must use https:// — refusing to send token over plain HTTP");
+        return UPSTASH_ERR_NET;
+    }
+
     // Build "{url sans trailing '/'}/get/{key}". Buffers derived from
     // CFG_*_MAX so they can't silently drift if those limits change.
     // Audit Security§HIGH: check snprintf truncation — a clipped URL could

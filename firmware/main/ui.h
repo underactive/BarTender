@@ -13,13 +13,6 @@
 // Create the LVGL UI task. Call once after display_init().
 void ui_start(void);
 
-// Progress-bar fill direction. Default (UI_BAR_INVERT_DEFAULT in ui.c) is
-// INVERTED: 0% -> full bar, 100% -> empty bar (bars read as "headroom
-// remaining"). Flip the compile-time default to change it globally, or call
-// this at runtime (thread-safe) — wire it to a captive-portal / NVS setting
-// later. Bar COLOR still tracks true usage % (red = high usage) either way.
-void ui_set_bar_invert(bool on);
-
 // --- input / navigation ---
 //
 // The 2-state nav machine (NAV_SUMMARY ⇄ NAV_PAGE) lives here (mutex-protected
