@@ -1423,8 +1423,11 @@ static void place_hero_amount(hero_amount_t *h, const ui_rect_t *hero, const cha
 {
     lv_obj_clear_flag(h->caption, LV_OBJ_FLAG_HIDDEN);
     lv_label_set_text(h->caption, caption);
+    lv_obj_set_style_text_font(h->caption, &lv_font_montserrat_12, 0);
     lv_obj_set_pos(h->caption, hero->x + 12, hero->y + 2);
     lv_obj_clear_flag(h->num, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_style_text_font(h->num, &font_lemonmilk_48, 0);
+    lv_obj_set_style_pad_top(h->num, -8, 0);
     lv_obj_set_pos(h->num, hero->x + 12, hero->y + 28);
 }
 
@@ -2050,7 +2053,7 @@ static void render(void)   // ui_task only
         if (st.fetched_ms > 0 && st.stats.n > 0) {
             lv_obj_clear_flag(summary_top, LV_OBJ_FLAG_HIDDEN);
             cost_hero_set_parent(scr);
-            place_summary_hero_amount(&cost_hero, &top_r, "I/O TOKENS TODAY");
+            place_summary_hero_amount(&cost_hero, &top_r, "I/O TOKENS");
             char tk[32];
             fmt_tokens_full(tk, sizeof tk, summary_tok_today_total());
             set_hero_amount(&cost_hero, NULL, tk, NULL);
