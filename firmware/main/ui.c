@@ -23,6 +23,10 @@ extern const lv_font_t font_lemonmilk_23;
 #define ROW_H        48          // icon column + name line + bar/% line
 #define ROW_ICON_PX  32          // matches scripts/gen-provider-icons.py
 #define ROW_TXT_X    48          // name/bar start (right of the icon column)
+// Per-provider page watermark: 32px icon at 10x, top-right, gaussian-blurred.
+#define PAGE_BG_ICON_SCALE   (256 * 10)   // LVGL image scale: 256 == 1.0x
+#define PAGE_BG_BLUR_RADIUS  67
+#define PAGE_BG_ICON_OPA     ((lv_opa_t)((255 * 23) / 100))  /* ~23%; no LV_OPA_23 */
 
 #define NAV_HIST_PTS STATS_HIST_MAX   // chart points == payload schema cap,
                                       // NOT a UI choice (keep them equal)
@@ -93,7 +97,7 @@ static lv_obj_t *scr, *title, *status, *prov_box, *summary_top;
 static lv_obj_t *row_id[ROWS], *row_bar[ROWS], *row_val[ROWS], *row_icon[ROWS], *row_bar_w[ROWS];
 
 // Cost card
-static lv_obj_t *cost_card, *cost_hdr, *cost_logo, *cost_tok, *cost_tok_unit,
+static lv_obj_t *cost_card, *cost_bg_logo, *cost_hdr, *cost_logo, *cost_tok, *cost_tok_unit,
                 *cost_30, *cost_bar, *cost_bar_lbl, *cost_na, *cost_cap;
 static lv_obj_t      *cost_chart;
 static lv_chart_series_t *cost_ser;
@@ -101,7 +105,7 @@ static lv_chart_series_t *cost_ser;
 static lv_obj_t *cost_or_lbl, *cost_or_row1, *cost_or_row2;
 
 // Usage-Limits card
-static lv_obj_t *lim_card, *lim_hdr, *lim_logo,
+static lv_obj_t *lim_card, *lim_bg_logo, *lim_hdr, *lim_logo,
                 *lim_s_bar, *lim_s_rst,
                 *lim_a_lbl, *lim_a_big, *lim_a_bar, *lim_a_rst,
                 *lim_w_lbl, *lim_w_big, *lim_w_bar, *lim_w_rst,
@@ -737,8 +741,9 @@ static void create_card_hdr(lv_obj_t *card, lv_obj_t **hdr_out, lv_obj_t **logo_
 static hero_amount_t make_hero_amount(lv_obj_t *parent);
 static void hide_hero_amount(hero_amount_t *h);
 static void cost_hero_set_parent(lv_obj_t *parent);
-static void render_page_chrome(lv_obj_t *hdr, lv_obj_t *logo,
-                               const ui_page_chrome_desc_t *desc);
+static lv_obj_t *create_page_bg_logo(lv_obj_t *card);
+static void render_page_chrome(lv_obj_t *hdr, lv_obj_t *logo, lv_obj_t *bg_logo,
+                               int card_w, const ui_page_chrome_desc_t *desc);
 static void bar_opa_cb(void *obj, int32_t opa);
 static void update_bar_pulse(lv_obj_t *bar, float pct);
 
@@ -884,6 +889,7 @@ static void build_widgets(void)
     lv_obj_clear_flag(cost_card, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(cost_card, LV_OBJ_FLAG_HIDDEN);
 
+    cost_bg_logo = create_page_bg_logo(cost_card);
     create_card_hdr(cost_card, &cost_hdr, &cost_logo);
 
     cost_hero = make_hero_amount(cost_card);
@@ -984,6 +990,7 @@ static void build_widgets(void)
     lv_obj_clear_flag(lim_card, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(lim_card, LV_OBJ_FLAG_HIDDEN);
 
+    lim_bg_logo = create_page_bg_logo(lim_card);
     create_card_hdr(lim_card, &lim_hdr, &lim_logo);
 
     lim_hero = make_hero_amount(lim_card);
@@ -1117,6 +1124,20 @@ static void up_id(char *dst, size_t n, const char *src)
     dst[j] = '\0';
 }
 
+static lv_obj_t *create_page_bg_logo(lv_obj_t *card)
+{
+    lv_obj_t *bg = lv_image_create(card);
+    lv_obj_add_flag(bg, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(bg, LV_OBJ_FLAG_CLICKABLE);
+    lv_image_set_pivot(bg, ROW_ICON_PX, 0);
+    lv_image_set_scale(bg, PAGE_BG_ICON_SCALE);
+    lv_obj_set_style_blur_radius(bg, PAGE_BG_BLUR_RADIUS, 0);
+    lv_obj_set_style_blur_quality(bg, LV_BLUR_QUALITY_SPEED, 0);
+    lv_obj_set_style_image_opa(bg, PAGE_BG_ICON_OPA, 0);
+    lv_obj_set_style_image_recolor_opa(bg, LV_OPA_COVER, 0);
+    return bg;
+}
+
 static void create_card_hdr(lv_obj_t *card, lv_obj_t **hdr_out, lv_obj_t **logo_out)
 {
     *logo_out = lv_image_create(card);
@@ -1132,8 +1153,8 @@ static void create_card_hdr(lv_obj_t *card, lv_obj_t **hdr_out, lv_obj_t **logo_
     lv_obj_set_pos(*hdr_out, 2, 2);
 }
 
-static void render_page_chrome(lv_obj_t *hdr, lv_obj_t *logo,
-                               const ui_page_chrome_desc_t *desc)
+static void render_page_chrome(lv_obj_t *hdr, lv_obj_t *logo, lv_obj_t *bg_logo,
+                               int card_w, const ui_page_chrome_desc_t *desc)
 {
     if (hdr) {
         if (desc && desc->subtitle)
@@ -1141,7 +1162,10 @@ static void render_page_chrome(lv_obj_t *hdr, lv_obj_t *logo,
         else if (desc)
             lv_label_set_text(hdr, desc->title);
     }
-    if (!logo || !desc || !desc->icon_id) return;
+    if (!logo || !desc || !desc->icon_id) {
+        if (bg_logo) lv_obj_add_flag(bg_logo, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
 
     const lv_image_dsc_t *ic = provider_icon(desc->icon_id);
     if (ic) {
@@ -1160,6 +1184,24 @@ static void render_page_chrome(lv_obj_t *hdr, lv_obj_t *logo,
         lv_obj_add_flag(logo, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_pos(hdr, 2, 2);
     }
+
+    if (!bg_logo) return;
+    if (!ic) {
+        lv_obj_add_flag(bg_logo, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+    lv_image_set_src(bg_logo, ic);
+    if (provider_icon_is_full_color(desc->icon_id)) {
+        lv_obj_set_style_image_recolor_opa(bg_logo, LV_OPA_TRANSP, 0);
+    } else {
+        lv_color_t tc;
+        lv_obj_set_style_image_recolor_opa(bg_logo, LV_OPA_COVER, 0);
+        lv_obj_set_style_image_recolor(bg_logo,
+            prov_accent(desc->icon_id, &tc) ? tc : lv_color_hex(0xe8eaed), 0);
+    }
+    lv_obj_set_pos(bg_logo, card_w, 0);
+    lv_obj_clear_flag(bg_logo, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_to_index(bg_logo, 0);
 }
 
 
@@ -1505,7 +1547,8 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
         {
             char up[STATS_ID_MAX];
             up_id(up, sizeof up, p->id);
-            render_page_chrome(cost_hdr, cost_logo, &(ui_page_chrome_desc_t){
+            render_page_chrome(cost_hdr, cost_logo, cost_bg_logo, s_scr_w,
+                               &(ui_page_chrome_desc_t){
                 .title = up,
                 .subtitle = "TODAY",
                 .icon_id = p->id,
@@ -1727,7 +1770,8 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
         {
             char up[STATS_ID_MAX];
             up_id(up, sizeof up, p->id);
-            render_page_chrome(lim_hdr, lim_logo, &(ui_page_chrome_desc_t){
+            render_page_chrome(lim_hdr, lim_logo, lim_bg_logo, s_scr_w,
+                               &(ui_page_chrome_desc_t){
                 .title = up,
                 .subtitle = "STATS",
                 .icon_id = p->id,
@@ -1783,7 +1827,8 @@ static void render_card(void)   // ui_task only (renders the NAV_PAGE card)
     {
         char up[STATS_ID_MAX];
         up_id(up, sizeof up, p->id);
-        render_page_chrome(lim_hdr, lim_logo, &(ui_page_chrome_desc_t){
+        render_page_chrome(lim_hdr, lim_logo, lim_bg_logo, s_scr_w,
+                           &(ui_page_chrome_desc_t){
             .title = up,
             .subtitle = "LIMITS",
             .icon_id = p->id,
