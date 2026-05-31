@@ -105,6 +105,12 @@ upstash_status_t upstash_get(const char *url, const char *key,
         else if (status / 100 != 2)      rc = UPSTASH_ERR_HTTP;
         else { rc = UPSTASH_OK; if (out_len) *out_len = sink.len; }
         ESP_LOGI(TAG, "HTTP %d, %u bytes", status, (unsigned)sink.len);
+        // Audit (Backend§LOW): on a non-2xx, surface a bounded snippet of the
+        // error body so a 4xx/5xx from the store is debuggable from logs alone.
+        // The bearer token rides in the request header, never the response
+        // body, so this cannot leak the credential. sink.buf is NUL-terminated.
+        if (status / 100 != 2 && sink.len > 0)
+            ESP_LOGW(TAG, "HTTP %d error body: %.120s", status, sink.buf);
     }
     esp_http_client_cleanup(c);
     return rc;

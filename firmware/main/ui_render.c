@@ -1356,6 +1356,16 @@ static void render_card(void)   // ui_task only — dispatcher for the NAV_PAGE 
 
     hide_summary_chrome();
 
+    // Audit (Frontend§MED): defense-in-depth bounds guard. render() re-resolves
+    // nav_provider by identity and bails to NAV_SUMMARY if the provider vanished
+    // before calling us, so this should always hold — but guarding keeps a
+    // future direct caller from indexing st.stats.p[] out of bounds.
+    if (st.nav_provider < 0 || st.nav_provider >= st.stats.n ||
+        st.nav_provider >= STATS_MAX_PROVIDERS) {
+        st.nav_level = NAV_SUMMARY;
+        return;
+    }
+
     const stats_provider_t *p = &st.stats.p[st.nav_provider];
     // Data-driven: any provider with a balance/credits field uses the balance layout.
     // Avoids hardcoding "openrouter" and works for any future provider with the same shape.
@@ -1536,6 +1546,14 @@ void render(void)   // ui_task only
     for (int i = 0; i < ROWS; i++) {
         int pi = summary_provider_at(st.scroll + i); // i = visual slot, pi = stats.p[] index
         if (i >= vis || pi < 0) {
+            // Audit (Frontend§MED): stop any infinite pulse animations before
+            // hiding the slot. hide_summary_chrome() does this on card entry,
+            // but a row that simply scrolls off-screen took the HIDDEN path
+            // below and kept its ≥90% bar-pulse / cursor-amber anim running on
+            // an invisible widget — wasted timer/CPU churn until reuse.
+            update_bar_pulse(row_bar[i],   0.0f);
+            update_bar_pulse(row_bar_w[i], 0.0f);
+            update_cursor_sess_pulse(row_icon[i], false);
             lv_obj_add_flag(row_id[i],   LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(row_bar[i],  LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(row_val[i],  LV_OBJ_FLAG_HIDDEN);

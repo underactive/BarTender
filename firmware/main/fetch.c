@@ -115,13 +115,26 @@ static void fetch_task(void *arg)
     wait_for_first_link();
 
     bool refresh_now = true;
+    int  fail_streak = 0;   // consecutive failures, drives the retry backoff
 
     for (;;) {
         if (refresh_now) {
             bool ok = net_wifi_is_connected() ? do_fetch(url, key, tok)
                                               : (ui_set_status("WiFi: reconnecting..."), false);
             refresh_now = false;
-            int wait_s = ok ? FETCH_INTERVAL_S : FETCH_RETRY_S;
+            // Audit (Backend§MED): on success poll at the steady cadence; on
+            // consecutive failures back off exponentially (20,40,80,160,…) up to
+            // FETCH_RETRY_MAX_S so a down/erroring store isn't hammered at a
+            // fixed rate. Reset to fast retry on the first success.
+            int wait_s;
+            if (ok) {
+                fail_streak = 0;
+                wait_s = FETCH_INTERVAL_S;
+            } else {
+                if (fail_streak < 5) fail_streak++;   // cap shift at 2^4 = 16x
+                wait_s = FETCH_RETRY_S << (fail_streak - 1);
+                if (wait_s > FETCH_RETRY_MAX_S) wait_s = FETCH_RETRY_MAX_S;
+            }
             int64_t deadline = now_ms() + (int64_t)wait_s * 1000;
 
             // Wait out the fetch interval, servicing input meanwhile so the
@@ -148,6 +161,9 @@ static void fetch_task(void *arg)
 
 void fetch_task_start(QueueHandle_t evt_q)
 {
+    // Audit (Backend§LOW): the task blocks on xQueueReceive(s_q, …); a NULL
+    // queue would be a silent hang. Fail loudly at startup instead.
+    configASSERT(evt_q);
     s_q = evt_q;
     xTaskCreate(fetch_task, "fetch", 6144, NULL, 4, NULL);
 }

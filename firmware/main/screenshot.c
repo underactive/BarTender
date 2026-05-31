@@ -26,7 +26,15 @@ static const char *TAG = "scap";
 
 static void do_screenshot(void)
 {
-    if (!ui_capture_screenshot()) {
+    // Enable the shadow copy only for this capture: ui_capture_screenshot()
+    // forces a synchronous full re-render, so every tile flushes into the
+    // shadow fb while enabled. Disable immediately after — the complete frame
+    // now persists in the buffer for the reads below, and steady-state frames
+    // go back to skipping the per-flush memcpy.
+    display_shadow_capture(true);
+    bool ok = ui_capture_screenshot();
+    display_shadow_capture(false);
+    if (!ok) {
         ESP_LOGW(TAG, "capture timed out");
         return;
     }

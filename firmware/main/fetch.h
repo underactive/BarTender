@@ -16,7 +16,11 @@
 #include "freertos/queue.h"
 
 #define FETCH_INTERVAL_S    60   // device poll cadence; faster than the 300 s macOS publisher so updates appear promptly
-#define FETCH_RETRY_S       20   // after a failed fetch
+#define FETCH_RETRY_S       20   // first retry after a failed fetch
+#define FETCH_RETRY_MAX_S  300   // backoff ceiling: a persistently failing store
+                                 // is retried no slower than the 300 s publisher
+                                 // cadence (FETCH_RETRY_S doubles per consecutive
+                                 // failure, clamped here; resets on first success)
 #define CONNECT_GRACE_S    180   // never-connected-this-boot: open the add-
                                  // network portal after this long ONLY IF
                                  // net_wifi_no_known_network() also holds

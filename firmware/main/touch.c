@@ -135,7 +135,13 @@ static void touch_task(void *arg)
                                                  : APP_EVT_SWIPE_UP,
                                 .x = 0, .y = 0,
                             };
-                            xQueueSend(s_queue, &e, 0);
+                            // Audit (Frontend§MED): unlike the long-press above
+                            // we DON'T flush-and-resend here — a reset would drop
+                            // a queued long-press (the sole recovery gesture). A
+                            // dropped scroll is benign; just make it diagnosable.
+                            if (xQueueSend(s_queue, &e, 0) != pdTRUE)
+                                ESP_LOGW(TAG, "swipe %s dropped (queue full)",
+                                         dy > 0 ? "down" : "up");
                             s_gesture_fired = true;
                             s_last_gesture_us = now;
                             ESP_LOGD(TAG, "swipe %s",
@@ -148,7 +154,8 @@ static void touch_task(void *arg)
                             (now - s_last_gesture_us) >= GESTURE_DEBOUNCE_US) {
                             app_evt_t e = { .type = APP_EVT_SWIPE_LEFT,
                                             .x = 0, .y = 0 };
-                            xQueueSend(s_queue, &e, 0);
+                            if (xQueueSend(s_queue, &e, 0) != pdTRUE)
+                                ESP_LOGW(TAG, "swipe left dropped (queue full)");
                             s_gesture_fired = true;
                             s_last_gesture_us = now;
                             ESP_LOGD(TAG, "swipe left");
@@ -173,7 +180,8 @@ static void touch_task(void *arg)
                                 .x = (int16_t)s_press_x,
                                 .y = (int16_t)s_press_y,
                             };
-                            xQueueSend(s_queue, &e, 0);
+                            if (xQueueSend(s_queue, &e, 0) != pdTRUE)
+                                ESP_LOGW(TAG, "tap dropped (queue full)");
                             ESP_LOGD(TAG, "tap (%d, %d)",
                                      s_press_x, s_press_y);
                         }

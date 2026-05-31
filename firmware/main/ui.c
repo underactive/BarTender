@@ -130,10 +130,15 @@ static void ui_task(void *arg)
                 led_transition_enable();
             }
             saver_advance_locked(now);
-            // Re-render every 10 s in stats mode so the "updated Ns ago"
-            // counter ticks even without new data. render() recomputes the
-            // age from st.fetched_ms, so this is always accurate (no gap).
-            if (st.mode == UI_STATS && st.fetched_ms > 0 && now >= next_age) {
+            // Re-render every 10 s so the "updated Ns ago" counter ticks even
+            // without new data. render() recomputes the age from st.fetched_ms,
+            // so this is always accurate (no gap). Audit (Perf§MED): the age
+            // suffix renders ONLY on the summary page (the NAV_PAGE branch in
+            // render() returns before it), so gate the tick to NAV_SUMMARY —
+            // otherwise a drilled-in card redraws identical pixels (full
+            // render_card() + lv_chart_refresh) every 10 s for nothing.
+            if (st.mode == UI_STATS && st.nav_level == NAV_SUMMARY &&
+                st.fetched_ms > 0 && now >= next_age) {
                 next_age = now + AGE_TICK_MS;
                 st.dirty = true;
             }

@@ -23,6 +23,12 @@ static size_t get_str(const char *key, char *buf, size_t n, const char *dflt)
         esp_err_t e = nvs_get_str(h, key, buf, &len);
         nvs_close(h);
         if (e == ESP_OK && buf[0] != '\0') return strnlen(buf, n);
+        // Audit (Backend§INFO): a stored value larger than buf yields
+        // INVALID_LENGTH and silently falls back to the default below. Log it
+        // so an oversized credential is distinguishable from a simply-unset key.
+        if (e == ESP_ERR_NVS_INVALID_LENGTH)
+            ESP_LOGW(TAG, "nvs key '%s' exceeds %u-byte buffer — using default",
+                     key, (unsigned)n);
     }
     if (dflt) { strlcpy(buf, dflt, n); return strnlen(buf, n); }
     buf[0] = '\0';

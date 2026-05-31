@@ -38,6 +38,11 @@ static lv_display_t *s_lv_display = NULL;
  * when PSRAM is present; NULL otherwise. */
 static uint8_t *s_shadow = NULL;
 
+/* Gate for the shadow copy below. Off in steady state so normal frames skip the
+ * per-flush PSRAM memcpy; screenshot.c flips it on around the forced full
+ * re-render. volatile: written from the screenshot task, read in the flush cb. */
+static volatile bool s_shadow_capture = false;
+
 // Display config
 #define LCD_HOST        SPI2_HOST
 #define LCD_H_RES       BOARD_LCD_H_RES
@@ -95,8 +100,10 @@ static void lvgl_flush_cb(lv_display_t *disp, const lv_area_t *area,
 
     /* Shadow copy: after saturation, before byte-swap → clean RGB565-LE that
      * matches what the display actually shows. Tile-by-tile updates mean the
-     * buffer is complete only after a full re-render (ui_capture_screenshot). */
-    if (s_shadow) {
+     * buffer is complete only after a full re-render (ui_capture_screenshot).
+     * Audit (Perf§MED): gated on s_shadow_capture so steady-state flushes skip
+     * this extra PSRAM memcpy — only the screenshot path enables it. */
+    if (s_shadow && s_shadow_capture) {
         for (int row = 0; row < h; row++) {
             memcpy(s_shadow + ((area->y1 + row) * LCD_H_RES + area->x1) * 2,
                    px_map + row * w * 2, (size_t)w * 2);
@@ -299,6 +306,11 @@ const uint8_t *display_get_shadow_fb(int *w, int *h)
     if (w) *w = LCD_H_RES;
     if (h) *h = LCD_V_RES;
     return s_shadow;
+}
+
+void display_shadow_capture(bool on)
+{
+    s_shadow_capture = on;
 }
 
 void display_set_flipped(bool flipped)

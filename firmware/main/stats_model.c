@@ -40,6 +40,19 @@ static int64_t i64_clamp(double v)
     return (int64_t)v;
 }
 
+// Audit (Backend§MED): float fields are stored verbatim from the untrusted
+// cJSON->valuedouble. Unlike the integer paths (i32/i64_clamp), the (float)
+// casts skipped NaN/Inf handling, so a corrupt store could push NaN or Inf
+// straight into UI formatting (and NaN compares false against every bound,
+// defeating later clamps). Sanitize NaN/Inf -> 0 here; leave the magnitude of
+// finite values intact so the parse layer stays data-preserving (usage % can
+// legitimately exceed 100 in overage — the UI clamps for rendering, not us).
+static float f_sanitize(double v)
+{
+    if (isnan(v) || isinf(v)) return 0.0f;
+    return (float)v;
+}
+
 // ---- per-block static helpers (fix H: extracted from the provider loop) ----
 
 // v2 optional `cost` object. Absent on v1 and on providers with no cost data
@@ -130,9 +143,9 @@ static void parse_lm(const cJSON *e, stats_provider_t *p)
     x = cJSON_GetObjectItemCaseSensitive(lm, "mxt");
     if (cJSON_IsNumber(x)) { p->lm_tok_month_max = i64_clamp(x->valuedouble); any_lm = true; }
     x = cJSON_GetObjectItemCaseSensitive(lm, "cp");
-    if (cJSON_IsNumber(x)) { p->lm_cache_pct     = (float)x->valuedouble;    any_lm = true; }
+    if (cJSON_IsNumber(x)) { p->lm_cache_pct     = f_sanitize(x->valuedouble); any_lm = true; }
     x = cJSON_GetObjectItemCaseSensitive(lm, "ch");
-    if (cJSON_IsNumber(x)) { p->lm_cache_hit_pct = (float)x->valuedouble;    any_lm = true; }
+    if (cJSON_IsNumber(x)) { p->lm_cache_hit_pct = f_sanitize(x->valuedouble); any_lm = true; }
     const cJSON *hr = cJSON_GetObjectItemCaseSensitive(lm, "hr");
     if (cJSON_IsArray(hr)) {
         const cJSON *hv;
@@ -182,8 +195,8 @@ static void parse_lm(const cJSON *e, stats_provider_t *p)
                         sizeof(p->lm_week_d[p->lm_week_n]));
                 if (cJSON_IsNumber(wrq)) p->lm_week_rq[p->lm_week_n] = i32_clamp(wrq->valuedouble);
                 if (cJSON_IsNumber(wtk)) p->lm_week_tk[p->lm_week_n] = i64_clamp(wtk->valuedouble);
-                if (cJSON_IsNumber(wcp)) p->lm_week_cp[p->lm_week_n] = (float)wcp->valuedouble;
-                if (cJSON_IsNumber(wch)) p->lm_week_ch[p->lm_week_n] = (float)wch->valuedouble;
+                if (cJSON_IsNumber(wcp)) p->lm_week_cp[p->lm_week_n] = f_sanitize(wcp->valuedouble);
+                if (cJSON_IsNumber(wch)) p->lm_week_ch[p->lm_week_n] = f_sanitize(wch->valuedouble);
                 p->lm_week_n++;
                 any_lm = true;
             }
@@ -232,8 +245,11 @@ static void parse_ph(const cJSON *e, stats_provider_t *p)
     cJSON_ArrayForEach(pv, ph) {
         if (p->pct_hist_n >= STATS_PCT_HIST_MAX) break;
         if (cJSON_IsNumber(pv)) {
-            int v = (int)pv->valuedouble;
-            if (v < 0) v = 0; else if (v > 100) v = 100;
+            // Guard before narrowing: (int)NaN / (int)Inf is undefined behavior,
+            // and would slip past the < 0 / > 100 clamp below.
+            double d = pv->valuedouble;
+            if (isnan(d)) continue;
+            int v = (d <= 0.0) ? 0 : (d >= 100.0) ? 100 : (int)d;
             p->pct_hist[p->pct_hist_n++] = (uint8_t)v;
         }
     }
@@ -270,7 +286,10 @@ stats_parse_t stats_model_parse(const char *body, stats_t *out)
     const cJSON *v  = cJSON_GetObjectItemCaseSensitive(in, "v");
     const cJSON *ts = cJSON_GetObjectItemCaseSensitive(in, "ts");
     const cJSON *ps = cJSON_GetObjectItemCaseSensitive(in, "providers");
-    out->v = cJSON_IsNumber(v) ? (int)v->valuedouble : 0;
+    // Guard the narrowing: (int)NaN / (int)Inf is undefined behavior. A NaN
+    // version would otherwise hit (int)v->valuedouble before the v1/v2 gate.
+    out->v = (cJSON_IsNumber(v) && !isnan(v->valuedouble) && !isinf(v->valuedouble))
+                 ? (int)v->valuedouble : 0;
     // Audit Contract§MED: forward-guard. This firmware understands v1 and v2
     // (v2 = v1 + optional `cost` block, strict superset). A v3+ schema bump
     // must still be rejected, not rendered as best-effort garbage.
@@ -287,13 +306,13 @@ stats_parse_t stats_model_parse(const char *body, stats_t *out)
             p->ok = cJSON_IsTrue(ok);
             // p/pr/s/sr are absent on !ok entries — handle gracefully.
             const cJSON *pp = cJSON_GetObjectItemCaseSensitive(e, "p");
-            if (cJSON_IsNumber(pp)) { p->has_p = true; p->p = (float)pp->valuedouble; }
+            if (cJSON_IsNumber(pp)) { p->has_p = true; p->p = f_sanitize(pp->valuedouble); }
             json_str_copy(p->pr, sizeof p->pr, cJSON_GetObjectItemCaseSensitive(e, "pr"));
             const cJSON *sp = cJSON_GetObjectItemCaseSensitive(e, "s");
-            if (cJSON_IsNumber(sp)) { p->has_s = true; p->s = (float)sp->valuedouble; }
+            if (cJSON_IsNumber(sp)) { p->has_s = true; p->s = f_sanitize(sp->valuedouble); }
             json_str_copy(p->sr, sizeof p->sr, cJSON_GetObjectItemCaseSensitive(e, "sr"));
             const cJSON *tp = cJSON_GetObjectItemCaseSensitive(e, "t");
-            if (cJSON_IsNumber(tp)) { p->has_t = true; p->t = (float)tp->valuedouble; }
+            if (cJSON_IsNumber(tp)) { p->has_t = true; p->t = f_sanitize(tp->valuedouble); }
             json_str_copy(p->tr, sizeof p->tr, cJSON_GetObjectItemCaseSensitive(e, "tr"));
 
             parse_cost(e, p);
