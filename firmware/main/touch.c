@@ -74,12 +74,10 @@ static void touch_task(void *arg)
     (void)arg;
     while (1) {
         if (esp_lcd_touch_read_data(s_touch) == ESP_OK) {
-            uint16_t x[1] = {0};
-            uint16_t y[1] = {0};
-            uint16_t strength[1] = {0};
+            esp_lcd_touch_point_data_t points[1] = {0};
             uint8_t count = 0;
-            bool pressed = esp_lcd_touch_get_coordinates(s_touch, x, y, strength,
-                                                         &count, 1) && count > 0;
+            bool pressed = esp_lcd_touch_get_data(s_touch, points, &count, 1) == ESP_OK
+                           && count > 0;
             int64_t now = esp_timer_get_time();
 
             if (pressed) {
@@ -89,16 +87,16 @@ static void touch_task(void *arg)
                     s_in_press = true;
                     s_gesture_fired = false;
                     s_press_us = now;
-                    s_press_x = s_last_x = x[0];
-                    s_press_y = s_last_y = y[0];
+                    s_press_x = s_last_x = points[0].x;
+                    s_press_y = s_last_y = points[0].y;
                 } else {
                     // held: fire long-press / swipe on threshold crossing
                     // (don't wait for release — better felt latency).
                     // Strict precedence so exactly one gesture fires per
                     // press; bands stay disjoint (tap <=12px, swipe >=40px,
                     // 12..40 inert), long-press needs sustained low travel.
-                    s_last_x = x[0];
-                    s_last_y = y[0];
+                    s_last_x = points[0].x;
+                    s_last_y = points[0].y;
                     if (!s_gesture_fired) {
                         int dx = s_last_x - s_press_x;
                         int dy = s_last_y - s_press_y;
