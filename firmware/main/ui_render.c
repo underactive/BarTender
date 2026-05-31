@@ -470,11 +470,8 @@ static lv_obj_t *create_page_bg_logo(lv_obj_t *card)
     lv_obj_t *bg = lv_image_create(card);
     lv_obj_add_flag(bg, LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(bg, LV_OBJ_FLAG_CLICKABLE);
-    lv_image_set_pivot(bg, ROW_ICON_PX, 0);
-    lv_image_set_scale(bg, PAGE_BG_ICON_SCALE);
-    lv_obj_set_style_blur_radius(bg, PAGE_BG_BLUR_RADIUS, 0);
-    lv_obj_set_style_blur_quality(bg, LV_BLUR_QUALITY_SPEED, 0);
-    lv_obj_set_style_image_opa(bg, PAGE_BG_ICON_OPA, 0);
+    lv_image_set_pivot(bg, 96, 0);
+    lv_obj_set_style_image_opa(bg, LV_OPA_COVER, 0);
     lv_obj_set_style_image_recolor_opa(bg, LV_OPA_COVER, 0);
     return bg;
 }
@@ -527,20 +524,22 @@ static void render_page_chrome(lv_obj_t *hdr, lv_obj_t *logo, lv_obj_t *bg_logo,
     }
 
     if (!bg_logo) return;
-    if (!ic) {
+    const lv_image_dsc_t *bg = provider_background_icon(desc->icon_id);
+    if (!bg) {
         lv_obj_add_flag(bg_logo, LV_OBJ_FLAG_HIDDEN);
         return;
     }
-    lv_image_set_src(bg_logo, ic);
+    lv_image_set_src(bg_logo, bg);
     if (provider_icon_is_full_color(desc->icon_id)) {
         lv_obj_set_style_image_recolor_opa(bg_logo, LV_OPA_TRANSP, 0);
     } else {
         lv_color_t tc;
-        lv_obj_set_style_image_recolor_opa(bg_logo, LV_OPA_COVER, 0);
+        lv_obj_set_style_image_recolor_opa(bg_logo, LV_OPA_40, 0);
         lv_obj_set_style_image_recolor(bg_logo,
             prov_accent(desc->icon_id, &tc) ? tc : lv_color_hex(0xe8eaed), 0);
     }
-    lv_obj_set_pos(bg_logo, card_w, 0);
+    lv_obj_set_pos(bg_logo, card_w - (int)(bg->header.w * 0.78f) - 75, 35);
+    lv_image_set_scale(bg_logo, 512);
     lv_obj_clear_flag(bg_logo, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_to_index(bg_logo, 0);
 }
