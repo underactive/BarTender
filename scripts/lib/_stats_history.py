@@ -7,9 +7,9 @@
 # were duplicated across the scripts (Fowler audit #8); they live here now.
 # Field semantics stay with each caller — this module is value-shape-agnostic.
 #
-# Imported from the scripts' heredoc-piped Python via:
+# Imported from scripts/*.sh heredoc-piped Python via:
 #   sys.path.insert(0, os.environ["CBTOY_SCRIPT_DIR"]); import _stats_history
-# (the .sh exports CBTOY_SCRIPT_DIR because stdin-piped Python has no __file__).
+# (CBTOY_SCRIPT_DIR points at scripts/lib/; stdin-piped Python has no __file__).
 import json
 import sys
 from pathlib import Path

@@ -16,10 +16,14 @@ Host-side executable tooling for the macOS half of the pipeline: read CodexBar u
 ## Module Structure
 ```text
 scripts/
-├── codexbar-stats.sh, codexbar-publish.sh   # Host pipeline CLIs
-├── gen-provider-icons.py                    # Asset generator → firmware C sources
-├── screenshot.py                            # Host client for serial screenshot protocol
-└── assets/codexbar-logos/                   # Canonical SVG inputs for icon generation
+├── codexbar-stats.sh, codexbar-publish.sh   # User-facing pipeline CLIs
+├── cursor-stats.sh, pi-agent-stats.sh, …    # Publish merge helpers
+├── preflight.sh, uninstall.sh
+├── lib/_stats_history.py                    # Shared Python (stats scripts)
+└── build/
+    ├── gen-provider-icons.py, gen-boot-splash.py
+    ├── screenshot.py, boot-capture.sh
+    └── assets/codexbar-logos/             # SVG inputs for icon generation
 ```
 
 ## CLI Script Dispatcher (Header Docs + `cmd_*` Functions)
@@ -123,9 +127,9 @@ w, h, data_len = struct.unpack("<HHI", ser.read(8))
 
 <important if="you are adding a new provider icon or branding asset in this layer">
 ## Icon Generation Checklist
-1. Add the SVG under `scripts/assets/codexbar-logos/`.
+1. Add the SVG under `scripts/build/assets/codexbar-logos/`.
 2. Update the generator’s provider-id → asset mapping.
-3. Re-run `scripts/gen-provider-icons.py` to regenerate `firmware/main/provider_icons.c` and `.h`.
+3. Re-run `scripts/build/gen-provider-icons.py` to regenerate `firmware/main/provider_icons.c` and `.h`.
 4. Add matching color data in `firmware/main/provider_colors.h` if the provider is new.
 5. Never hand-edit the generated C icon tables.
 </important>

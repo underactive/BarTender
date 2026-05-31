@@ -50,8 +50,8 @@ PY="${PYTHON3:-$(command -v python3 2>/dev/null || true)}"
 [[ -n "$PY" && -x "$PY" ]] || { print -r -- "lmstudio-stats: python3 not found" >&2; exit 2; }
 
 # Heredoc-piped Python has no __file__, so hand it this script's dir to import
-# the sibling _stats_history.py helper (${0:A:h} = absolute dirname in zsh).
-export CBTOY_SCRIPT_DIR="${0:A:h}"
+# scripts/lib/_stats_history.py (${0:A:h} = bin dir in zsh).
+export CBTOY_SCRIPT_DIR="${0:A:h}/lib"
 "$PY" <<'PY'
 import datetime as dt
 import json

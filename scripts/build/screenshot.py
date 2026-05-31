@@ -2,7 +2,7 @@
 """Save a screenshot from the CodexBar desk toy over USB serial.
 
 Usage:
-    python3 scripts/screenshot.py [port] [output.png]
+    python3 scripts/build/screenshot.py [port] [output.png]
 
 With no arguments the script auto-detects the first /dev/cu.usbmodem* or
 /dev/cu.usbserial* port and writes screenshot_YYYYMMDD_HHMMSS.png.
@@ -139,7 +139,7 @@ def main():
         sys.exit(
             "No device found.\n"
             "  Connect the board via USB, or pass the port explicitly:\n"
-            "  python3 scripts/screenshot.py /dev/cu.usbmodem14101"
+            "  python3 scripts/build/screenshot.py /dev/cu.usbmodem14101"
         )
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")

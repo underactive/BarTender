@@ -23,8 +23,8 @@ For layer-specific guidance, see:
 | `./scripts/codexbar-publish.sh --install` | Install the launchd schedule |
 | `cd firmware && idf.py build` | Build the ESP32 firmware |
 | `cd firmware && idf.py flash monitor` | Flash firmware and open serial monitor |
-| `python3 scripts/gen-provider-icons.py` | Regenerate firmware provider icons from SVG assets |
-| `python3 scripts/screenshot.py` | Capture a PNG via the firmware screenshot protocol |
+| `python3 scripts/build/gen-provider-icons.py` | Regenerate firmware provider icons from SVG assets |
+| `python3 scripts/build/screenshot.py` | Capture a PNG via the firmware screenshot protocol |
 
 # Business Context
 This is a private single-user telemetry display: upstream account identity and per-project paths stay local, while the device receives a reduced payload containing usage and spend summaries suitable for display.

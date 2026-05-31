@@ -11,7 +11,7 @@
 //   pixel_bytes     uint32_t little-endian  (= width * height * 2)
 //   pixel data      pixel_bytes bytes       RGB565-LE, row-major
 //
-// Host side: scripts/screenshot.py  (requires pyserial + Pillow)
+// Host side: scripts/build/screenshot.py  (requires pyserial + Pillow)
 #include "screenshot.h"
 #include "display.h"
 #include "ui.h"

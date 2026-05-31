@@ -53,8 +53,8 @@ limits monitor, not just a clipped usage-% list.
       fall back to the green/amber/red usage ramp. Color is independent of fill.
 - [ ] **Provider logo on summary rows.** Each summary row shows the
       provider's CodexBar logo (A8 silhouette, accent-tinted) in the left
-      margin, spanning the two-line row. Source: `scripts/assets/codexbar-logos/`
-      → `scripts/gen-provider-icons.py` → `firmware/main/provider_icons.c`.
+      margin, spanning the two-line row. Source: `scripts/build/assets/codexbar-logos/`
+      → `scripts/build/gen-provider-icons.py` → `firmware/main/provider_icons.c`.
       Providers without a bundled icon render text-only.
 - [ ] **Cost numbers match local sources.** Claude/Codex today/30-day `$` and
       tokens equal the rollup of CodexBar cost-cache `days` aggregates;

@@ -24,7 +24,7 @@ extern const lv_font_t font_lemonmilk_23;
 #define ROWS         STATS_MAX_PROVIDERS
 #define ROW_Y0       20
 #define ROW_H        48          // icon column + name line + bar/% line
-#define ROW_ICON_PX  32          // matches scripts/gen-provider-icons.py
+#define ROW_ICON_PX  32          // matches scripts/build/gen-provider-icons.py
 #define ROW_TXT_X    48          // name/bar start (right of the icon column)
 // Per-provider page watermark: 32px icon at 10x, top-right, gaussian-blurred.
 #define PAGE_BG_ICON_SCALE   (256 * 10)   // LVGL image scale: 256 == 1.0x

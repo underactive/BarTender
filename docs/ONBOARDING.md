@@ -70,8 +70,10 @@ credentials, and no raw project paths ever leave your Mac.
 
 | Directory | Role |
 |-----------|------|
-| `scripts/` | Host pipeline CLIs, asset generation, and host-device utilities |
-| `scripts/assets/codexbar-logos/` | Canonical SVG inputs for provider icon generation |
+| `scripts/` | User-facing host CLIs (stats, publish, preflight) |
+| `scripts/build/` | Asset generators, screenshot tools, build inputs |
+| `scripts/build/assets/codexbar-logos/` | Canonical SVG inputs for provider icon generation |
+| `scripts/lib/` | Shared Python helpers for stats scripts |
 | `firmware/` | ESP-IDF project root: build config, partitions, managed deps |
 | `firmware/main/` | First-party firmware runtime: boot, NVS, WiFi, fetch, parsing, UI, provisioning |
 | `launchd/` | LaunchAgent plist template (no secrets — placeholders filled by `--install`) |
@@ -202,10 +204,10 @@ cd firmware && idf.py set-target esp32s3 && idf.py build
 cd firmware && idf.py -p /dev/tty.usbmodem* flash monitor
 
 # Regenerate provider icons from SVG assets
-python3 scripts/gen-provider-icons.py
+python3 scripts/build/gen-provider-icons.py
 
 # Capture firmware screen via USB
-python3 scripts/screenshot.py
+python3 scripts/build/screenshot.py
 ```
 
 ---

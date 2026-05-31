@@ -1,17 +1,17 @@
 #!/bin/zsh
 # boot-capture.sh — Boot-sequence timelapse over USB serial
 #
-# Optionally resets the board, grabs N screenshots via scripts/screenshot.py,
+# Optionally resets the board, grabs N screenshots via scripts/build/screenshot.py,
 # and assembles bootup.mp4 with ffmpeg. Each frame is a full 320×240 SCAP
 # transfer (~1–3+ s), so playback speed won't match real-time boot. Backlight
 # fade during boot is not visible in framebuffer captures — record the physical
 # panel for that.
 #
-#   ./scripts/boot-capture.sh
-#   ./scripts/boot-capture.sh --port /dev/cu.usbmodem14101 --frames 30
-#   ./scripts/boot-capture.sh --no-reset --interval 1 --fps 4
-#   ./scripts/boot-capture.sh --no-video
-#   ./scripts/boot-capture.sh --help
+#   ./scripts/build/boot-capture.sh
+#   ./scripts/build/boot-capture.sh --port /dev/cu.usbmodem14101 --frames 30
+#   ./scripts/build/boot-capture.sh --no-reset --interval 1 --fps 4
+#   ./scripts/build/boot-capture.sh --no-video
+#   ./scripts/build/boot-capture.sh --help
 #
 # Requirements:
 #   pip3 install pyserial Pillow   (screenshot.py)
@@ -26,7 +26,7 @@ warn() { print -r -- "warning: $*" >&2; }
 log()  { print -r -- "$*"; }
 
 SELF_DIR="${0:A:h}"
-REPO_ROOT="${SELF_DIR:A:h}"
+REPO_ROOT="${SELF_DIR:A:h:h}"
 SCREENSHOT="$SELF_DIR/screenshot.py"
 
 BC_PORT=""

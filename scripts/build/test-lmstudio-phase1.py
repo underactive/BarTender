@@ -144,7 +144,9 @@ def test_cache_fields_default_absent():
 
 def test_schema_validates():
     """Verify the JSON schema validates the payload."""
-    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    repo_root = os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    )
     schema_path = os.path.join(repo_root, "docs", "generated", "codexbar-payload.schema.json")
     with open(schema_path) as f:
         schema = json.load(f)

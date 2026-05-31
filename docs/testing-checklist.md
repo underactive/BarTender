@@ -77,7 +77,7 @@ Rendering:
       tinted with that provider's accent (light grey if un-themed), spanning
       the name + bar lines (two-line row). A provider with no bundled icon
       shows text only (no broken/empty box). Icons regenerate via
-      `python3 scripts/gen-provider-icons.py` from the vendored SVGs.
+      `python3 scripts/build/gen-provider-icons.py` from the vendored SVGs.
 - [ ] **No tofu glyphs** anywhere (ASCII-only); layout not clipped in the
       live 240×320 orientation.
 - [ ] **End-to-end**: `curl GET {url}/get/{key}` → device Cost numbers +

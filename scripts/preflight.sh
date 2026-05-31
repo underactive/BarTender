@@ -168,7 +168,7 @@ check_python_deps() {
   # Pillow — needed for icon generation
   if ! python3 -c "import PIL" &>/dev/null; then
     warn "Pillow (Python) not installed"
-    warn "  pip3 install Pillow  (needed for scripts/gen-provider-icons.py)"
+    warn "  pip3 install Pillow  (needed for scripts/build/gen-provider-icons.py)"
     missing+=(pillow)
     dep_status[pillow]="missing"
   else
@@ -179,7 +179,7 @@ check_python_deps() {
   # pyserial — needed for screenshot protocol
   if ! python3 -c "import serial" &>/dev/null; then
     warn "pyserial not installed"
-    warn "  pip3 install pyserial  (needed for scripts/screenshot.py)"
+    warn "  pip3 install pyserial  (needed for scripts/build/screenshot.py)"
     missing+=(pyserial)
     dep_status[pyserial]="missing"
   else
@@ -190,7 +190,7 @@ check_python_deps() {
   # rsvg-convert — needed for SVG→PNG icon generation
   if ! command -v rsvg-convert &>/dev/null; then
     warn "rsvg-convert not found"
-    warn "  brew install librsvg  (needed for scripts/gen-provider-icons.py)"
+    warn "  brew install librsvg  (needed for scripts/build/gen-provider-icons.py)"
     missing+=(rsvg-convert)
     dep_status[rsvg-convert]="missing"
   else
