@@ -195,6 +195,17 @@ extern cost_card_t cost;
 extern lim_card_t  lim;
 extern hero_amount_t cost_hero, lim_hero;
 
+// Clamp an int to [lo, hi]. Shared by the formatting + render paths to replace
+// the open-coded `if (v < lo) v = lo; else if (v > hi) v = hi;` idiom that was
+// duplicated across ui_format.c / ui_render.c. static inline: each TU gets its
+// own copy, no link conflict, identical codegen to the hand-written version.
+static inline int clampi(int v, int lo, int hi)
+{
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
+}
+
 // ── Cross-file functions ─────────────────────────────────────────────────────
 // ui_format.c — pure helpers (no st, no LVGL widget globals).
 ui_page_grid_t ui_grid_from_height(int screen_w, int screen_h);

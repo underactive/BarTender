@@ -42,34 +42,38 @@ static lv_obj_t *grid_v[UI_GRID_COLS - 1];
 static lv_point_precise_t grid_h_pts[UI_GRID_ROWS + 1][2];
 static lv_point_precise_t grid_v_pts[UI_GRID_COLS - 1][2];
 
+// Point a grid line at [a, b] and apply the debug-overlay visibility. `pts`
+// must be the line's persistent backing store (LVGL keeps the pointer, not a
+// copy), so callers pass the matching grid_{h,v}_pts[i] slot.
+static void set_grid_line(lv_obj_t *line, lv_point_precise_t pts[2],
+                          lv_point_precise_t a, lv_point_precise_t b)
+{
+    pts[0] = a;
+    pts[1] = b;
+    lv_line_set_points(line, pts, 2);
+    if (UI_SHOW_GRID_LINES) {
+        lv_obj_clear_flag(line, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(line);
+    } else {
+        lv_obj_add_flag(line, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
 static void ui_update_grid_overlay(const ui_page_grid_t *g)
 {
     for (int i = 0; i <= UI_GRID_ROWS; i++) {
-        lv_obj_t *line = grid_h[i];
-        if (!line) continue;
-        grid_h_pts[i][0] = (lv_point_precise_t){ g->content.x, g->content.y + i * g->cell_h };
-        grid_h_pts[i][1] = (lv_point_precise_t){ g->content.x + g->content.w, g->content.y + i * g->cell_h };
-        lv_line_set_points(line, grid_h_pts[i], 2);
-        if (UI_SHOW_GRID_LINES) {
-            lv_obj_clear_flag(line, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_move_foreground(line);
-        } else {
-            lv_obj_add_flag(line, LV_OBJ_FLAG_HIDDEN);
-        }
+        if (!grid_h[i]) continue;
+        const int y = g->content.y + i * g->cell_h;
+        set_grid_line(grid_h[i], grid_h_pts[i],
+                      (lv_point_precise_t){ g->content.x, y },
+                      (lv_point_precise_t){ g->content.x + g->content.w, y });
     }
     for (int i = 0; i < UI_GRID_COLS - 1; i++) {
-        lv_obj_t *line = grid_v[i];
-        if (!line) continue;
+        if (!grid_v[i]) continue;
         const int x = g->content.x + (i + 1) * g->cell_w;
-        grid_v_pts[i][0] = (lv_point_precise_t){ x, g->content.y };
-        grid_v_pts[i][1] = (lv_point_precise_t){ x, g->content.y + g->content.h };
-        lv_line_set_points(line, grid_v_pts[i], 2);
-        if (UI_SHOW_GRID_LINES) {
-            lv_obj_clear_flag(line, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_move_foreground(line);
-        } else {
-            lv_obj_add_flag(line, LV_OBJ_FLAG_HIDDEN);
-        }
+        set_grid_line(grid_v[i], grid_v_pts[i],
+                      (lv_point_precise_t){ x, g->content.y },
+                      (lv_point_precise_t){ x, g->content.y + g->content.h });
     }
 }
 
@@ -699,8 +703,7 @@ static void anim_chart_fadein(lv_obj_t *chart)
 
 static void set_bar(lv_obj_t *bar, bool has, float v, const stats_provider_t *p)
 {
-    int iv = (int)(v + 0.5f);
-    if (iv < 0) iv = 0; else if (iv > 100) iv = 100;
+    int iv = clampi((int)(v + 0.5f), 0, 100);
     lv_bar_set_value(bar, has ? bar_fill(iv) : 0, LV_ANIM_ON);
     lv_obj_set_style_bg_color(bar, bar_color(p, v), LV_PART_INDICATOR);
     update_bar_pulse(bar, has ? v : 0.0f);
@@ -761,8 +764,7 @@ static void set_hero_amount(hero_amount_t *h, const char *prefix,
 static void set_hero_pct(hero_amount_t *h, bool has, float v)
 {
     if (!has) { set_hero_amount(h, NULL, "--", NULL); return; }
-    int tenths = (int)(v * 10.0f + 0.5f);
-    if (tenths < 0) tenths = 0; else if (tenths > 1000) tenths = 1000;
+    int tenths = clampi((int)(v * 10.0f + 0.5f), 0, 1000);
     char nb[8];
     snprintf(nb, sizeof nb, "%d.%d", tenths / 10, tenths % 10);
     set_hero_amount(h, NULL, nb, "%");
@@ -1458,9 +1460,7 @@ void render(void)   // ui_task only
         // flight so repeated renders don't restart it.
         if (!st.saver_active || !led_is_transitioning())
             led_set_provider(st.nav_id);
-    }
 
-    if (st.nav_level == NAV_PAGE) {
         render_lock_badge(st.locked, s_scr_w - 18, 4);
         if (boot_img) lv_obj_add_flag(boot_img, LV_OBJ_FLAG_HIDDEN);
         render_card();
@@ -1632,8 +1632,7 @@ void render(void)   // ui_task only
             lv_obj_set_style_text_color(row_val[i], lv_color_hex(0x6b7075), 0);
             lv_label_set_text(row_val[i], "off");
         } else {
-            int v = (int)(p->p + 0.5f);
-            if (v < 0) v = 0; else if (v > 100) v = 100;
+            int v = clampi((int)(p->p + 0.5f), 0, 100);
             int fill = bar_fill(v);
             lv_obj_clear_flag(row_bar[i], LV_OBJ_FLAG_HIDDEN);
             if (fill != s_prev_row_bar[i]) {
@@ -1646,10 +1645,12 @@ void render(void)   // ui_task only
             update_bar_pulse(row_bar[i], p->p);
             lv_obj_set_style_text_color(row_val[i], lv_color_hex(0xffffff), 0);
             {
-                int tenths = (int)(p->p * 10.0f + 0.5f);
-                if (tenths < 0) tenths = 0; else if (tenths > 1000) tenths = 1000;
-                lv_label_set_text_fmt(row_val[i], "%d.%d%%",
-                                      tenths / 10, tenths % 10);
+                // Single-source the pct→"45.3%" formatting via fmt_pct()
+                // (integer-tenths; LVGL sprintf has no float) instead of
+                // re-deriving tenths inline.
+                char pctbuf[12];
+                fmt_pct(pctbuf, sizeof pctbuf, true, p->p);
+                lv_label_set_text(row_val[i], pctbuf);
             }
             // Secondary bar under the primary session/API bar.
             // Claude/Codex use weekly %, LM Studio uses requests %, and
@@ -1658,8 +1659,7 @@ void render(void)   // ui_task only
                 provider_kind_t rpk = provider_kind(p->id);
                 if (((rpk == PK_CLAUDE || rpk == PK_CODEX) && p->has_s)
                     || rpk == PK_LMSTUDIO) {
-                    int wv = (int)(p->s + 0.5f);
-                    if (wv < 0) wv = 0; else if (wv > 100) wv = 100;
+                    int wv = clampi((int)(p->s + 0.5f), 0, 100);
                     lv_bar_set_value(row_bar_w[i], bar_fill(wv), LV_ANIM_ON);
                     lv_obj_set_style_bg_color(row_bar_w[i], bar_color(p, p->s), LV_PART_INDICATOR);
                     update_bar_pulse(row_bar_w[i], p->s);

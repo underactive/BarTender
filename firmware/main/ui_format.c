@@ -56,8 +56,7 @@ int pct_tenths(bool has, float v)
 {
     if (!has) return -1;
     int t = (int)(v * 10.0f + 0.5f);
-    if (t < 0) t = 0; else if (t > 1000) t = 1000;
-    return t;
+    return clampi(t, 0, 1000);
 }
 
 uint32_t hash_mix_u32(uint32_t h, uint32_t v)
@@ -204,7 +203,7 @@ static const bool s_bar_invert = UI_BAR_INVERT_DEFAULT;
 // Only call with an actual percentage — "no data" stays a literal 0 (empty).
 int bar_fill(int pct)
 {
-    if (pct < 0) pct = 0; else if (pct > 100) pct = 100;
+    pct = clampi(pct, 0, 100);
     return s_bar_invert ? 100 - pct : pct;
 }
 
@@ -296,8 +295,7 @@ void fmt_pct(char *buf, size_t n, bool has, float v)
     if (!has) { snprintf(buf, n, "--"); return; }
     // Always 1 decimal place. LVGL sprintf has no float support (CONFIG_LV_USE_FLOAT
     // unset), so use integer tenths: 45.3 -> tenths=453 -> "45.3%".
-    int tenths = (int)(v * 10.0f + 0.5f);
-    if (tenths < 0) tenths = 0; else if (tenths > 1000) tenths = 1000;
+    int tenths = clampi((int)(v * 10.0f + 0.5f), 0, 1000);
     snprintf(buf, n, "%d.%d%%", tenths / 10, tenths % 10);
 }
 
@@ -315,8 +313,7 @@ int extra_pct(const stats_provider_t *p)
 {
     if (!p->has_cost || p->extra_limit_c <= 0) return 0;
     int xp = (int)(((int64_t)p->extra_used_c * 100) / p->extra_limit_c);
-    if (xp < 0) xp = 0; else if (xp > 100) xp = 100;
-    return xp;
+    return clampi(xp, 0, 100);
 }
 
 // ── i64 → i32 history conversion ─────────────────────────────────────────────

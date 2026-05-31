@@ -230,6 +230,32 @@ void ui_set_stats(const stats_t *s, int64_t fetched_uptime_ms)
     xSemaphoreGive(s_mtx);
 }
 
+// LM Studio and Cursor(cu) always present BOTH cards (Today <-> Stats/Limits);
+// every other provider only has a Cost card when has_cost. Single-sourced so
+// the summary-tap (which card to open) and the page-tap (toggle target) can
+// never drift apart.
+static bool provider_has_both_cards(const stats_provider_t *p)
+{
+    provider_kind_t pk = provider_kind(p->id);
+    return pk == PK_LMSTUDIO || (pk == PK_CURSOR && p->has_cu);
+}
+
+// Card a provider page opens on when tapped from the summary list.
+static card_kind_t initial_card_for(const stats_provider_t *p)
+{
+    if (provider_has_both_cards(p)) return CARD_COST;
+    return p->has_cost ? CARD_COST : CARD_LIMITS;
+}
+
+// Next card when tapping an already-open provider page (2-card toggle).
+static card_kind_t next_card_for(card_kind_t cur, const stats_provider_t *p)
+{
+    if (provider_has_both_cards(p))
+        return (cur == CARD_COST) ? CARD_LIMITS : CARD_COST;
+    return (cur == CARD_COST) ? CARD_LIMITS
+                              : (p->has_cost ? CARD_COST : CARD_LIMITS);
+}
+
 // Navigation state machine (ARCHITECTURE.md decision #9: nav lives in ui.c).
 // Runs on the CALLER's task (fetch_task), mutating only `st` under s_mtx —
 // exactly like the setters above; no LVGL call here (summary_hit_test /
@@ -274,15 +300,7 @@ ui_input_result_t ui_handle_input(const app_evt_t *ev)
                 const stats_provider_t *tp = &st.stats.p[pi];
                 st.nav_provider = pi;
                 strlcpy(st.nav_id, tp->id, sizeof st.nav_id);
-                // LM Studio / Cursor (cu) open CARD_COST (TODAY); others open Cost if available
-                {
-                    provider_kind_t tpk = provider_kind(tp->id);
-                    if (tpk == PK_LMSTUDIO || (tpk == PK_CURSOR && tp->has_cu)) {
-                        st.nav_card = CARD_COST;
-                    } else {
-                        st.nav_card = tp->has_cost ? CARD_COST : CARD_LIMITS;
-                    }
-                }
+                st.nav_card = initial_card_for(tp);
                 st.nav_level = NAV_PAGE;
                 st.dirty = true;
             }
@@ -294,19 +312,10 @@ ui_input_result_t ui_handle_input(const app_evt_t *ev)
 
     case NAV_PAGE:
         if (ev->type == APP_EVT_TAP) {
-            // All providers: 2-card toggle (like other providers).
+            // All providers: 2-card toggle. provider_has_both_cards() decides
+            // whether the "no cost data" fallback applies (see next_card_for).
             const stats_provider_t *np = &st.stats.p[st.nav_provider];
-            {
-                provider_kind_t npk = provider_kind(np->id);
-                if (npk == PK_LMSTUDIO || (npk == PK_CURSOR && np->has_cu)) {
-                    // Both pages always present — unconditional toggle so taps
-                    // keep cycling Today <-> Stats / Today <-> Limits.
-                    st.nav_card = (st.nav_card == CARD_COST) ? CARD_LIMITS : CARD_COST;
-                } else {
-                    st.nav_card = (st.nav_card == CARD_COST) ? CARD_LIMITS
-                        : (np->has_cost ? CARD_COST : CARD_LIMITS);
-                }
-            }
+            st.nav_card = next_card_for(st.nav_card, np);
             st.dirty = true;
         } else if (ev->type == APP_EVT_SWIPE_DOWN) {   // lock from provider page
             st.locked = true;

@@ -53,6 +53,34 @@ static float f_sanitize(double v)
     return (float)v;
 }
 
+// Fetch + typecheck + clamp a single JSON number field in one call, collapsing
+// the repeated `x = Get(o,key); if (IsNumber(x)) dst = clamp(x->valuedouble);`
+// pairs. Returns true iff `key` was present as a number, so callers that track
+// "did this block carry any real data" can OR the result into their any_* flag.
+static bool get_i32(const cJSON *o, const char *key, int32_t *dst)
+{
+    const cJSON *x = cJSON_GetObjectItemCaseSensitive(o, key);
+    if (!cJSON_IsNumber(x)) return false;
+    *dst = i32_clamp(x->valuedouble);
+    return true;
+}
+
+static bool get_i64(const cJSON *o, const char *key, int64_t *dst)
+{
+    const cJSON *x = cJSON_GetObjectItemCaseSensitive(o, key);
+    if (!cJSON_IsNumber(x)) return false;
+    *dst = i64_clamp(x->valuedouble);
+    return true;
+}
+
+static bool get_f(const cJSON *o, const char *key, float *dst)
+{
+    const cJSON *x = cJSON_GetObjectItemCaseSensitive(o, key);
+    if (!cJSON_IsNumber(x)) return false;
+    *dst = f_sanitize(x->valuedouble);
+    return true;
+}
+
 // ---- per-block static helpers (fix H: extracted from the provider loop) ----
 
 // v2 optional `cost` object. Absent on v1 and on providers with no cost data
@@ -62,25 +90,15 @@ static void parse_cost(const cJSON *e, stats_provider_t *p)
     const cJSON *c = cJSON_GetObjectItemCaseSensitive(e, "cost");
     if (!cJSON_IsObject(c)) return;
     p->has_cost = true;
-    const cJSON *x;
-    x = cJSON_GetObjectItemCaseSensitive(c, "ct");
-    if (cJSON_IsNumber(x)) p->cost_today_c       = i32_clamp(x->valuedouble);
-    x = cJSON_GetObjectItemCaseSensitive(c, "cm");
-    if (cJSON_IsNumber(x)) p->cost_month_c        = i32_clamp(x->valuedouble);
-    x = cJSON_GetObjectItemCaseSensitive(c, "tt");
-    if (cJSON_IsNumber(x)) p->tok_today           = i64_clamp(x->valuedouble);
-    x = cJSON_GetObjectItemCaseSensitive(c, "tm");
-    if (cJSON_IsNumber(x)) p->tok_month           = i64_clamp(x->valuedouble);
-    x = cJSON_GetObjectItemCaseSensitive(c, "xu");
-    if (cJSON_IsNumber(x)) p->extra_used_c        = i32_clamp(x->valuedouble);
-    x = cJSON_GetObjectItemCaseSensitive(c, "xl");
-    if (cJSON_IsNumber(x)) p->extra_limit_c       = i32_clamp(x->valuedouble);
-    x = cJSON_GetObjectItemCaseSensitive(c, "cw");
-    if (cJSON_IsNumber(x)) p->cost_week_c         = i32_clamp(x->valuedouble);
-    x = cJSON_GetObjectItemCaseSensitive(c, "cr");
-    if (cJSON_IsNumber(x)) p->credits_remaining_c = i32_clamp(x->valuedouble);
-    x = cJSON_GetObjectItemCaseSensitive(c, "cl");
-    if (cJSON_IsNumber(x)) p->credits_limit_c     = i32_clamp(x->valuedouble);
+    get_i32(c, "ct", &p->cost_today_c);
+    get_i32(c, "cm", &p->cost_month_c);
+    get_i64(c, "tt", &p->tok_today);
+    get_i64(c, "tm", &p->tok_month);
+    get_i32(c, "xu", &p->extra_used_c);
+    get_i32(c, "xl", &p->extra_limit_c);
+    get_i32(c, "cw", &p->cost_week_c);
+    get_i32(c, "cr", &p->credits_remaining_c);
+    get_i32(c, "cl", &p->credits_limit_c);
     const cJSON *h = cJSON_GetObjectItemCaseSensitive(c, "h");
     if (cJSON_IsArray(h)) {
         const cJSON *hv;
@@ -100,16 +118,11 @@ static void parse_pi(const cJSON *e, stats_provider_t *p)
 {
     const cJSON *pi = cJSON_GetObjectItemCaseSensitive(e, "pi");
     if (strcmp(p->id, "pi") != 0 || !cJSON_IsObject(pi)) return;
-    const cJSON *x;
     bool any_pi = false;
-    x = cJSON_GetObjectItemCaseSensitive(pi, "ts");
-    if (cJSON_IsNumber(x)) { p->cost_today_c = i32_clamp(x->valuedouble); any_pi = true; }
-    x = cJSON_GetObjectItemCaseSensitive(pi, "tt");
-    if (cJSON_IsNumber(x)) { p->tok_today    = i64_clamp(x->valuedouble); any_pi = true; }
-    x = cJSON_GetObjectItemCaseSensitive(pi, "ps");
-    if (cJSON_IsNumber(x)) { p->cost_month_c = i32_clamp(x->valuedouble); any_pi = true; }
-    x = cJSON_GetObjectItemCaseSensitive(pi, "pt");
-    if (cJSON_IsNumber(x)) { p->tok_month    = i64_clamp(x->valuedouble); any_pi = true; }
+    if (get_i32(pi, "ts", &p->cost_today_c)) any_pi = true;
+    if (get_i64(pi, "tt", &p->tok_today))    any_pi = true;
+    if (get_i32(pi, "ps", &p->cost_month_c)) any_pi = true;
+    if (get_i64(pi, "pt", &p->tok_month))    any_pi = true;
     const cJSON *h = cJSON_GetObjectItemCaseSensitive(pi, "h");
     if (cJSON_IsArray(h)) {
         p->hist_n = 0; // Pi history owns the chart for this provider.
@@ -132,20 +145,13 @@ static void parse_lm(const cJSON *e, stats_provider_t *p)
 {
     const cJSON *lm = cJSON_GetObjectItemCaseSensitive(e, "lm");
     if (strcmp(p->id, "lmstudio") != 0 || !cJSON_IsObject(lm)) return;
-    const cJSON *x;
     bool any_lm = false;
-    x = cJSON_GetObjectItemCaseSensitive(lm, "rq");
-    if (cJSON_IsNumber(x)) { p->lm_req_today     = i32_clamp(x->valuedouble); any_lm = true; }
-    x = cJSON_GetObjectItemCaseSensitive(lm, "tk");
-    if (cJSON_IsNumber(x)) { p->lm_tok_today     = i64_clamp(x->valuedouble); any_lm = true; }
-    x = cJSON_GetObjectItemCaseSensitive(lm, "mxr");
-    if (cJSON_IsNumber(x)) { p->lm_req_month_max = i32_clamp(x->valuedouble); any_lm = true; }
-    x = cJSON_GetObjectItemCaseSensitive(lm, "mxt");
-    if (cJSON_IsNumber(x)) { p->lm_tok_month_max = i64_clamp(x->valuedouble); any_lm = true; }
-    x = cJSON_GetObjectItemCaseSensitive(lm, "cp");
-    if (cJSON_IsNumber(x)) { p->lm_cache_pct     = f_sanitize(x->valuedouble); any_lm = true; }
-    x = cJSON_GetObjectItemCaseSensitive(lm, "ch");
-    if (cJSON_IsNumber(x)) { p->lm_cache_hit_pct = f_sanitize(x->valuedouble); any_lm = true; }
+    if (get_i32(lm, "rq",  &p->lm_req_today))     any_lm = true;
+    if (get_i64(lm, "tk",  &p->lm_tok_today))     any_lm = true;
+    if (get_i32(lm, "mxr", &p->lm_req_month_max)) any_lm = true;
+    if (get_i64(lm, "mxt", &p->lm_tok_month_max)) any_lm = true;
+    if (get_f(lm, "cp", &p->lm_cache_pct))        any_lm = true;
+    if (get_f(lm, "ch", &p->lm_cache_hit_pct))    any_lm = true;
     const cJSON *hr = cJSON_GetObjectItemCaseSensitive(lm, "hr");
     if (cJSON_IsArray(hr)) {
         const cJSON *hv;
@@ -184,19 +190,15 @@ static void parse_lm(const cJSON *e, stats_provider_t *p)
         cJSON_ArrayForEach(wv, week) {
             if (p->lm_week_n >= LM_WEEK_MAX) break;
             if (!cJSON_IsObject(wv)) continue;
-            const cJSON *wd  = cJSON_GetObjectItemCaseSensitive(wv, "d");
-            const cJSON *wrq = cJSON_GetObjectItemCaseSensitive(wv, "rq");
-            const cJSON *wtk = cJSON_GetObjectItemCaseSensitive(wv, "tk");
-            const cJSON *wcp = cJSON_GetObjectItemCaseSensitive(wv, "cp");
-            const cJSON *wch = cJSON_GetObjectItemCaseSensitive(wv, "ch");
+            const cJSON *wd = cJSON_GetObjectItemCaseSensitive(wv, "d");
             if (cJSON_IsString(wd) && wd->valuestring) {
                 // Fix I: use sizeof(element) instead of the magic literal 6.
                 strlcpy(p->lm_week_d[p->lm_week_n], wd->valuestring,
                         sizeof(p->lm_week_d[p->lm_week_n]));
-                if (cJSON_IsNumber(wrq)) p->lm_week_rq[p->lm_week_n] = i32_clamp(wrq->valuedouble);
-                if (cJSON_IsNumber(wtk)) p->lm_week_tk[p->lm_week_n] = i64_clamp(wtk->valuedouble);
-                if (cJSON_IsNumber(wcp)) p->lm_week_cp[p->lm_week_n] = f_sanitize(wcp->valuedouble);
-                if (cJSON_IsNumber(wch)) p->lm_week_ch[p->lm_week_n] = f_sanitize(wch->valuedouble);
+                get_i32(wv, "rq", &p->lm_week_rq[p->lm_week_n]);
+                get_i64(wv, "tk", &p->lm_week_tk[p->lm_week_n]);
+                get_f(wv,  "cp", &p->lm_week_cp[p->lm_week_n]);
+                get_f(wv,  "ch", &p->lm_week_ch[p->lm_week_n]);
                 p->lm_week_n++;
                 any_lm = true;
             }
@@ -216,10 +218,8 @@ static void parse_cu(const cJSON *e, stats_provider_t *p)
     p->cu_sess_ok = true;
     x = cJSON_GetObjectItemCaseSensitive(cu, "sess");
     if (cJSON_IsBool(x) && !cJSON_IsTrue(x)) p->cu_sess_ok = false;
-    x = cJSON_GetObjectItemCaseSensitive(cu, "tk");
-    if (cJSON_IsNumber(x)) { p->cu_tok_today     = i64_clamp(x->valuedouble); any_cu = true; }
-    x = cJSON_GetObjectItemCaseSensitive(cu, "mxt");
-    if (cJSON_IsNumber(x)) { p->cu_tok_month_max = i64_clamp(x->valuedouble); any_cu = true; }
+    if (get_i64(cu, "tk",  &p->cu_tok_today))     any_cu = true;
+    if (get_i64(cu, "mxt", &p->cu_tok_month_max)) any_cu = true;
     const cJSON *ht = cJSON_GetObjectItemCaseSensitive(cu, "ht");
     if (cJSON_IsArray(ht)) {
         const cJSON *hv;
