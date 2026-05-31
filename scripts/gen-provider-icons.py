@@ -145,7 +145,7 @@ def main():
         rgba_summary = rasterize(path, SUMMARY_ICON_PX, base)
         rgba_bg = rasterize(path, BG_PX, base)
         bg = rgba_bg.filter(ImageFilter.GaussianBlur(3))
-        alpha = bg.getchannel("A").point(lambda a: int(a * 0.28))
+        alpha = bg.getchannel("A").point(lambda a: int(a * 0.50))
         bg.putalpha(alpha)
         if base in FULL_COLOR_SVGS:
             data = rgba_to_argb8888(rgba)
@@ -300,6 +300,9 @@ def main():
                 "\n"
                 "// Compact icon variant for the summary provider rows.\n"
                 "const lv_image_dsc_t *provider_summary_icon(const char *id);\n"
+                "\n"
+                "// Background watermark variant (large, blurred) for per-provider pages.\n"
+                "const lv_image_dsc_t *provider_background_icon(const char *id);\n"
                 "\n"
                 "// Returns true if the icon for `id` is ARGB8888 (full color).\n"
                 "// When true, do NOT apply image_recolor to the icon.\n"

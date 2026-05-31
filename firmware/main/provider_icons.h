@@ -12,7 +12,7 @@ const lv_image_dsc_t *provider_icon(const char *id);
 // Compact icon variant for the summary provider rows.
 const lv_image_dsc_t *provider_summary_icon(const char *id);
 
-// Baked blurred/translucent background icon for provider pages.
+// Background watermark variant (large, blurred) for per-provider pages.
 const lv_image_dsc_t *provider_background_icon(const char *id);
 
 // Returns true if the icon for `id` is ARGB8888 (full color).
