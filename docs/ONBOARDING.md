@@ -62,7 +62,7 @@ credentials, and no raw project paths ever leave your Mac.
 | **Display** | ILI9341 SPI, 240×320 portrait | LVGL 9 renders on top |
 | **Touch** | FT6336G capacitive, shared I2C | No physical buttons — navigation is touch-only |
 | **LED** | WS2812 on GPIO 42 | RMT driver |
-| **Flash** | 4 MB (8 MB app partition in our layout) | Custom partitions.csv |
+| **Flash** | 16 MB | Single ~8 MB factory app partition (`0x7F0000` in partitions.csv) |
 
 ---
 
@@ -275,7 +275,7 @@ GET {upstash_url}/get/{key}
 - `ts`: publisher ISO-8601 timestamp
 - `providers[]`: per-provider row with usage %, cost, and optional history
 - `cost.h[]`: 30-day per-day spend history in cents
-- `ph[]`: ~24h session usage-% history (Claude/Codex only)
+- `ph[]`: ~24h session usage-% history (Claude only)
 
 ---
 

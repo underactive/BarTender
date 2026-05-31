@@ -95,6 +95,9 @@ firmware/
   main/
     board_config.h i2c_bus.* display.*   ← vendored verbatim from clawd-tank
     touch.*                                ← vendored; event retargeted
-    config_store.*                         ← NVS (pattern reused, new keys)
-    app_event.h net_wifi.* upstash.* stats_model.* ui.* fetch.* main.c  ← new
+    config_store.* wifi_lru.h              ← NVS (pattern reused, new keys)
+    app_event.h net_wifi.* upstash.* stats_model.* fetch.* main.c  ← new
+    ui.* ui_format.c ui_render.c ui_screensaver.c ui_internal.h     ← UI (ui.c split by concern)
+    led.* boot_splash.* provision.* screenshot.*                    ← new
+    provider_icons.* provider_colors.h font_*.c                     ← generated/assets
 ```

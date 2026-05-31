@@ -1,18 +1,33 @@
 # Repo Conventions
 
-<!-- Fill in each convention for your project. Examples shown in comments. -->
+Orientation for working in this repo. See [CODE_STYLE.md](CODE_STYLE.md) for
+formatting specifics and [../ARCHITECTURE.md](../ARCHITECTURE.md) for the
+system layout.
 
-- **Language:** {{LANGUAGE}}
-  <!-- e.g., TypeScript (strict mode). Prefer boring, composable tech. -->
-- **Boundaries:** {{BOUNDARY_STRATEGY}}
-  <!-- e.g., Parse and validate all data at system edges (API responses, CLI args). Interior code trusts typed interfaces. -->
-- **Tests:** {{TEST_STRATEGY}}
-  <!-- e.g., Every module has co-located tests. Parsers require snapshot tests with real input samples. -->
-- **Logging:** {{LOGGING_STRATEGY}}
-  <!-- e.g., Structured JSON logging only. No bare console.log. -->
-- **Naming:** {{NAMING_CONVENTIONS}}
-  <!-- e.g., kebab-case files, PascalCase types, camelCase functions. -->
-- **File size:** {{FILE_SIZE_LIMIT}}
-  <!-- e.g., Keep files under 300 lines. If a file grows past that, split it. -->
-- **Imports:** {{IMPORT_RULES}}
-  <!-- e.g., No circular imports. Dependency direction follows the layer diagram in ARCHITECTURE.md. -->
+- **Language:** C (ESP-IDF firmware) for the device; Python 3 + zsh for host
+  tooling under `scripts/`. Prefer boring, dependency-light solutions —
+  flash, RAM, and the absence of a package manager on-device all favor the
+  standard toolchain over new libraries.
+- **Boundaries:** treat everything crossing a system edge as untrusted and
+  validate it there. The Upstash response is parsed and clamped in
+  `stats_model.c` (range/NaN guards, forward-version gate); HTTP status and
+  TLS are enforced in `upstash.c`; NVS blobs are validated in
+  `config_store.c`. Interior code trusts the parsed `stats_t`.
+- **Tests:** host-side unit tests live in `firmware/test/<module>/` and build
+  with a plain `cc` + Makefile (no device required) — run `./runtests`. The
+  data parser (`stats_model`) and the WiFi-LRU/config logic are covered this
+  way; parser tests feed real sample payloads from `docs/references/`. Add a
+  test alongside any change to parsing or the WiFi-LRU model.
+- **Logging:** ESP-IDF `ESP_LOGx` with a per-file `TAG`. Levels: `E` for
+  faults, `W` for degraded-but-recoverable, `I` for lifecycle milestones, `D`
+  for input/gesture traces. Never log secrets — the Upstash bearer token must
+  not appear in any log line.
+- **Naming:** `snake_case` files and functions; `UPPER_SNAKE_CASE` macros;
+  file-scope statics prefixed `s_`; lock-required helpers suffixed `_locked`.
+- **File size:** no hard line limit, but a translation unit should own one
+  concern. When a file accretes several (as `ui.c` did), split it into
+  cohesive modules sharing an `*_internal.h` rather than letting it sprawl.
+- **Imports / dependencies:** keep the dependency direction acyclic and flowing
+  toward the lower layers (display/net/store) — UI and fetch depend on the
+  model and drivers, not vice versa. Vendored ESP/LVGL components live under
+  `firmware/managed_components/` and are not edited by hand.

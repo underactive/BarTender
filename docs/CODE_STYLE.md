@@ -1,22 +1,40 @@
 # Code Style
 
-<!-- Fill in each value for your project. Examples shown in comments. -->
+This is an ESP-IDF firmware project (C) with a set of Python 3 + zsh tooling
+scripts. There is **no automated linter or formatter configured** — style is
+maintained by matching the surrounding code. The conventions below describe
+what that means in practice.
 
-- **Linter:** {{LINTER}}
-  <!-- e.g., ruff — config in pyproject.toml. Ruleset: E, F, W, I, B, UP, SIM, RUF. -->
-- **Formatter:** {{FORMATTER}}
-  <!-- e.g., ruff format (black-compatible, line length 100). -->
-- **Key rule overrides:** {{RULE_OVERRIDES}}
-  <!-- e.g., E501 — disabled; handled by formatter. B008 — disabled; allows Depends(...) in FastAPI route signatures. -->
-- **Indentation:** {{INDENTATION}}
-  <!-- e.g., 4 spaces. -->
-- **Line length:** {{LINE_LENGTH}}
-  <!-- e.g., 100 characters. -->
-- **Line endings:** {{LINE_ENDINGS}}
-  <!-- e.g., LF. -->
-- **Language version:** {{LANGUAGE_VERSION}}
-  <!-- e.g., Python 3.11+. No `from __future__ import annotations` required. -->
-- **Type hints / annotations:** {{TYPE_HINT_POLICY}}
-  <!-- e.g., Required on all public function signatures. -->
-- **Comments:** {{COMMENT_POLICY}}
-  <!-- e.g., Only when the WHY is non-obvious. No multi-line block comments. No docstrings except for non-obvious invariants. -->
+## Firmware (C — `firmware/main/`, `firmware/test/`)
+
+- **Compiler / standard:** ESP-IDF default toolchain (Xtensa GCC, gnu17). No
+  project-level `CMAKE_C_STANDARD` override.
+- **Indentation:** 4 spaces, no tabs.
+- **Line endings:** LF.
+- **Line length:** ~100 columns (soft). Some `snprintf` format strings and
+  comments run longer; readability wins over a hard cap.
+- **Naming:** `snake_case` for functions, variables, and file names;
+  `UPPER_SNAKE_CASE` for macros and constants; module-private file-scope
+  symbols prefixed `s_` (e.g. `s_mtx`, `s_shadow`); functions that must be
+  called with a lock held are suffixed `_locked`.
+- **Comments:** explain the **why**, not the what. Non-obvious decisions and
+  invariants carry a short rationale; many cite the audit that motivated them
+  (e.g. `// Audit Security§MED: …`). Block comments are fine.
+- **Error handling:** check return codes at boundaries. Use `ESP_ERROR_CHECK`
+  only where a failure should abort boot; elsewhere log (`ESP_LOGW/E`) and
+  degrade gracefully. Never abort/brick on bad *runtime* data — fail safe.
+- **Headers:** one public header per module (`foo.h`); shared private decls go
+  in `*_internal.h`. Keep the public surface minimal.
+
+## Scripts
+
+- **Python:** Python 3 (`#!/usr/bin/env python3`). Standard library preferred;
+  external deps (e.g. `pyserial`, `Pillow`) are documented at the call site.
+- **Shell:** `zsh` (`#!/bin/zsh`).
+- **Indentation:** 4 spaces (Python); follow PEP 8 spirit, but no enforced
+  linter.
+
+## Tooling
+
+There is no `clang-format`, `.editorconfig`, or `ruff`/`black` config in the
+repo. If one is added later, document it here and wire it into CI.

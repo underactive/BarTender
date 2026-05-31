@@ -65,7 +65,7 @@ printf 'UPSTASH_REST_URL=https://<db>.upstash.io\nUPSTASH_KEY=codexbar\n' \
 
 # 3. (optional) Cursor token stats on the device (CURSOR TODAY page)
 chmod +x scripts/cursor-stats.sh
-./scripts/codexbar-publish.sh --set-cursor-session-clipboard   # after copying Cookie (see below)
+./scripts/codexbar-publish.sh --set-cursor-session-clipboard   # after copying Cookie (see "Cursor session" note below)
 ./scripts/cursor-stats.sh                            # should print ok:true with cu:{...}
 ./scripts/codexbar-publish.sh --once                 # merges cu onto cursor limits row
 ```
@@ -162,8 +162,8 @@ behavior: [docs/product-specs/claude-cost-menu.md](docs/product-specs/claude-cos
 ## Architecture
 
 See [ARCHITECTURE.md](ARCHITECTURE.md). Integration details (CodexBar, Upstash)
-in [docs/EXTERNAL_INTEGRATIONS.md](docs/EXTERNAL_INTEGRATIONS.md); the active
-plan in [docs/exec-plans/active/](docs/exec-plans/active/).
+in [docs/EXTERNAL_INTEGRATIONS.md](docs/EXTERNAL_INTEGRATIONS.md); plan index in
+[docs/PLANS.md](docs/PLANS.md) (completed plans under `docs/exec-plans/completed/`).
 
 ## Contributing
 

@@ -127,7 +127,7 @@ account identifiers) MUST update this section and re-justify again.
   a **tracked** hardening item (`docs/exec-plans/tech-debt-tracker.md`).
 - **SoftAP exposure is bounded.** The provisioning AP is WPA2 (device-unique
   password shown only on the local TFT). It now also runs on demand for the
-  non-destructive "add a network" flow (triple-tap / self-heal set a one-shot
+  non-destructive "add a network" flow (long-press / self-heal set a one-shot
   flag, consumed clear-before-act so a power loss cannot boot-loop into it),
   and the device reboots out of AP mode immediately on form submit. The
   captive HTTP form is plaintext but reachable only by a station that already

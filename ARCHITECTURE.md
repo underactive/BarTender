@@ -26,7 +26,7 @@ Data contract (stable across stages; full JSON Schema in
 [docs/generated/codexbar-payload.schema.json](docs/generated/codexbar-payload.schema.json)):
 `GET {url}/get/{key}` → `{"result":"<escaped-json>"}` →
 `{v,ts,providers:[{id,ok,p?,pr?,s?,sr?,cost?,ph?}]}` where the optional
-`cost = {xu?,xl?,ct?,cm?,tt?,tm?,h?}` (cents / token counts; Claude only) and
+`cost = {xu?,xl?,ct?,cm?,tt?,tm?,h?}` (cents / token counts; Claude/Codex/OpenRouter) and
 `ph` = ~24h session usage-% history (0..100; Claude only).
 **v1** is the pre-cost shape `{id,ok,p?,pr?,s?,sr?}`; v2 is a strict superset
 and the firmware accepts both (`v1‖v2`).

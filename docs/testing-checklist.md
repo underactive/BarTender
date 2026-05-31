@@ -13,8 +13,9 @@ Freenove ESP32-S3 (FNK0104); host items are off-device where a seam exists.
 - [ ] **Corrupt store value surfaces as an error.** Set the Upstash key to a
       non-string (e.g. a number) → device shows "bad data from store", not
       "waiting for publisher…".
-- [ ] **Unknown schema version is refused.** Publish a payload with `v` ≠ 1
-      → device shows "bad data from store" (forward guard).
+- [ ] **Unknown schema version is refused.** Publish a payload with
+      `v` ∉ {1, 2} (e.g. `v: 3`) → device shows "bad data from store"
+      (forward guard; firmware accepts v1 and v2).
 - [ ] **Captive portal still auto-opens** on iOS and Android after the DNS
       responder hardening (no regression in the "sign in to network" sheet).
 - [ ] **Freshness counter is honest.** Right after a fetch the status line

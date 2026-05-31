@@ -44,7 +44,8 @@ process.
 - **Key env vars / CLI flags:** config keys `UPSTASH_REST_URL`, `UPSTASH_KEY`,
   `PUBLISH_INTERVAL`, `MOCK_SINK_URL`; test overrides `CBPUB_CONFIG`,
   `CBPUB_LOG_DIR`, `CBPUB_KC_SERVICE`; subcommands `--once/--set-token/
-  --install/--uninstall/--status/--print-plist`.
+  --set-cursor-session/--set-cursor-session-clipboard/--install/--uninstall/
+  --status/--print-plist`.
 - **Gotchas:** launchd has a sparse env — the installer bakes `CODEXBAR_BIN`
   and `PATH` into the plist. Upstash `GET /get/<key>` wraps the value:
   `{"result":"<json-string>"}` → the ESP32 must parse the envelope then the

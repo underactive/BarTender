@@ -4,29 +4,32 @@ Requirements and practices for keeping the system reliable.
 
 ## Failure modes to handle
 
-<!-- Replace these examples with your system's actual failure modes.
-     Be specific about likelihood and mitigation strategy. -->
-
 | Failure | Likelihood | Mitigation |
 |---------|------------|------------|
-| External service unavailable | Medium | Retry with backoff, degrade gracefully, surface clear error |
-| Malformed input data | High | Validate at boundary, reject gracefully, log raw input |
-| Operation timeout | Medium | Configurable timeouts, cancel cleanly, report partial progress |
-| Resource exhaustion (disk/memory) | Low | Set limits, clean up aggressively, fail before corrupting state |
+| Upstash unreachable / TLS / DNS error | Medium | Classify (net vs TLS), surface "fetch error: …", retry with exponential backoff (`fetch.c`, 20→…→300 s) |
+| Upstash auth failure (401/403) | Low | Distinct "auth (token?)" status; never log the bearer token; refuses non-`https://` URLs before sending |
+| Malformed / oversized payload | Medium | Parse + clamp at the boundary (`stats_model.c`: NaN/range guards, forward version gate); oversize → "response too big"; never crash, show "bad data from store" |
+| WiFi association lost / AP flaps | Medium | Reconnect with escalating backoff; roam the ≤5 remembered networks; self-heal to add-network portal only after grace + zero known SSIDs |
+| Corrupt NVS blob (`wnets`) | Low | Validate magic/size/version/count; treat invalid as "zero networks"; never erase or brick on a bad blob |
+| Heap fragmentation (long uptime) | Low | Static/long-lived buffers for the fetch/parse path; avoid per-poll churn where practical |
 
 ## Invariants
 
-<!-- These are guarantees the system must uphold regardless of input.
-     Violations of invariants are bugs, not edge cases. -->
+These are guarantees the firmware must uphold regardless of input. Violations
+are bugs, not edge cases.
 
-1. **Never crash on malformed input.** Parsers and validators must handle any
-   input without throwing. Malformed data is logged and rejected gracefully.
-2. **Every operation produces a result object**, even if it fails. The result
-   contains status, timing, and error context — never a bare exception.
-3. **Resource cleanup is guaranteed.** Use try/finally or equivalent patterns.
-   Leaked resources (connections, temp files, locks) are reliability bugs.
-4. **Operations are idempotent where possible.** Re-running the same operation
-   against the same state should be safe, even if results may vary.
+1. **Never brick on bad runtime data.** Parsers (`stats_model.c`) and validators
+   (`config_store.c`) handle any input without aborting. Malformed data is
+   logged and rejected; the device shows an error state and keeps running.
+2. **The bearer token never leaks.** It rides in the request header only — never
+   in a log line, never in the response-body snippet, never on the display.
+3. **Resource cleanup is guaranteed.** Every `esp_http_client_init` is paired
+   with `cleanup`; every mutex take with a give. Leaked handles/locks are bugs.
+4. **Shared state is mutex-guarded.** `st` is written by setters and the nav
+   machine under `s_mtx` and read only by `ui_task`; `_locked` helpers assume
+   the caller holds it.
+5. **Schema changes fail closed.** An unknown version (`v` ∉ {1, 2}) is rejected,
+   not best-effort rendered.
 
 ## Testing strategy
 
