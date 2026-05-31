@@ -1211,6 +1211,25 @@ static void render_lmstudio_stats(const stats_provider_t *p,
 }
 
 // Dispatch: render the CARD_LIMITS panel for the current provider.
+// Show/hide a Limits "tier row" (label + big value + bar, with an optional
+// reset label) in one call, replacing the repeated 3-line clear / 4-line
+// add-flag blocks. `rst` may be NULL for the extra-usage row (no reset label).
+// Extracted from render_limits_card (Fowler audit).
+static void show_tier_row(lv_obj_t *lbl, lv_obj_t *big, lv_obj_t *bar)
+{
+    lv_obj_clear_flag(lbl, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(big, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(bar, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void hide_tier_row(lv_obj_t *lbl, lv_obj_t *big, lv_obj_t *bar, lv_obj_t *rst)
+{
+    lv_obj_add_flag(lbl, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(big, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(bar, LV_OBJ_FLAG_HIDDEN);
+    if (rst) lv_obj_add_flag(rst, LV_OBJ_FLAG_HIDDEN);
+}
+
 // Limits "AUTO"/"WEEKLY" secondary tier (lim.a_*): occupies the chart area when
 // there's no sparkline and a secondary % exists. OpenRouter (has_balance) has no
 // secondary tier. Extracted from render_limits_card (Fowler audit).
@@ -1218,19 +1237,14 @@ static void render_limits_auto(const stats_provider_t *p, bool has_balance)
 {
     if (!has_balance && p->pct_hist_n == 0 && p->has_s) {
         char pb[12];
-        lv_obj_clear_flag(lim.a_lbl, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(lim.a_big, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(lim.a_bar, LV_OBJ_FLAG_HIDDEN);
+        show_tier_row(lim.a_lbl, lim.a_big, lim.a_bar);
         lv_label_set_text(lim.a_lbl, p->has_t ? "AUTO" : "WEEKLY");
         fmt_pct(pb, sizeof pb, p->has_s, p->s);
         lv_label_set_text(lim.a_big, pb);
         set_bar(lim.a_bar, p->has_s, p->s, p);
         set_reset_lbl(lim.a_rst, p->sr);
     } else {
-        lv_obj_add_flag(lim.a_lbl, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(lim.a_big, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(lim.a_bar, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(lim.a_rst, LV_OBJ_FLAG_HIDDEN);
+        hide_tier_row(lim.a_lbl, lim.a_big, lim.a_bar, lim.a_rst);
     }
 }
 
@@ -1241,28 +1255,21 @@ static void render_limits_weekly(const stats_provider_t *p)
 {
     char pb[12];
     if (p->has_t && p->pct_hist_n == 0) {
-        lv_obj_clear_flag(lim.w_lbl, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(lim.w_big, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(lim.w_bar, LV_OBJ_FLAG_HIDDEN);
+        show_tier_row(lim.w_lbl, lim.w_big, lim.w_bar);
         lv_label_set_text(lim.w_lbl, "API");
         fmt_pct(pb, sizeof pb, p->has_t, p->t);
         lv_label_set_text(lim.w_big, pb);
         set_bar(lim.w_bar, p->has_t, p->t, p);
         set_reset_lbl(lim.w_rst, p->tr);
     } else if (p->has_s && p->pct_hist_n > 0) {
-        lv_obj_clear_flag(lim.w_lbl, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(lim.w_big, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(lim.w_bar, LV_OBJ_FLAG_HIDDEN);
+        show_tier_row(lim.w_lbl, lim.w_big, lim.w_bar);
         lv_label_set_text(lim.w_lbl, "WEEKLY");
         fmt_pct(pb, sizeof pb, p->has_s, p->s);
         lv_label_set_text(lim.w_big, pb);
         set_bar(lim.w_bar, p->has_s, p->s, p);
         set_reset_lbl(lim.w_rst, p->sr);
     } else {
-        lv_obj_add_flag(lim.w_lbl, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(lim.w_big, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(lim.w_bar, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(lim.w_rst, LV_OBJ_FLAG_HIDDEN);
+        hide_tier_row(lim.w_lbl, lim.w_big, lim.w_bar, lim.w_rst);
     }
 }
 
@@ -1300,13 +1307,9 @@ static void render_limits_extra(const stats_provider_t *p,
             lv_obj_clear_flag(lim.w_bar, LV_OBJ_FLAG_HIDDEN);
             set_bar(lim.w_bar, true, (float)xp, p);
             update_bar_pulse(lim.x_bar, 0.0f);
-            lv_obj_add_flag(lim.x_lbl, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(lim.x_val, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(lim.x_bar, LV_OBJ_FLAG_HIDDEN);
+            hide_tier_row(lim.x_lbl, lim.x_val, lim.x_bar, NULL);
         } else {
-            lv_obj_clear_flag(lim.x_lbl, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_clear_flag(lim.x_val, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_clear_flag(lim.x_bar, LV_OBJ_FLAG_HIDDEN);
+            show_tier_row(lim.x_lbl, lim.x_val, lim.x_bar);
             char a[16], b[16];
             fmt_money(a, sizeof a, p->extra_used_c);
             fmt_money(b, sizeof b, p->extra_limit_c);
@@ -1319,9 +1322,7 @@ static void render_limits_extra(const stats_provider_t *p,
         }
     } else {
         update_bar_pulse(lim.x_bar, 0.0f);
-        lv_obj_add_flag(lim.x_lbl, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(lim.x_val, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(lim.x_bar, LV_OBJ_FLAG_HIDDEN);
+        hide_tier_row(lim.x_lbl, lim.x_val, lim.x_bar, NULL);
     }
 }
 
@@ -1463,6 +1464,107 @@ static void render_card(void)   // ui_task only — dispatcher for the NAV_PAGE 
         render_cost_card(p, &g, &hero, &body, &footer, pk, has_balance, card_entered);
     } else {
         render_limits_card(p, &g, &hero, &body, &footer, pk, has_balance, card_entered);
+    }
+}
+
+// Summary-row secondary bar (row_bar_w): Claude/Codex weekly %, LM Studio
+// requests %, or OpenRouter budget %; hidden otherwise. Extracted from render()
+// (Fowler audit).
+static void render_summary_secondary_bar(int slot, const stats_provider_t *p)
+{
+    provider_kind_t rpk = provider_kind(p->id);
+    if (((rpk == PK_CLAUDE || rpk == PK_CODEX) && p->has_s)
+        || rpk == PK_LMSTUDIO) {
+        int wv = clampi((int)(p->s + 0.5f), 0, 100);
+        lv_bar_set_value(row_bar_w[slot], bar_fill(wv), LV_ANIM_ON);
+        lv_obj_set_style_bg_color(row_bar_w[slot], bar_color(p, p->s), LV_PART_INDICATOR);
+        update_bar_pulse(row_bar_w[slot], p->s);
+        lv_obj_clear_flag(row_bar_w[slot], LV_OBJ_FLAG_HIDDEN);
+    } else if (rpk == PK_OPENROUTER && p->has_cost && p->extra_limit_c > 0) {
+        int xv = extra_pct(p);
+        lv_bar_set_value(row_bar_w[slot], bar_fill(xv), LV_ANIM_ON);
+        lv_obj_set_style_bg_color(row_bar_w[slot], bar_color(p, (float)xv), LV_PART_INDICATOR);
+        update_bar_pulse(row_bar_w[slot], (float)xv);
+        lv_obj_clear_flag(row_bar_w[slot], LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(row_bar_w[slot], LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+// Render one visible summary slot: grid position, provider name + icon, primary
+// session bar + %, and the secondary bar. `slot` is the visual row index.
+// Extracted from render() (Fowler audit).
+static void render_summary_row(int slot, const stats_provider_t *p,
+                               const ui_page_grid_t *g)
+{
+    lv_obj_clear_flag(row_id[slot],  LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(row_val[slot], LV_OBJ_FLAG_HIDDEN);
+    {
+        const ui_rect_t r = ui_grid_span(g, 0, UI_SUMMARY_TOP_ROWS + slot, 2, 1);
+        bool cu_warn = cursor_sess_refresh_needed(p);
+        lv_obj_set_size(row_icon[slot], 32, 32);
+        lv_obj_set_pos(row_icon[slot], r.x + 8, r.y + 1);
+        lv_obj_set_pos(row_id[slot], r.x + ROW_TXT_X, r.y + 2);
+        lv_obj_set_width(row_id[slot], r.w - ROW_TXT_X - 8);
+        lv_obj_set_pos(row_bar[slot], r.x + ROW_TXT_X, r.y + 21);
+        lv_obj_set_size(row_bar[slot], r.w - ROW_TXT_X - 60, 5);
+        lv_obj_set_pos(row_val[slot], r.x + r.w - 52, r.y + 15);
+        lv_obj_set_pos(row_bar_w[slot], r.x + ROW_TXT_X, r.y + 28);
+        lv_obj_set_size(row_bar_w[slot], r.w - ROW_TXT_X - 60, 2);
+        lv_label_set_text(row_id[slot], summary_provider_name(p->id));
+        lv_obj_set_style_text_color(row_id[slot],
+            cu_warn ? lv_color_hex(CURSOR_SESS_AMBER) : lv_color_hex(0xe8eaed), 0);
+    }
+
+    // Provider logo: A8 silhouette (tinted via recolor) or ARGB8888
+    // full-color image (no tinting). Hidden if no icon for this id.
+    const lv_image_dsc_t *ic = provider_summary_icon(p->id);
+    if (ic) {
+        lv_image_set_src(row_icon[slot], ic);
+        if (provider_icon_is_full_color(p->id)) {
+            lv_obj_set_style_image_recolor_opa(
+                row_icon[slot], LV_OPA_TRANSP, 0);
+        } else {
+            lv_color_t tc;
+            lv_obj_set_style_image_recolor_opa(
+                row_icon[slot], LV_OPA_COVER, 0);
+            lv_obj_set_style_image_recolor(row_icon[slot],
+                prov_accent(p->id, &tc) ? tc : lv_color_hex(0xe8eaed), 0);
+        }
+        lv_obj_clear_flag(row_icon[slot], LV_OBJ_FLAG_HIDDEN);
+        update_cursor_sess_pulse(row_icon[slot], cursor_sess_refresh_needed(p));
+    } else {
+        lv_obj_add_flag(row_icon[slot], LV_OBJ_FLAG_HIDDEN);
+        update_cursor_sess_pulse(row_icon[slot], false);
+    }
+
+    if (!p->ok || !p->has_p) {
+        update_bar_pulse(row_bar[slot], 0.0f);
+        lv_obj_add_flag(row_bar[slot], LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_text_color(row_val[slot], lv_color_hex(0x6b7075), 0);
+        lv_label_set_text(row_val[slot], "off");
+    } else {
+        int v = clampi((int)(p->p + 0.5f), 0, 100);
+        int fill = bar_fill(v);
+        lv_obj_clear_flag(row_bar[slot], LV_OBJ_FLAG_HIDDEN);
+        if (fill != s_prev_row_bar[slot]) {
+            lv_bar_set_value(row_bar[slot], fill, LV_ANIM_ON);
+            s_prev_row_bar[slot] = fill;
+        }
+        // Per-provider accent (Claude orange); un-themed providers keep
+        // the green/amber/red usage ramp.
+        lv_obj_set_style_bg_color(row_bar[slot], bar_color(p, p->p), LV_PART_INDICATOR);
+        update_bar_pulse(row_bar[slot], p->p);
+        lv_obj_set_style_text_color(row_val[slot], lv_color_hex(0xffffff), 0);
+        {
+            // Single-source the pct→"45.3%" formatting via fmt_pct()
+            // (integer-tenths; LVGL sprintf has no float) instead of
+            // re-deriving tenths inline.
+            char pctbuf[12];
+            fmt_pct(pctbuf, sizeof pctbuf, true, p->p);
+            lv_label_set_text(row_val[slot], pctbuf);
+        }
+        render_summary_secondary_bar(slot, p);
     }
 }
 
@@ -1643,96 +1745,6 @@ void render(void)   // ui_task only
             lv_obj_add_flag(row_bar_w[i], LV_OBJ_FLAG_HIDDEN);
             continue;
         }
-        const stats_provider_t *p = &st.stats.p[pi];
-        lv_obj_clear_flag(row_id[i],  LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(row_val[i], LV_OBJ_FLAG_HIDDEN);
-        {
-            const ui_rect_t r = ui_grid_span(&g, 0, UI_SUMMARY_TOP_ROWS + i, 2, 1);
-            bool cu_warn = cursor_sess_refresh_needed(p);
-            lv_obj_set_size(row_icon[i], 32, 32);
-            lv_obj_set_pos(row_icon[i], r.x + 8, r.y + 1);
-            lv_obj_set_pos(row_id[i], r.x + ROW_TXT_X, r.y + 2);
-            lv_obj_set_width(row_id[i], r.w - ROW_TXT_X - 8);
-            lv_obj_set_pos(row_bar[i], r.x + ROW_TXT_X, r.y + 21);
-            lv_obj_set_size(row_bar[i], r.w - ROW_TXT_X - 60, 5);
-            lv_obj_set_pos(row_val[i], r.x + r.w - 52, r.y + 15);
-            lv_obj_set_pos(row_bar_w[i], r.x + ROW_TXT_X, r.y + 28);
-            lv_obj_set_size(row_bar_w[i], r.w - ROW_TXT_X - 60, 2);
-            lv_label_set_text(row_id[i], summary_provider_name(p->id));
-            lv_obj_set_style_text_color(row_id[i],
-                cu_warn ? lv_color_hex(CURSOR_SESS_AMBER) : lv_color_hex(0xe8eaed), 0);
-        }
-
-        // Provider logo: A8 silhouette (tinted via recolor) or ARGB8888
-        // full-color image (no tinting). Hidden if no icon for this id.
-        const lv_image_dsc_t *ic = provider_summary_icon(p->id);
-        if (ic) {
-            lv_image_set_src(row_icon[i], ic);
-            if (provider_icon_is_full_color(p->id)) {
-                lv_obj_set_style_image_recolor_opa(
-                    row_icon[i], LV_OPA_TRANSP, 0);
-            } else {
-                lv_color_t tc;
-                lv_obj_set_style_image_recolor_opa(
-                    row_icon[i], LV_OPA_COVER, 0);
-                lv_obj_set_style_image_recolor(row_icon[i],
-                    prov_accent(p->id, &tc) ? tc : lv_color_hex(0xe8eaed), 0);
-            }
-            lv_obj_clear_flag(row_icon[i], LV_OBJ_FLAG_HIDDEN);
-            update_cursor_sess_pulse(row_icon[i], cursor_sess_refresh_needed(p));
-        } else {
-            lv_obj_add_flag(row_icon[i], LV_OBJ_FLAG_HIDDEN);
-            update_cursor_sess_pulse(row_icon[i], false);
-        }
-
-        if (!p->ok || !p->has_p) {
-            update_bar_pulse(row_bar[i], 0.0f);
-            lv_obj_add_flag(row_bar[i], LV_OBJ_FLAG_HIDDEN);
-            lv_obj_set_style_text_color(row_val[i], lv_color_hex(0x6b7075), 0);
-            lv_label_set_text(row_val[i], "off");
-        } else {
-            int v = clampi((int)(p->p + 0.5f), 0, 100);
-            int fill = bar_fill(v);
-            lv_obj_clear_flag(row_bar[i], LV_OBJ_FLAG_HIDDEN);
-            if (fill != s_prev_row_bar[i]) {
-                lv_bar_set_value(row_bar[i], fill, LV_ANIM_ON);
-                s_prev_row_bar[i] = fill;
-            }
-            // Per-provider accent (Claude orange); un-themed providers keep
-            // the green/amber/red usage ramp.
-            lv_obj_set_style_bg_color(row_bar[i], bar_color(p, p->p), LV_PART_INDICATOR);
-            update_bar_pulse(row_bar[i], p->p);
-            lv_obj_set_style_text_color(row_val[i], lv_color_hex(0xffffff), 0);
-            {
-                // Single-source the pct→"45.3%" formatting via fmt_pct()
-                // (integer-tenths; LVGL sprintf has no float) instead of
-                // re-deriving tenths inline.
-                char pctbuf[12];
-                fmt_pct(pctbuf, sizeof pctbuf, true, p->p);
-                lv_label_set_text(row_val[i], pctbuf);
-            }
-            // Secondary bar under the primary session/API bar.
-            // Claude/Codex use weekly %, LM Studio uses requests %, and
-            // OpenRouter uses the same budget bar shown on its LIMITS page.
-            {
-                provider_kind_t rpk = provider_kind(p->id);
-                if (((rpk == PK_CLAUDE || rpk == PK_CODEX) && p->has_s)
-                    || rpk == PK_LMSTUDIO) {
-                    int wv = clampi((int)(p->s + 0.5f), 0, 100);
-                    lv_bar_set_value(row_bar_w[i], bar_fill(wv), LV_ANIM_ON);
-                    lv_obj_set_style_bg_color(row_bar_w[i], bar_color(p, p->s), LV_PART_INDICATOR);
-                    update_bar_pulse(row_bar_w[i], p->s);
-                    lv_obj_clear_flag(row_bar_w[i], LV_OBJ_FLAG_HIDDEN);
-                } else if (rpk == PK_OPENROUTER && p->has_cost && p->extra_limit_c > 0) {
-                    int xv = extra_pct(p);
-                    lv_bar_set_value(row_bar_w[i], bar_fill(xv), LV_ANIM_ON);
-                    lv_obj_set_style_bg_color(row_bar_w[i], bar_color(p, (float)xv), LV_PART_INDICATOR);
-                    update_bar_pulse(row_bar_w[i], (float)xv);
-                    lv_obj_clear_flag(row_bar_w[i], LV_OBJ_FLAG_HIDDEN);
-                } else {
-                    lv_obj_add_flag(row_bar_w[i], LV_OBJ_FLAG_HIDDEN);
-                }
-            }
-        }
+        render_summary_row(i, &st.stats.p[pi], &g);
     }
 }

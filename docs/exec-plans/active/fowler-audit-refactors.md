@@ -41,16 +41,23 @@ green on 2026-05-31 before this work started.
   (extra's OpenRouter branch repurposes lim.w_bar).
 
 ### Medium
-- [ ] **#3 — `ui_render.c` render logic has no host tests (safety net gap).**
+- [x] **#3 — `ui_render.c` render logic has no host tests (safety net gap).**
   Add a `firmware/test/ui_format/` host suite covering the pure helpers
   (`provider_kind`, `bar_fill`, `extra_pct`, `pct_tenths`, `fmt_*`,
   `summary_provider_name`, `clampi`). Verify: `make run` green.
-- [ ] **#4 — `ui_render.c:1255` repeated show/hide tier triples.**
-  Introduce a tier-row struct `{lbl,big,bar,rst}` + `show_tier_row()` /
-  `hide_tier_row()`. Verify: `idf.py build`.
-- [ ] **#5 — `ui_render.c:1629` summary-row Long Method.**
+  ✅ Done 2026-05-31 — new suite (lvgl/freertos shim), **69 assertions pass**.
+  Covers clampi/bar_fill/pct_tenths/extra_pct/provider_kind/summary_provider_name/
+  fmt_money/fmt_pct/fmt_tokens/fmt_tokens_full/up_id/is_hidden_provider/
+  provider_has_limits_card/i64_hist_to_i32/provider_tok_today/pct_color/bar_color.
+- [x] **#4 — `ui_render.c:1255` repeated show/hide tier triples.**
+  Added `show_tier_row()` / `hide_tier_row(...,rst)` helpers (NULL-able reset
+  label) instead of a struct, since lim.x_* (no reset) isn't uniform with
+  lim.a_*/w_*. Verify: `idf.py build`. ✅ Done 2026-05-31 — build clean;
+  binary 0x245690 (−16 B). Replaced 7 clear/add-flag blocks.
+- [x] **#5 — `ui_render.c:1629` summary-row Long Method.**
   Extract `render_summary_row()` / `render_summary_secondary_bar()`.
-  Verify: `idf.py build`.
+  Verify: `idf.py build`. ✅ Done 2026-05-31 — build clean; binary 0x2455e0.
+  Off-screen hide path left inline (distinct concern).
 
 ### Low
 - [ ] **#6 — `ui_render.c:858` `render_lmstudio_chart`/`render_cursor_chart`
