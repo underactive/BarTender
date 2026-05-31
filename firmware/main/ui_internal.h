@@ -161,6 +161,7 @@ extern struct ui_state {
     // Screensaver state: activity tracking, idle entry/exit, fade/dim state.
     saver_activity_t activity[STATS_MAX_PROVIDERS];
     bool saver_active, saver_dim_only;
+    bool locked;
     nav_level_t saved_nav_level;
     int saved_nav_provider;
     char saved_nav_id[STATS_ID_MAX];

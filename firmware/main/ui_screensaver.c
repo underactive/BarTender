@@ -168,7 +168,7 @@ void saver_step_fade_locked(int64_t now)
 
 void saver_enter_locked(int64_t now)
 {
-    if (st.saver_active || st.mode != UI_STATS) return;
+    if (st.saver_active || st.mode != UI_STATS || st.locked) return;
     st.saved_nav_level = st.nav_level;
     st.saved_nav_provider = st.nav_provider;
     strlcpy(st.saved_nav_id, st.nav_id, sizeof st.saved_nav_id);

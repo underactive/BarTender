@@ -125,7 +125,7 @@ static void ui_task(void *arg)
             boot_step_fade_locked(now);
             if (st.boot_fade == BOOT_FADE_NONE)
                 saver_step_fade_locked(now);
-            if (st.mode == UI_STATS && !st.saver_active && st.last_input_ms > 0 && now - st.last_input_ms >= SCREENSAVER_IDLE_MS) {
+            if (st.mode == UI_STATS && !st.saver_active && !st.locked && st.last_input_ms > 0 && now - st.last_input_ms >= SCREENSAVER_IDLE_MS) {
                 saver_enter_locked(now);
                 led_transition_enable();
             }
@@ -251,15 +251,22 @@ ui_input_result_t ui_handle_input(const app_evt_t *ev)
     st.last_input_ms = esp_timer_get_time() / 1000;
     if (st.saver_active) { saver_exit_locked(st.last_input_ms); led_transition_disable(); r = UI_INPUT_CONSUMED; goto out; }
 
+    if (st.locked) {
+        if (ev->type == APP_EVT_SWIPE_UP) {
+            st.locked = false;
+            st.dirty = true;
+        }
+        goto out;
+    }
+
     switch (st.nav_level) {
     case NAV_SUMMARY:
         if (ev->type == APP_EVT_SWIPE_UP) {           // page down the list
             st.scroll += summary_vis_rows();
             clamp_scroll();
             st.dirty = true;
-        } else if (ev->type == APP_EVT_SWIPE_DOWN) {  // page up the list
-            st.scroll -= summary_vis_rows();
-            clamp_scroll();
+        } else if (ev->type == APP_EVT_SWIPE_DOWN) {  // lock the UI
+            st.locked = true;
             st.dirty = true;
         } else if (ev->type == APP_EVT_TAP) {
             int pi = summary_hit_test(ev->y);
@@ -301,12 +308,15 @@ ui_input_result_t ui_handle_input(const app_evt_t *ev)
                 }
             }
             st.dirty = true;
+        } else if (ev->type == APP_EVT_SWIPE_DOWN) {   // lock from provider page
+            st.locked = true;
+            st.dirty = true;
         } else if (ev->type == APP_EVT_SWIPE_LEFT) {   // back to the list
             st.nav_level = NAV_SUMMARY;
             led_summary_reset();
             st.dirty = true;
         }
-        /* swipe up/down/long-press on a page: swallowed (CONSUMED) */
+        /* swipe up/long-press on a page: swallowed (CONSUMED) */
         break;
     }
 

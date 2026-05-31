@@ -16,7 +16,7 @@
 #include <stdio.h>
 
 // ── Widget globals (created once, mutated only on ui_task) ───────────────────
-static lv_obj_t *scr, *title, *status, *prov_box, *summary_top, *boot_img;
+static lv_obj_t *scr, *title, *status, *prov_box, *summary_top, *boot_img, *lock_badge;
 static lv_obj_t *row_id[ROWS], *row_bar[ROWS], *row_val[ROWS], *row_icon[ROWS], *row_bar_w[ROWS];
 
 // Card widget groups (declared extern in ui_internal.h; defined here).
@@ -81,6 +81,7 @@ static void cost_hero_set_parent(lv_obj_t *parent);
 static lv_obj_t *create_page_bg_logo(lv_obj_t *card);
 static void render_page_chrome(lv_obj_t *hdr, lv_obj_t *logo, lv_obj_t *bg_logo,
                                int card_w, const ui_page_chrome_desc_t *desc);
+static void render_lock_badge(bool locked, int x, int y);
 static void bar_opa_cb(void *obj, int32_t opa);
 static void update_bar_pulse(lv_obj_t *bar, float pct);
 
@@ -195,6 +196,12 @@ void build_widgets(void)
     lv_obj_clear_flag(boot_img, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_clear_flag(boot_img, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_flag(boot_img, LV_OBJ_FLAG_HIDDEN);
+
+    lock_badge = lv_label_create(scr);
+    lv_obj_set_style_text_color(lock_badge, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_text_font(lock_badge, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_pad_all(lock_badge, 0, 0);
+    lv_obj_add_flag(lock_badge, LV_OBJ_FLAG_HIDDEN);
 
     const ui_page_grid_t grid = ui_grid_from_height(W, H);
     for (int i = 0; i <= UI_GRID_ROWS; i++) {
@@ -489,6 +496,19 @@ static void create_card_hdr(lv_obj_t *card, lv_obj_t **hdr_out, lv_obj_t **logo_
     lv_obj_set_style_text_color(*hdr_out, lv_color_hex(0x9aa0a6), 0);
     lv_obj_set_style_text_font(*hdr_out, &lv_font_montserrat_14, 0);
     lv_obj_set_pos(*hdr_out, 2, 2);
+}
+
+static void render_lock_badge(bool locked, int x, int y)
+{
+    if (!lock_badge) return;
+    if (!locked) {
+        lv_obj_add_flag(lock_badge, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+    lv_label_set_text(lock_badge, LV_SYMBOL_PAUSE);
+    lv_obj_set_pos(lock_badge, x, y);
+    lv_obj_clear_flag(lock_badge, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(lock_badge);
 }
 
 static void render_page_chrome(lv_obj_t *hdr, lv_obj_t *logo, lv_obj_t *bg_logo,
@@ -1390,6 +1410,7 @@ void render(void)   // ui_task only
     if (st.mode == UI_PROVISION) {
         hide_cards();
         if (boot_img) lv_obj_add_flag(boot_img, LV_OBJ_FLAG_HIDDEN);
+        if (lock_badge) lv_obj_add_flag(lock_badge, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(title,  LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(status, LV_OBJ_FLAG_HIDDEN);
         for (int i = 0; i < ROWS; i++) {
@@ -1440,6 +1461,7 @@ void render(void)   // ui_task only
     }
 
     if (st.nav_level == NAV_PAGE) {
+        render_lock_badge(st.locked, s_scr_w - 18, 4);
         if (boot_img) lv_obj_add_flag(boot_img, LV_OBJ_FLAG_HIDDEN);
         render_card();
         return;
@@ -1543,6 +1565,7 @@ void render(void)   // ui_task only
             lv_obj_add_flag(summary_top, LV_OBJ_FLAG_HIDDEN);
         }
     }
+    render_lock_badge(st.locked, s_scr_w - 18, 4);
     for (int i = 0; i < ROWS; i++) {
         int pi = summary_provider_at(st.scroll + i); // i = visual slot, pi = stats.p[] index
         if (i >= vis || pi < 0) {
