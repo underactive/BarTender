@@ -88,6 +88,11 @@ static void render_page_chrome(lv_obj_t *hdr, lv_obj_t *logo, lv_obj_t *bg_logo,
 static void render_lock_badge(bool locked, int x, int y);
 static void bar_opa_cb(void *obj, int32_t opa);
 static void update_bar_pulse(lv_obj_t *bar, float pct);
+// build_widgets sub-builders (Fowler audit: extracted from the ~370-line method).
+static void build_summary_widgets(int W);
+static void build_grid_overlay(int W, int H);
+static void build_cost_card(int W, int H);
+static void build_limits_card(int W, int H);
 
 // Active LVGL screen, or NULL before build_widgets() ran. Lets ui.c's task
 // guard the screenshot path without owning the widget globals.
@@ -119,6 +124,22 @@ void build_widgets(void)
     s_scr_w = W;
     s_scr_h = H;
     memset(s_prev_row_bar, -1, sizeof s_prev_row_bar);
+
+    // Build order == paint order: summary chrome first, then the grid overlay,
+    // then the two full-screen card panels (which must paint on top).
+    build_summary_widgets(W);
+    build_grid_overlay(W, H);
+    // (The old swipe menu/submenu widgets were removed: the summary list is
+    // now scrolled directly and provider pages are reached by tapping a row.)
+    build_cost_card(W, H);
+    build_limits_card(W, H);
+}
+
+// Summary list: provider rows + the root-screen chrome (title/status,
+// provisioning box, boot splash, lock badge). Created before the card panels
+// so those paint on top. Extracted from build_widgets (Fowler audit).
+static void build_summary_widgets(int W)
+{
     const int val_x = W - 52;          // right-anchored % column (line 2)
 
     title = lv_label_create(scr);
@@ -206,7 +227,12 @@ void build_widgets(void)
     lv_obj_set_style_text_font(lock_badge, &lv_font_montserrat_12, 0);
     lv_obj_set_style_pad_all(lock_badge, 0, 0);
     lv_obj_add_flag(lock_badge, LV_OBJ_FLAG_HIDDEN);
+}
 
+// Dashed debug-grid overlay (hidden unless UI_SHOW_GRID_LINES). Extracted
+// from build_widgets (Fowler audit).
+static void build_grid_overlay(int W, int H)
+{
     const ui_page_grid_t grid = ui_grid_from_height(W, H);
     for (int i = 0; i <= UI_GRID_ROWS; i++) {
         grid_h[i] = lv_line_create(scr);
@@ -229,11 +255,12 @@ void build_widgets(void)
         lv_obj_set_style_line_dash_gap(grid_v[i], 5, 0);
     }
     ui_update_grid_overlay(&grid);
+}
 
-    // (The old swipe menu/submenu widgets were removed: the summary list is
-    // now scrolled directly and provider pages are reached by tapping a row.)
-
-    // ---- Cost card (full-screen panel; hiding the parent hides children) ----
+// Cost card: full-screen panel; hiding the parent hides children. Extracted
+// from build_widgets (Fowler audit).
+static void build_cost_card(int W, int H)
+{
     cost.card = lv_obj_create(scr);
     lv_obj_set_size(cost.card, W, H);
     lv_obj_set_pos(cost.card, 0, 0);
@@ -337,8 +364,12 @@ void build_widgets(void)
     lv_obj_set_style_text_font(cost.or_row2, &lv_font_montserrat_14, 0);
     lv_obj_set_pos(cost.or_row2, 12, 140);
     lv_obj_add_flag(cost.or_row2, LV_OBJ_FLAG_HIDDEN);
+}
 
-    // ---- Usage-Limits card ----
+// Usage-Limits card: full-screen panel. Extracted from build_widgets (Fowler
+// audit).
+static void build_limits_card(int W, int H)
+{
     lim.card = lv_obj_create(scr);
     lv_obj_set_size(lim.card, W, H);
     lv_obj_set_pos(lim.card, 0, 0);
@@ -1180,6 +1211,142 @@ static void render_lmstudio_stats(const stats_provider_t *p,
 }
 
 // Dispatch: render the CARD_LIMITS panel for the current provider.
+// Limits "AUTO"/"WEEKLY" secondary tier (lim.a_*): occupies the chart area when
+// there's no sparkline and a secondary % exists. OpenRouter (has_balance) has no
+// secondary tier. Extracted from render_limits_card (Fowler audit).
+static void render_limits_auto(const stats_provider_t *p, bool has_balance)
+{
+    if (!has_balance && p->pct_hist_n == 0 && p->has_s) {
+        char pb[12];
+        lv_obj_clear_flag(lim.a_lbl, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(lim.a_big, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(lim.a_bar, LV_OBJ_FLAG_HIDDEN);
+        lv_label_set_text(lim.a_lbl, p->has_t ? "AUTO" : "WEEKLY");
+        fmt_pct(pb, sizeof pb, p->has_s, p->s);
+        lv_label_set_text(lim.a_big, pb);
+        set_bar(lim.a_bar, p->has_s, p->s, p);
+        set_reset_lbl(lim.a_rst, p->sr);
+    } else {
+        lv_obj_add_flag(lim.a_lbl, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(lim.a_big, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(lim.a_bar, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(lim.a_rst, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+// Limits tertiary tier (lim.w_*): "API" for providers with a tertiary % and no
+// sparkline (Cursor), else "WEEKLY" when a sparkline is present (Claude).
+// Extracted from render_limits_card (Fowler audit).
+static void render_limits_weekly(const stats_provider_t *p)
+{
+    char pb[12];
+    if (p->has_t && p->pct_hist_n == 0) {
+        lv_obj_clear_flag(lim.w_lbl, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(lim.w_big, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(lim.w_bar, LV_OBJ_FLAG_HIDDEN);
+        lv_label_set_text(lim.w_lbl, "API");
+        fmt_pct(pb, sizeof pb, p->has_t, p->t);
+        lv_label_set_text(lim.w_big, pb);
+        set_bar(lim.w_bar, p->has_t, p->t, p);
+        set_reset_lbl(lim.w_rst, p->tr);
+    } else if (p->has_s && p->pct_hist_n > 0) {
+        lv_obj_clear_flag(lim.w_lbl, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(lim.w_big, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(lim.w_bar, LV_OBJ_FLAG_HIDDEN);
+        lv_label_set_text(lim.w_lbl, "WEEKLY");
+        fmt_pct(pb, sizeof pb, p->has_s, p->s);
+        lv_label_set_text(lim.w_big, pb);
+        set_bar(lim.w_bar, p->has_s, p->s, p);
+        set_reset_lbl(lim.w_rst, p->sr);
+    } else {
+        lv_obj_add_flag(lim.w_lbl, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(lim.w_big, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(lim.w_bar, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(lim.w_rst, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+// Limits "EXTRA USAGE" tier (lim.x_*) — or, for OpenRouter (has_balance), the
+// remaining-budget line that repurposes cost.tok + lim.w_bar. MUST run after
+// render_limits_weekly() since the has_balance branch overrides lim.w_bar.
+// Extracted from render_limits_card (Fowler audit).
+static void render_limits_extra(const stats_provider_t *p,
+                                const ui_page_grid_t *g, bool has_balance)
+{
+    if (p->has_cost && p->extra_limit_c > 0) {
+        int xp = extra_pct(p);
+        if (has_balance) {
+            // OpenRouter budget: same cost.tok + cost.tok_unit pair as TODAY balance line.
+            int32_t rem = p->extra_limit_c - p->extra_used_c;
+            if (rem < 0) rem = 0;
+            char rem_str[16], lim_str[16], bud_unit[32];
+            fmt_money(rem_str, sizeof rem_str, rem);
+            fmt_money(lim_str, sizeof lim_str, p->extra_limit_c);
+            snprintf(bud_unit, sizeof bud_unit, "/ %s budget", lim_str);
+            cost_tok_set_parent(lim.card);
+            {
+                const ui_rect_t bud_r = ui_grid_span(g, 0, 3, 2, 1);
+                lv_obj_set_pos(cost.tok, bud_r.x + 12, bud_r.y + 2);
+                lv_obj_set_pos(lim.w_bar, bud_r.x + 12, bud_r.y + bud_r.h - 5);
+            }
+            lv_label_set_text(cost.tok, rem_str);
+            lv_label_set_text(cost.tok_unit, bud_unit);
+            lv_obj_align_to(cost.tok_unit, cost.tok, LV_ALIGN_OUT_RIGHT_BOTTOM, 5, 0);
+            lv_obj_clear_flag(cost.tok, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(cost.tok_unit, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(lim.w_lbl, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(lim.w_big, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(lim.w_rst, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(lim.w_bar, LV_OBJ_FLAG_HIDDEN);
+            set_bar(lim.w_bar, true, (float)xp, p);
+            update_bar_pulse(lim.x_bar, 0.0f);
+            lv_obj_add_flag(lim.x_lbl, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(lim.x_val, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(lim.x_bar, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_clear_flag(lim.x_lbl, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(lim.x_val, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(lim.x_bar, LV_OBJ_FLAG_HIDDEN);
+            char a[16], b[16];
+            fmt_money(a, sizeof a, p->extra_used_c);
+            fmt_money(b, sizeof b, p->extra_limit_c);
+            lv_label_set_text(lim.x_lbl, "EXTRA USAGE");
+            lv_label_set_text_fmt(lim.x_val, "%s / %s", a, b);
+            lv_bar_set_value(lim.x_bar, bar_fill(xp), LV_ANIM_ON);
+            lv_obj_set_style_bg_color(lim.x_bar, bar_color(p, (float)xp),
+                                      LV_PART_INDICATOR);
+            update_bar_pulse(lim.x_bar, (float)xp);
+        }
+    } else {
+        update_bar_pulse(lim.x_bar, 0.0f);
+        lv_obj_add_flag(lim.x_lbl, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(lim.x_val, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(lim.x_bar, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+// 24h SESSION usage-% sparkline from `ph` (Claude only; absent elsewhere).
+// Extracted from render_limits_card (Fowler audit).
+static void render_limits_sparkline(const stats_provider_t *p, bool card_entered)
+{
+    if (p->pct_hist_n > 0) {
+        lv_obj_clear_flag(lim.chart, LV_OBJ_FLAG_HIDDEN);
+        int n = p->pct_hist_n;
+        if (n > STATS_PCT_HIST_MAX) n = STATS_PCT_HIST_MAX;
+        lv_chart_set_point_count(lim.chart, (uint32_t)n);
+        lv_chart_set_range(lim.chart, LV_CHART_AXIS_PRIMARY_Y, 0, 100);
+        lv_color_t lc;
+        lv_chart_set_series_color(lim.chart, lim.ser,
+            prov_accent(p->id, &lc) ? lc : lv_color_hex(0x30c14e));
+        for (int i = 0; i < n; i++)
+            lv_chart_set_value_by_id(lim.chart, lim.ser, i, p->pct_hist[i]);
+        lv_chart_refresh(lim.chart);
+        if (card_entered) anim_chart_fadein(lim.chart);
+    } else {
+        lv_obj_add_flag(lim.chart, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
 static void render_limits_card(const stats_provider_t *p,
                                const ui_page_grid_t *g,
                                const ui_rect_t *hero,
@@ -1194,7 +1361,6 @@ static void render_limits_card(const stats_provider_t *p,
     cost_tok_set_parent(cost.card);
     lv_obj_add_flag(cost.tok, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(cost.tok_unit, LV_OBJ_FLAG_HIDDEN);
-    char pb[12];
 
     // lim_hero is only used by providers migrated to hero_amount (Pi, LM
     // Studio); hide by default so it can't leak onto the others. Those branches
@@ -1252,119 +1418,12 @@ static void render_limits_card(const stats_provider_t *p,
         set_reset_lbl(lim.s_rst, p->pr);
     }
 
-    // Auto section: occupies chart area when no sparkline data and secondary exists.
-    // OpenRouter (has_balance) uses hero + budget only — no secondary tier.
-    if (!has_balance && p->pct_hist_n == 0 && p->has_s) {
-        lv_obj_clear_flag(lim.a_lbl, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(lim.a_big, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(lim.a_bar, LV_OBJ_FLAG_HIDDEN);
-        lv_label_set_text(lim.a_lbl, p->has_t ? "AUTO" : "WEEKLY");
-        fmt_pct(pb, sizeof pb, p->has_s, p->s);
-        lv_label_set_text(lim.a_big, pb);
-        set_bar(lim.a_bar, p->has_s, p->s, p);
-        set_reset_lbl(lim.a_rst, p->sr);
-    } else {
-        lv_obj_add_flag(lim.a_lbl, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(lim.a_big, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(lim.a_bar, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(lim.a_rst, LV_OBJ_FLAG_HIDDEN);
-    }
-
-    // lim_w: "API" tier for providers with tertiary + no sparkline (Cursor).
-    // Claude has pct_hist_n > 0; its secondary is the weekly window, not API.
-    if (p->has_t && p->pct_hist_n == 0) {
-        lv_obj_clear_flag(lim.w_lbl, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(lim.w_big, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(lim.w_bar, LV_OBJ_FLAG_HIDDEN);
-        lv_label_set_text(lim.w_lbl, "API");
-        fmt_pct(pb, sizeof pb, p->has_t, p->t);
-        lv_label_set_text(lim.w_big, pb);
-        set_bar(lim.w_bar, p->has_t, p->t, p);
-        set_reset_lbl(lim.w_rst, p->tr);
-    } else if (p->has_s && p->pct_hist_n > 0) {
-        lv_obj_clear_flag(lim.w_lbl, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(lim.w_big, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(lim.w_bar, LV_OBJ_FLAG_HIDDEN);
-        lv_label_set_text(lim.w_lbl, "WEEKLY");
-        fmt_pct(pb, sizeof pb, p->has_s, p->s);
-        lv_label_set_text(lim.w_big, pb);
-        set_bar(lim.w_bar, p->has_s, p->s, p);
-        set_reset_lbl(lim.w_rst, p->sr);
-    } else {
-        lv_obj_add_flag(lim.w_lbl, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(lim.w_big, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(lim.w_bar, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(lim.w_rst, LV_OBJ_FLAG_HIDDEN);
-    }
-
-    if (p->has_cost && p->extra_limit_c > 0) {
-        int xp = extra_pct(p);
-        if (has_balance) {
-            // OpenRouter budget: same cost.tok + cost.tok_unit pair as TODAY balance line.
-            int32_t rem = p->extra_limit_c - p->extra_used_c;
-            if (rem < 0) rem = 0;
-            char rem_str[16], lim_str[16], bud_unit[32];
-            fmt_money(rem_str, sizeof rem_str, rem);
-            fmt_money(lim_str, sizeof lim_str, p->extra_limit_c);
-            snprintf(bud_unit, sizeof bud_unit, "/ %s budget", lim_str);
-            cost_tok_set_parent(lim.card);
-            {
-                const ui_rect_t bud_r = ui_grid_span(g, 0, 3, 2, 1);
-                lv_obj_set_pos(cost.tok, bud_r.x + 12, bud_r.y + 2);
-                lv_obj_set_pos(lim.w_bar, bud_r.x + 12, bud_r.y + bud_r.h - 5);
-            }
-            lv_label_set_text(cost.tok, rem_str);
-            lv_label_set_text(cost.tok_unit, bud_unit);
-            lv_obj_align_to(cost.tok_unit, cost.tok, LV_ALIGN_OUT_RIGHT_BOTTOM, 5, 0);
-            lv_obj_clear_flag(cost.tok, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_clear_flag(cost.tok_unit, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(lim.w_lbl, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(lim.w_big, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(lim.w_rst, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_clear_flag(lim.w_bar, LV_OBJ_FLAG_HIDDEN);
-            set_bar(lim.w_bar, true, (float)xp, p);
-            update_bar_pulse(lim.x_bar, 0.0f);
-            lv_obj_add_flag(lim.x_lbl, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(lim.x_val, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(lim.x_bar, LV_OBJ_FLAG_HIDDEN);
-        } else {
-            lv_obj_clear_flag(lim.x_lbl, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_clear_flag(lim.x_val, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_clear_flag(lim.x_bar, LV_OBJ_FLAG_HIDDEN);
-            char a[16], b[16];
-            fmt_money(a, sizeof a, p->extra_used_c);
-            fmt_money(b, sizeof b, p->extra_limit_c);
-            lv_label_set_text(lim.x_lbl, "EXTRA USAGE");
-            lv_label_set_text_fmt(lim.x_val, "%s / %s", a, b);
-            lv_bar_set_value(lim.x_bar, bar_fill(xp), LV_ANIM_ON);
-            lv_obj_set_style_bg_color(lim.x_bar, bar_color(p, (float)xp),
-                                      LV_PART_INDICATOR);
-            update_bar_pulse(lim.x_bar, (float)xp);
-        }
-    } else {
-        update_bar_pulse(lim.x_bar, 0.0f);
-        lv_obj_add_flag(lim.x_lbl, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(lim.x_val, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(lim.x_bar, LV_OBJ_FLAG_HIDDEN);
-    }
-
-    // 24h SESSION usage-% sparkline from `ph` (Claude only; absent elsewhere).
-    if (p->pct_hist_n > 0) {
-        lv_obj_clear_flag(lim.chart, LV_OBJ_FLAG_HIDDEN);
-        int n = p->pct_hist_n;
-        if (n > STATS_PCT_HIST_MAX) n = STATS_PCT_HIST_MAX;
-        lv_chart_set_point_count(lim.chart, (uint32_t)n);
-        lv_chart_set_range(lim.chart, LV_CHART_AXIS_PRIMARY_Y, 0, 100);
-        lv_color_t lc;
-        lv_chart_set_series_color(lim.chart, lim.ser,
-            prov_accent(p->id, &lc) ? lc : lv_color_hex(0x30c14e));
-        for (int i = 0; i < n; i++)
-            lv_chart_set_value_by_id(lim.chart, lim.ser, i, p->pct_hist[i]);
-        lv_chart_refresh(lim.chart);
-        if (card_entered) anim_chart_fadein(lim.chart);
-    } else {
-        lv_obj_add_flag(lim.chart, LV_OBJ_FLAG_HIDDEN);
-    }
+    render_limits_auto(p, has_balance);
+    // weekly BEFORE extra: the OpenRouter budget branch in render_limits_extra
+    // repurposes lim.w_bar, so it must override whatever weekly set.
+    render_limits_weekly(p);
+    render_limits_extra(p, g, has_balance);
+    render_limits_sparkline(p, card_entered);
 }
 
 static void render_card(void)   // ui_task only — dispatcher for the NAV_PAGE card
