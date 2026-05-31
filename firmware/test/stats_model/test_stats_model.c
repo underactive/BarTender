@@ -114,12 +114,12 @@ static void test_valid_v1_payload(void)
     CHECK_EQ_INT(st.n, 1);
     CHECK_STR(st.p[0].id, "claude");
     CHECK(st.p[0].ok == true);
-    CHECK(st.p[0].has_p == true);
-    CHECK(st.p[0].p > 42.0f && st.p[0].p < 43.0f);
-    CHECK_STR(st.p[0].pr, "resets 14:00");
-    CHECK(st.p[0].has_s == true);
-    CHECK(st.p[0].s > 9.5f && st.p[0].s < 10.5f);
-    CHECK_STR(st.p[0].sr, "daily");
+    CHECK(st.p[0].primary.has == true);
+    CHECK(st.p[0].primary.pct > 42.0f && st.p[0].primary.pct < 43.0f);
+    CHECK_STR(st.p[0].primary.reset, "resets 14:00");
+    CHECK(st.p[0].secondary.has == true);
+    CHECK(st.p[0].secondary.pct > 9.5f && st.p[0].secondary.pct < 10.5f);
+    CHECK_STR(st.p[0].secondary.reset, "daily");
     CHECK(st.p[0].has_cost == false);
 }
 
@@ -268,8 +268,8 @@ static void test_ok_false_entry_handled(void)
     CHECK_EQ_INT(st.n, 1);
     CHECK_STR(st.p[0].id, "claude");
     CHECK(st.p[0].ok == false);
-    CHECK(st.p[0].has_p == false);
-    CHECK(st.p[0].has_s == false);
+    CHECK(st.p[0].primary.has == false);
+    CHECK(st.p[0].secondary.has == false);
     CHECK(st.p[0].has_cost == false);
 }
 
@@ -902,9 +902,9 @@ static void test_tertiary_field_parsed(void)
     free(env);
 
     CHECK_EQ_INT(r, STATS_PARSE_OK);
-    CHECK(st.p[0].has_t == true);
-    CHECK(st.p[0].t > 77.0f && st.p[0].t < 78.0f);
-    CHECK_STR(st.p[0].tr, "next month");
+    CHECK(st.p[0].tertiary.has == true);
+    CHECK(st.p[0].tertiary.pct > 77.0f && st.p[0].tertiary.pct < 78.0f);
+    CHECK_STR(st.p[0].tertiary.reset, "next month");
 }
 
 static void test_pi_hist_resets_on_pi_block(void)

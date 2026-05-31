@@ -306,14 +306,14 @@ stats_parse_t stats_model_parse(const char *body, stats_t *out)
             p->ok = cJSON_IsTrue(ok);
             // p/pr/s/sr are absent on !ok entries — handle gracefully.
             const cJSON *pp = cJSON_GetObjectItemCaseSensitive(e, "p");
-            if (cJSON_IsNumber(pp)) { p->has_p = true; p->p = f_sanitize(pp->valuedouble); }
-            json_str_copy(p->pr, sizeof p->pr, cJSON_GetObjectItemCaseSensitive(e, "pr"));
+            if (cJSON_IsNumber(pp)) { p->primary.has = true; p->primary.pct = f_sanitize(pp->valuedouble); }
+            json_str_copy(p->primary.reset, sizeof p->primary.reset, cJSON_GetObjectItemCaseSensitive(e, "pr"));
             const cJSON *sp = cJSON_GetObjectItemCaseSensitive(e, "s");
-            if (cJSON_IsNumber(sp)) { p->has_s = true; p->s = f_sanitize(sp->valuedouble); }
-            json_str_copy(p->sr, sizeof p->sr, cJSON_GetObjectItemCaseSensitive(e, "sr"));
+            if (cJSON_IsNumber(sp)) { p->secondary.has = true; p->secondary.pct = f_sanitize(sp->valuedouble); }
+            json_str_copy(p->secondary.reset, sizeof p->secondary.reset, cJSON_GetObjectItemCaseSensitive(e, "sr"));
             const cJSON *tp = cJSON_GetObjectItemCaseSensitive(e, "t");
-            if (cJSON_IsNumber(tp)) { p->has_t = true; p->t = f_sanitize(tp->valuedouble); }
-            json_str_copy(p->tr, sizeof p->tr, cJSON_GetObjectItemCaseSensitive(e, "tr"));
+            if (cJSON_IsNumber(tp)) { p->tertiary.has = true; p->tertiary.pct = f_sanitize(tp->valuedouble); }
+            json_str_copy(p->tertiary.reset, sizeof p->tertiary.reset, cJSON_GetObjectItemCaseSensitive(e, "tr"));
 
             parse_cost(e, p);
             parse_pi(e, p);

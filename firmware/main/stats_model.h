@@ -22,15 +22,21 @@
 #define STATS_HIST_MAX      31        // per-day cost points (cache holds ~20-31 days)
 #define STATS_PCT_HIST_MAX  24        // 24h session usage-% sparkline points
 
+// One usage tier: a present-flag, the used %, and its reset hint. Groups what
+// were three loose `has_x / x / xr` primitive triples (Fowler audit: Primitive
+// Obsession / data clump). primary=p/pr, secondary=s/sr, tertiary=t/tr.
+typedef struct {
+    bool  has;                        // tier present in payload
+    float pct;                        // used %
+    char  reset[STATS_TXT_MAX];       // reset hint ("" if absent)
+} usage_tier_t;
+
 typedef struct {
     char  id[STATS_ID_MAX];
     bool  ok;
-    bool  has_p;  float p;            // primary used %
-    char  pr[STATS_TXT_MAX];          // primary reset hint ("" if absent)
-    bool  has_s;  float s;            // secondary used %
-    char  sr[STATS_TXT_MAX];
-    bool  has_t;  float t;            // tertiary used %
-    char  tr[STATS_TXT_MAX];          // tertiary reset hint ("" if absent)
+    usage_tier_t primary;             // p / pr  — primary used % + reset hint
+    usage_tier_t secondary;           // s / sr  — secondary used % + reset hint
+    usage_tier_t tertiary;            // t / tr  — tertiary used % + reset hint
 
     // v2 cost-card-capable fields — present when publisher merged a generic
     // `cost` object (Claude/OpenRouter) or the Pi provider's sibling `pi` block.

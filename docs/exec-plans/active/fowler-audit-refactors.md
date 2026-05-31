@@ -60,12 +60,17 @@ green on 2026-05-31 before this work started.
   Off-screen hide path left inline (distinct concern).
 
 ### Low
-- [ ] **#6 — `ui_render.c:858` `render_lmstudio_chart`/`render_cursor_chart`
+- [x] **#6 — `ui_render.c:858` `render_lmstudio_chart`/`render_cursor_chart`
   duplication.** Extract a parameterized `render_token_chart_card(...)`.
-  Verify: `idf.py build`.
-- [ ] **#7 — `stats_model.h:28` tier data clump (Primitive Obsession).**
-  `has_p/p/pr × 3` → consider a `usage_tier_t` array. Verify: `make run`
-  (130 host assertions) + `idf.py build`.
+  Verify: `idf.py build`. ✅ Done 2026-05-31 — build clean; binary 0x245510
+  (−smaller, dedup). Both originals now thin wrappers; show_requests flag.
+- [x] **#7 — `stats_model.h:28` tier data clump (Primitive Obsession).**
+  `has_p/p/pr × 3` → `usage_tier_t {has; pct; reset}` as named members
+  primary/secondary/tertiary (not `tier[3]` — avoids magic indices across 42
+  render sites). 76 references migrated across 7 files. Verify: `make run`
+  (130 + 69 host assertions) + `idf.py build`. ✅ Done 2026-05-31 — all green;
+  binary 0x245520. Compiler-net migration (renamed, not aliased); host tests
+  confirm parse/format tier mapping.
 - [ ] **#8 — `scripts/cursor-stats.sh:414` duplicated history load/save/prune.**
   Extract shared `scripts/_stats_history.py`. Verify: `python -c` import +
   smoke run of each consuming script's history path.

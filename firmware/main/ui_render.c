@@ -103,7 +103,7 @@ lv_obj_t *ui_active_screen(void)
 
 static bool cursor_sess_refresh_needed(const stats_provider_t *p)
 {
-    if (strcmp(p->id, "cursor") != 0 || !p->ok || !p->has_p) return false;
+    if (strcmp(p->id, "cursor") != 0 || !p->ok || !p->primary.has) return false;
     if (!p->has_cu) return true;
     return !p->cu_sess_ok;
 }
@@ -888,10 +888,18 @@ static void cost_tok_set_parent(lv_obj_t *card)
 // ── render_cost_card helpers ──────────────────────────────────────────────────
 
 // LM Studio TODAY card: tokens hero + requests line + 30-day bar chart.
-static void render_lmstudio_chart(const stats_provider_t *p,
-                                  const ui_page_grid_t *g,
-                                  const ui_rect_t *hero,
-                                  bool card_entered)
+// Shared TODAY card body for providers that publish only a local token rollup
+// (LM Studio, Cursor): token hero + 30-day bar chart. `show_requests` adds the
+// requests sub-line + "Reqs" footer (LM Studio); req_today/req_max are unused
+// when false (Cursor). Extracted from render_lmstudio_chart/render_cursor_chart
+// (Fowler audit).
+static void render_token_chart_card(const stats_provider_t *p,
+                                    const ui_page_grid_t *g,
+                                    const ui_rect_t *hero,
+                                    int64_t today_tok, int64_t max_tok,
+                                    const int64_t *hist, int hist_n,
+                                    bool show_requests, int req_today, int req_max,
+                                    bool card_entered)
 {
     cost_tok_set_parent(cost.card);
     lv_obj_t *hide[] = { cost.or_lbl, cost.or_row1, cost.or_row2,
@@ -899,34 +907,52 @@ static void render_lmstudio_chart(const stats_provider_t *p,
     for (unsigned i = 0; i < sizeof hide / sizeof *hide; i++)
         lv_obj_add_flag(hide[i], LV_OBJ_FLAG_HIDDEN);
     place_hero_amount(&cost_hero, hero, "TOKENS");
-    lv_obj_t *show[] = { cost.tok, cost.tok_unit, cost.cost_30, cost.chart };
-    for (unsigned i = 0; i < sizeof show / sizeof *show; i++)
-        lv_obj_clear_flag(show[i], LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(cost.cost_30, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(cost.chart, LV_OBJ_FLAG_HIDDEN);
     // Chart: grid rows 4..8 (1-indexed); 30-day max on row 9 (below 8-row grid).
     const ui_rect_t chart_r = ui_grid_span(g, 0, 3, 2, 5);
     const ui_rect_t footer_r = ui_grid_span(g, 0, 8, 2, 1);
     lv_obj_set_size(cost.chart, chart_r.w - 24, chart_r.h - 8);
     lv_obj_set_pos(cost.chart, chart_r.x + 12, chart_r.y + 4);
     lv_obj_set_pos(cost.cost_30, footer_r.x + 12, footer_r.y + 2);
-    lv_obj_set_pos(cost.cap, footer_r.x + 12, footer_r.y + 18);
-    char tk[16], rq[16], tk30[16], rq30[16];
-    fmt_tokens(tk, sizeof tk, p->lm_tok_today);
-    snprintf(rq, sizeof rq, "%d", (int)p->lm_req_today);
+    char tk[16], tk30[16];
+    fmt_tokens(tk, sizeof tk, today_tok);
     set_hero_amount(&cost_hero, NULL, tk, NULL);   // plain token count, no affix
-    lv_label_set_text(cost.tok, rq);
-    lv_label_set_text(cost.tok_unit, "requests");
-    lv_obj_align_to(cost.tok_unit, cost.tok, LV_ALIGN_OUT_RIGHT_BOTTOM, 5, 0);
-    fmt_tokens(tk30, sizeof tk30, p->lm_tok_month_max);
-    snprintf(rq30, sizeof rq30, "%d", (int)p->lm_req_month_max);
-    lv_label_set_text_fmt(cost.cost_30, "30 DAY MAX: %s Toks " LV_SYMBOL_BULLET "  %s Reqs", tk30, rq30);
-    int n = p->lm_ht_n;
+    fmt_tokens(tk30, sizeof tk30, max_tok);
+    if (show_requests) {
+        char rq[16], rq30[16];
+        snprintf(rq, sizeof rq, "%d", req_today);
+        snprintf(rq30, sizeof rq30, "%d", req_max);
+        lv_obj_clear_flag(cost.tok, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(cost.tok_unit, LV_OBJ_FLAG_HIDDEN);
+        lv_label_set_text(cost.tok, rq);
+        lv_label_set_text(cost.tok_unit, "requests");
+        lv_obj_align_to(cost.tok_unit, cost.tok, LV_ALIGN_OUT_RIGHT_BOTTOM, 5, 0);
+        lv_label_set_text_fmt(cost.cost_30, "30 DAY MAX: %s Toks " LV_SYMBOL_BULLET "  %s Reqs", tk30, rq30);
+    } else {
+        lv_obj_add_flag(cost.tok, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(cost.tok_unit, LV_OBJ_FLAG_HIDDEN);
+        lv_label_set_text_fmt(cost.cost_30, "30 DAY MAX: %s Toks", tk30);
+    }
+    int n = hist_n;
     if (n > NAV_HIST_PTS) n = NAV_HIST_PTS;
     lv_color_t cc;
     int32_t ht32[STATS_HIST_MAX];
-    i64_hist_to_i32(ht32, p->lm_ht, n);
+    i64_hist_to_i32(ht32, hist, n);
     (void)render_cost_bar_chart(cost.chart, cost.ser, ht32, n,
         prov_accent(p->id, &cc) ? cc : lv_color_hex(UI_DEFAULT_CHART_COLOR));
     if (card_entered) anim_chart_fadein(cost.chart);
+}
+
+static void render_lmstudio_chart(const stats_provider_t *p,
+                                  const ui_page_grid_t *g,
+                                  const ui_rect_t *hero,
+                                  bool card_entered)
+{
+    render_token_chart_card(p, g, hero, p->lm_tok_today, p->lm_tok_month_max,
+                            p->lm_ht, p->lm_ht_n, true,
+                            (int)p->lm_req_today, (int)p->lm_req_month_max,
+                            card_entered);
 }
 
 // Cursor TODAY card: token hero + 30-day bar chart (no requests, no $, no OR rows).
@@ -935,34 +961,8 @@ static void render_cursor_chart(const stats_provider_t *p,
                                 const ui_rect_t *hero,
                                 bool card_entered)
 {
-    lv_obj_t *hide[] = { cost.or_lbl, cost.or_row1, cost.or_row2,
-                         cost.bar, cost.bar_lbl, cost.cap,
-                         cost.tok, cost.tok_unit };
-    for (unsigned i = 0; i < sizeof hide / sizeof *hide; i++)
-        lv_obj_add_flag(hide[i], LV_OBJ_FLAG_HIDDEN);
-    place_hero_amount(&cost_hero, hero, "TOKENS");
-    lv_obj_t *show[] = { cost.cost_30, cost.chart };
-    for (unsigned i = 0; i < sizeof show / sizeof *show; i++)
-        lv_obj_clear_flag(show[i], LV_OBJ_FLAG_HIDDEN);
-    // Chart: grid rows 4..8; 30-day max on row 9 (below 8-row grid).
-    const ui_rect_t chart_r = ui_grid_span(g, 0, 3, 2, 5);
-    const ui_rect_t footer_r = ui_grid_span(g, 0, 8, 2, 1);
-    lv_obj_set_size(cost.chart, chart_r.w - 24, chart_r.h - 8);
-    lv_obj_set_pos(cost.chart, chart_r.x + 12, chart_r.y + 4);
-    lv_obj_set_pos(cost.cost_30, footer_r.x + 12, footer_r.y + 2);
-    char tk[16], tk30[16];
-    fmt_tokens(tk, sizeof tk, p->cu_tok_today);
-    set_hero_amount(&cost_hero, NULL, tk, NULL);
-    fmt_tokens(tk30, sizeof tk30, p->cu_tok_month_max);
-    lv_label_set_text_fmt(cost.cost_30, "30 DAY MAX: %s Toks", tk30);
-    int n = p->cu_ht_n;
-    if (n > NAV_HIST_PTS) n = NAV_HIST_PTS;
-    lv_color_t cc;
-    int32_t ht32[STATS_HIST_MAX];
-    i64_hist_to_i32(ht32, p->cu_ht, n);
-    (void)render_cost_bar_chart(cost.chart, cost.ser, ht32, n,
-        prov_accent(p->id, &cc) ? cc : lv_color_hex(UI_DEFAULT_CHART_COLOR));
-    if (card_entered) anim_chart_fadein(cost.chart);
+    render_token_chart_card(p, g, hero, p->cu_tok_today, p->cu_tok_month_max,
+                            p->cu_ht, p->cu_ht_n, false, 0, 0, card_entered);
 }
 
 // OpenRouter TODAY card: spend hero + this-week secondary + balance footer.
@@ -1180,12 +1180,12 @@ static void render_lmstudio_stats(const stats_provider_t *p,
     lv_obj_add_flag(lim.x_bar, LV_OBJ_FLAG_HIDDEN);
     place_hero_amount(&lim_hero, hero, "TOKENS");
     if (card_entered && p->has_lm) {
-        anim_count_up(lim_hero.num, (int32_t)(p->p * 10.0f + 0.5f), count_pct_cb);
+        anim_count_up(lim_hero.num, (int32_t)(p->primary.pct * 10.0f + 0.5f), count_pct_cb);
     } else {
-        set_hero_pct(&lim_hero, p->has_lm, p->p);
+        set_hero_pct(&lim_hero, p->has_lm, p->primary.pct);
     }
     char pb[12];
-    set_bar(lim.s_bar, p->has_lm, p->p, p);
+    set_bar(lim.s_bar, p->has_lm, p->primary.pct, p);
     lv_obj_add_flag(lim.s_rst, LV_OBJ_FLAG_HIDDEN);
     cost_tok_set_parent(lim.card);
     {
@@ -1194,14 +1194,14 @@ static void render_lmstudio_stats(const stats_provider_t *p,
         lv_obj_set_pos(lim.w_bar, req_r.x + 12, req_r.y + req_r.h - 5);
     }
     if (p->has_lm) {
-        fmt_pct(pb, sizeof pb, p->has_lm, p->s);
+        fmt_pct(pb, sizeof pb, p->has_lm, p->secondary.pct);
         lv_label_set_text(cost.tok, pb);
         lv_label_set_text(cost.tok_unit, "requests");
         lv_obj_align_to(cost.tok_unit, cost.tok, LV_ALIGN_OUT_RIGHT_BOTTOM, 5, 0);
         lv_obj_clear_flag(cost.tok, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(cost.tok_unit, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(lim.w_bar, LV_OBJ_FLAG_HIDDEN);
-        set_bar(lim.w_bar, true, p->s, p);
+        set_bar(lim.w_bar, true, p->secondary.pct, p);
     } else {
         lv_obj_add_flag(cost.tok, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(cost.tok_unit, LV_OBJ_FLAG_HIDDEN);
@@ -1235,14 +1235,14 @@ static void hide_tier_row(lv_obj_t *lbl, lv_obj_t *big, lv_obj_t *bar, lv_obj_t 
 // secondary tier. Extracted from render_limits_card (Fowler audit).
 static void render_limits_auto(const stats_provider_t *p, bool has_balance)
 {
-    if (!has_balance && p->pct_hist_n == 0 && p->has_s) {
+    if (!has_balance && p->pct_hist_n == 0 && p->secondary.has) {
         char pb[12];
         show_tier_row(lim.a_lbl, lim.a_big, lim.a_bar);
-        lv_label_set_text(lim.a_lbl, p->has_t ? "AUTO" : "WEEKLY");
-        fmt_pct(pb, sizeof pb, p->has_s, p->s);
+        lv_label_set_text(lim.a_lbl, p->tertiary.has ? "AUTO" : "WEEKLY");
+        fmt_pct(pb, sizeof pb, p->secondary.has, p->secondary.pct);
         lv_label_set_text(lim.a_big, pb);
-        set_bar(lim.a_bar, p->has_s, p->s, p);
-        set_reset_lbl(lim.a_rst, p->sr);
+        set_bar(lim.a_bar, p->secondary.has, p->secondary.pct, p);
+        set_reset_lbl(lim.a_rst, p->secondary.reset);
     } else {
         hide_tier_row(lim.a_lbl, lim.a_big, lim.a_bar, lim.a_rst);
     }
@@ -1254,20 +1254,20 @@ static void render_limits_auto(const stats_provider_t *p, bool has_balance)
 static void render_limits_weekly(const stats_provider_t *p)
 {
     char pb[12];
-    if (p->has_t && p->pct_hist_n == 0) {
+    if (p->tertiary.has && p->pct_hist_n == 0) {
         show_tier_row(lim.w_lbl, lim.w_big, lim.w_bar);
         lv_label_set_text(lim.w_lbl, "API");
-        fmt_pct(pb, sizeof pb, p->has_t, p->t);
+        fmt_pct(pb, sizeof pb, p->tertiary.has, p->tertiary.pct);
         lv_label_set_text(lim.w_big, pb);
-        set_bar(lim.w_bar, p->has_t, p->t, p);
-        set_reset_lbl(lim.w_rst, p->tr);
-    } else if (p->has_s && p->pct_hist_n > 0) {
+        set_bar(lim.w_bar, p->tertiary.has, p->tertiary.pct, p);
+        set_reset_lbl(lim.w_rst, p->tertiary.reset);
+    } else if (p->secondary.has && p->pct_hist_n > 0) {
         show_tier_row(lim.w_lbl, lim.w_big, lim.w_bar);
         lv_label_set_text(lim.w_lbl, "WEEKLY");
-        fmt_pct(pb, sizeof pb, p->has_s, p->s);
+        fmt_pct(pb, sizeof pb, p->secondary.has, p->secondary.pct);
         lv_label_set_text(lim.w_big, pb);
-        set_bar(lim.w_bar, p->has_s, p->s, p);
-        set_reset_lbl(lim.w_rst, p->sr);
+        set_bar(lim.w_bar, p->secondary.has, p->secondary.pct, p);
+        set_reset_lbl(lim.w_rst, p->secondary.reset);
     } else {
         hide_tier_row(lim.w_lbl, lim.w_big, lim.w_bar, lim.w_rst);
     }
@@ -1406,17 +1406,17 @@ static void render_limits_card(const stats_provider_t *p,
     // the hero_amount pair. Pi's "SESSION" falls out of the same ternary
     // (no balance, no total tier).
     place_hero_amount(&lim_hero, hero,
-                      has_balance ? "API KEY" : (p->has_t ? "TOTAL" : "SESSION"));
-    if (card_entered && p->has_p) {
-        anim_count_up(lim_hero.num, (int32_t)(p->p * 10.0f + 0.5f), count_pct_cb);
+                      has_balance ? "API KEY" : (p->tertiary.has ? "TOTAL" : "SESSION"));
+    if (card_entered && p->primary.has) {
+        anim_count_up(lim_hero.num, (int32_t)(p->primary.pct * 10.0f + 0.5f), count_pct_cb);
     } else {
-        set_hero_pct(&lim_hero, p->has_p, p->p);
+        set_hero_pct(&lim_hero, p->primary.has, p->primary.pct);
     }
-    set_bar(lim.s_bar, p->has_p, p->p, p);
+    set_bar(lim.s_bar, p->primary.has, p->primary.pct, p);
     if (has_balance) {
         lv_obj_add_flag(lim.s_rst, LV_OBJ_FLAG_HIDDEN);
     } else {
-        set_reset_lbl(lim.s_rst, p->pr);
+        set_reset_lbl(lim.s_rst, p->primary.reset);
     }
 
     render_limits_auto(p, has_balance);
@@ -1473,12 +1473,12 @@ static void render_card(void)   // ui_task only — dispatcher for the NAV_PAGE 
 static void render_summary_secondary_bar(int slot, const stats_provider_t *p)
 {
     provider_kind_t rpk = provider_kind(p->id);
-    if (((rpk == PK_CLAUDE || rpk == PK_CODEX) && p->has_s)
+    if (((rpk == PK_CLAUDE || rpk == PK_CODEX) && p->secondary.has)
         || rpk == PK_LMSTUDIO) {
-        int wv = clampi((int)(p->s + 0.5f), 0, 100);
+        int wv = clampi((int)(p->secondary.pct + 0.5f), 0, 100);
         lv_bar_set_value(row_bar_w[slot], bar_fill(wv), LV_ANIM_ON);
-        lv_obj_set_style_bg_color(row_bar_w[slot], bar_color(p, p->s), LV_PART_INDICATOR);
-        update_bar_pulse(row_bar_w[slot], p->s);
+        lv_obj_set_style_bg_color(row_bar_w[slot], bar_color(p, p->secondary.pct), LV_PART_INDICATOR);
+        update_bar_pulse(row_bar_w[slot], p->secondary.pct);
         lv_obj_clear_flag(row_bar_w[slot], LV_OBJ_FLAG_HIDDEN);
     } else if (rpk == PK_OPENROUTER && p->has_cost && p->extra_limit_c > 0) {
         int xv = extra_pct(p);
@@ -1538,13 +1538,13 @@ static void render_summary_row(int slot, const stats_provider_t *p,
         update_cursor_sess_pulse(row_icon[slot], false);
     }
 
-    if (!p->ok || !p->has_p) {
+    if (!p->ok || !p->primary.has) {
         update_bar_pulse(row_bar[slot], 0.0f);
         lv_obj_add_flag(row_bar[slot], LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_style_text_color(row_val[slot], lv_color_hex(0x6b7075), 0);
         lv_label_set_text(row_val[slot], "off");
     } else {
-        int v = clampi((int)(p->p + 0.5f), 0, 100);
+        int v = clampi((int)(p->primary.pct + 0.5f), 0, 100);
         int fill = bar_fill(v);
         lv_obj_clear_flag(row_bar[slot], LV_OBJ_FLAG_HIDDEN);
         if (fill != s_prev_row_bar[slot]) {
@@ -1553,15 +1553,15 @@ static void render_summary_row(int slot, const stats_provider_t *p,
         }
         // Per-provider accent (Claude orange); un-themed providers keep
         // the green/amber/red usage ramp.
-        lv_obj_set_style_bg_color(row_bar[slot], bar_color(p, p->p), LV_PART_INDICATOR);
-        update_bar_pulse(row_bar[slot], p->p);
+        lv_obj_set_style_bg_color(row_bar[slot], bar_color(p, p->primary.pct), LV_PART_INDICATOR);
+        update_bar_pulse(row_bar[slot], p->primary.pct);
         lv_obj_set_style_text_color(row_val[slot], lv_color_hex(0xffffff), 0);
         {
             // Single-source the pct→"45.3%" formatting via fmt_pct()
             // (integer-tenths; LVGL sprintf has no float) instead of
             // re-deriving tenths inline.
             char pctbuf[12];
-            fmt_pct(pctbuf, sizeof pctbuf, true, p->p);
+            fmt_pct(pctbuf, sizeof pctbuf, true, p->primary.pct);
             lv_label_set_text(row_val[slot], pctbuf);
         }
         render_summary_secondary_bar(slot, p);

@@ -147,8 +147,8 @@ static void test_provider_has_limits_card(void)
     stats_provider_t p;
     memset(&p, 0, sizeof p);
     CHECK(provider_has_limits_card(&p) == false, "limits_card: empty -> false");
-    p.has_p = true;
-    CHECK(provider_has_limits_card(&p) == true,  "limits_card: has_p -> true");
+    p.primary.has = true;
+    CHECK(provider_has_limits_card(&p) == true,  "limits_card: primary tier -> true");
     memset(&p, 0, sizeof p); p.pct_hist_n = 3;
     CHECK(provider_has_limits_card(&p) == true,  "limits_card: pct_hist -> true");
     memset(&p, 0, sizeof p); p.has_cost = true; p.extra_limit_c = 500;

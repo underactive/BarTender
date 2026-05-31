@@ -48,7 +48,7 @@ int summary_vis_rows_from_grid(const ui_page_grid_t *g)
 // ── provider metric signature (screensaver activity hashing) ─────────────────
 bool provider_has_limits_card(const stats_provider_t *p)
 {
-    return p->has_p || p->has_s || p->has_t || p->pct_hist_n > 0 ||
+    return p->primary.has || p->secondary.has || p->tertiary.has || p->pct_hist_n > 0 ||
            (p->has_cost && p->extra_limit_c > 0);
 }
 
@@ -69,9 +69,9 @@ uint32_t provider_metric_sig(const stats_provider_t *p)
 {
     uint32_t h = 2166136261U;
     h = hash_mix_u32(h, p->ok ? 1U : 0U);
-    h = hash_mix_u32(h, (uint32_t)pct_tenths(p->has_p, p->p));
-    h = hash_mix_u32(h, (uint32_t)pct_tenths(p->has_s, p->s));
-    h = hash_mix_u32(h, (uint32_t)pct_tenths(p->has_t, p->t));
+    h = hash_mix_u32(h, (uint32_t)pct_tenths(p->primary.has, p->primary.pct));
+    h = hash_mix_u32(h, (uint32_t)pct_tenths(p->secondary.has, p->secondary.pct));
+    h = hash_mix_u32(h, (uint32_t)pct_tenths(p->tertiary.has, p->tertiary.pct));
     h = hash_mix_u32(h, p->has_cost ? 1U : 0U);
     if (p->has_cost) {
         h = hash_mix_u32(h, (uint32_t)p->cost_today_c);
