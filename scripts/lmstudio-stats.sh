@@ -49,6 +49,9 @@ esac
 PY="${PYTHON3:-$(command -v python3 2>/dev/null || true)}"
 [[ -n "$PY" && -x "$PY" ]] || { print -r -- "lmstudio-stats: python3 not found" >&2; exit 2; }
 
+# Heredoc-piped Python has no __file__, so hand it this script's dir to import
+# the sibling _stats_history.py helper (${0:A:h} = absolute dirname in zsh).
+export CBTOY_SCRIPT_DIR="${0:A:h}"
 "$PY" <<'PY'
 import datetime as dt
 import json
@@ -56,6 +59,9 @@ import os
 import re
 import sys
 from pathlib import Path
+
+sys.path.insert(0, os.environ.get("CBTOY_SCRIPT_DIR", "."))
+import _stats_history as _hist  # shared rolling-history helpers (Fowler audit #8)
 
 
 def eprint(msg: str) -> None:
@@ -233,13 +239,7 @@ if today_data is None or (today_data["requests"] == 0 and today_data["tokens"] =
 # ---------------------------------------------------------------------------
 # 2. Read/update rolling history file
 # ---------------------------------------------------------------------------
-history = {}
-if hist_file.is_file():
-    try:
-        history = json.loads(hist_file.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        eprint("history file corrupted, starting fresh")
-        history = {}
+history = _hist.load_history(hist_file)
 
 # Merge today's data into history
 # On first run (empty history), seed from all parsed logs
@@ -273,18 +273,12 @@ else:
         }
 
 # Prune to 31 days
-sorted_dates = sorted(history.keys(), reverse=True)
-keep = set(sorted_dates[:31])
-history = {k: v for k, v in history.items() if k in keep}
+history = _hist.prune_history(history, 31)
 
 # ---------------------------------------------------------------------------
-# 3. Write history back
+# 3. Write history back (atomic tmp+replace via shared helper)
 # ---------------------------------------------------------------------------
-hist_file.parent.mkdir(parents=True, exist_ok=True)
-try:
-    hist_file.write_text(json.dumps(history, indent=2), encoding="utf-8")
-except OSError as e:
-    eprint(f"could not write history: {e}")
+_hist.save_history(hist_file, history)
 
 # ---------------------------------------------------------------------------
 # 4. Compute daily arrays and max values from history (30-day window)

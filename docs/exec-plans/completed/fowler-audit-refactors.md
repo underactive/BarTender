@@ -1,7 +1,11 @@
 # Plan: Fowler-audit refactoring backlog
 
 - **Started:** 2026-05-31
-- **Status:** In progress
+- **Completed:** 2026-05-31
+- **Status:** Completed — all 9 items done & verified (idf.py build clean +
+  host suites green). UI extractions build-verified; stats_model/ui_format
+  changes additionally covered by 130 + 69 host assertions. #8 (scripts)
+  verified at module + syntax level only (live publish pipeline not exercised).
 - **Objective** — Work through the 9 deferred findings from the Martin Fowler
   persona audit (see commit `395fd18` for the 6 already-applied items). All
   are behavior-preserving structural refactors. Highest-priority items first;
@@ -71,14 +75,24 @@ green on 2026-05-31 before this work started.
   (130 + 69 host assertions) + `idf.py build`. ✅ Done 2026-05-31 — all green;
   binary 0x245520. Compiler-net migration (renamed, not aliased); host tests
   confirm parse/format tier mapping.
-- [ ] **#8 — `scripts/cursor-stats.sh:414` duplicated history load/save/prune.**
-  Extract shared `scripts/_stats_history.py`. Verify: `python -c` import +
-  smoke run of each consuming script's history path.
+- [x] **#8 — `scripts/cursor-stats.sh:414` duplicated history load/save/prune.**
+  Extracted `scripts/_stats_history.py` (load/save/prune). Scoped to
+  cursor + lmstudio only — pi uses a different event-reducer mechanism, not the
+  rolling-dict pattern (per user decision). Heredoc-piped Python imports it via
+  an exported `CBTOY_SCRIPT_DIR` + `sys.path` inject; scripts run in-place
+  (`${0:A:h}`), so the sibling module always resolves. ✅ Done 2026-05-31 —
+  module `py_compile` OK + load/save/prune/corrupt round-trip asserted; both
+  scripts' embedded Python parses. NOTE: the live publish pipeline (Cursor
+  cookie / running LM Studio) was NOT exercised here — verification is
+  module-level + syntax, not end-to-end. lmstudio's history write is now atomic
+  (was a direct write) — a latent robustness gain, output unchanged.
 
 ### Info
-- [ ] **#9 — `ui_render.c:804` `place_hero_amount` parallel functions.**
-  Parameterize one `place_hero_amount(...)` taking a font/offset descriptor.
-  Verify: `idf.py build`.
+- [x] **#9 — `ui_render.c:804` `place_hero_amount` parallel functions.**
+  Added `hero_style_t` font/offset descriptor + shared `place_hero_styled()`;
+  the two named functions are now thin wrappers (call sites unchanged).
+  Verify: `idf.py build`. ✅ Done 2026-05-31 — build clean; binary 0x245520
+  (unchanged; descriptors + wrappers inline away).
 
 ## Log
 

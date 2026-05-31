@@ -45,6 +45,9 @@ esac
 PY="${PYTHON3:-$(command -v python3 2>/dev/null || true)}"
 [[ -n "$PY" && -x "$PY" ]] || { print -r -- "cursor-stats: python3 not found" >&2; exit 2; }
 
+# Heredoc-piped Python has no __file__, so hand it this script's dir to import
+# the sibling _stats_history.py helper (${0:A:h} = absolute dirname in zsh).
+export CBTOY_SCRIPT_DIR="${0:A:h}"
 "$PY" <<'PY'
 import datetime as dt
 import json
@@ -54,6 +57,9 @@ import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
+
+sys.path.insert(0, os.environ.get("CBTOY_SCRIPT_DIR", "."))
+import _stats_history as _hist  # shared rolling-history helpers (Fowler audit #8)
 
 
 def eprint(msg: str) -> None:
@@ -412,17 +418,10 @@ def fetch_events(cookie_header: str, start_ms: int, end_ms: int) -> tuple[dict[s
 
 
 def load_history() -> dict:
-    if not hist_file.is_file():
-        return {}
-    try:
-        data = json.loads(hist_file.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        eprint("history file corrupted, starting fresh")
-        return {}
-    if not isinstance(data, dict):
-        return {}
+    # Shared corrupt-safe read, then coerce each entry to {"tk": int} since
+    # cursor stores only token counts (drop malformed keys/values).
     out = {}
-    for k, v in data.items():
+    for k, v in _hist.load_history(hist_file).items():
         if not isinstance(k, str) or not isinstance(v, dict):
             continue
         tk = v.get("tk", 0)
@@ -434,13 +433,7 @@ def load_history() -> dict:
 
 
 def save_history(history: dict) -> None:
-    hist_file.parent.mkdir(parents=True, exist_ok=True)
-    tmp = hist_file.with_suffix(".json.tmp")
-    try:
-        tmp.write_text(json.dumps(history, indent=2), encoding="utf-8")
-        tmp.replace(hist_file)
-    except OSError as e:
-        eprint(f"could not write history: {e}")
+    _hist.save_history(hist_file, history)
 
 
 today = dt.date.today()
@@ -473,9 +466,7 @@ else:
     eprint("no Keychain session token (service=%s account=%s)" % (kc_service, kc_account))
 
 # Prune to 30 calendar days (inclusive window ending today)
-sorted_dates = sorted(history.keys(), reverse=True)
-keep = set(sorted_dates[:30])
-history = {k: v for k, v in history.items() if k in keep}
+history = _hist.prune_history(history, 30)
 
 save_history(history)
 

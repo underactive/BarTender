@@ -834,30 +834,48 @@ static hero_amount_t make_hero_amount(lv_obj_t *parent)
 // both shown, with the caption text set. The caller then fills the number via
 // set_hero_amount() or anim_count_up(h->num, ...). Because this is the only way
 // the pair is positioned, the caption can never drift from the number again.
-static void place_hero_amount(hero_amount_t *h, const ui_rect_t *hero, const char *caption)
+// Font/offset descriptor for a hero_amount placement — the only things that
+// differ between the page hero and the summary hero (Fowler audit: parallel
+// functions). dy values are relative to hero->y.
+typedef struct {
+    const lv_font_t *cap_font;
+    int              cap_dy;
+    const lv_font_t *num_font;
+    int              num_pad_top;
+    int              num_dy;
+} hero_style_t;
+
+static void place_hero_styled(hero_amount_t *h, const ui_rect_t *hero,
+                              const char *caption, const hero_style_t *s)
 {
     lv_obj_clear_flag(h->caption, LV_OBJ_FLAG_HIDDEN);
     lv_label_set_text(h->caption, caption);
-    lv_obj_set_style_text_font(h->caption, &lv_font_montserrat_12, 0);
-    lv_obj_set_pos(h->caption, hero->x + 12, hero->y + 2);
+    lv_obj_set_style_text_font(h->caption, s->cap_font, 0);
+    lv_obj_set_pos(h->caption, hero->x + 12, hero->y + s->cap_dy);
     lv_obj_clear_flag(h->num, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_set_style_text_font(h->num, &font_lemonmilk_48, 0);
-    lv_obj_set_style_pad_top(h->num, -8, 0);
-    lv_obj_set_pos(h->num, hero->x + 12, hero->y + 28);
+    lv_obj_set_style_text_font(h->num, s->num_font, 0);
+    lv_obj_set_style_pad_top(h->num, s->num_pad_top, 0);
+    lv_obj_set_pos(h->num, hero->x + 12, hero->y + s->num_dy);
+}
+
+static void place_hero_amount(hero_amount_t *h, const ui_rect_t *hero, const char *caption)
+{
+    static const hero_style_t s = {
+        .cap_font = &lv_font_montserrat_12, .cap_dy = 2,
+        .num_font = &font_lemonmilk_48, .num_pad_top = -8, .num_dy = 28,
+    };
+    place_hero_styled(h, hero, caption, &s);
 }
 
 // Summary hero: lemonmilk-36 + comma glyph — largest size that fits 11-char counts on 240px.
 static void place_summary_hero_amount(hero_amount_t *h, const ui_rect_t *hero,
                                         const char *caption)
 {
-    lv_obj_clear_flag(h->caption, LV_OBJ_FLAG_HIDDEN);
-    lv_label_set_text(h->caption, caption);
-    lv_obj_set_style_text_font(h->caption, &font_lemonmilk_23, 0);
-    lv_obj_set_pos(h->caption, hero->x + 12, hero->y - 8);
-    lv_obj_clear_flag(h->num, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_set_style_text_font(h->num, &font_lemonmilk_36, 0);
-    lv_obj_set_style_pad_top(h->num, -6, 0);
-    lv_obj_set_pos(h->num, hero->x + 12, hero->y + 22);
+    static const hero_style_t s = {
+        .cap_font = &font_lemonmilk_23, .cap_dy = -8,
+        .num_font = &font_lemonmilk_36, .num_pad_top = -6, .num_dy = 22,
+    };
+    place_hero_styled(h, hero, caption, &s);
 }
 
 static void hide_hero_amount(hero_amount_t *h)
