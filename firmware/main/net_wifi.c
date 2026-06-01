@@ -7,6 +7,18 @@
 // it only sets two single-word flags and pokes the mgr task. This keeps the
 // documented lock-free `s_connected` invariant intact and keeps every NVS
 // write + scan off the event task (an NVS/scan stall there blocks the stack).
+//
+// LOCK-FREE INVARIANT PATTERN:
+//   Single-word volatile variables with one sole writer and one or more readers
+//   are safe without mutexes on Xtensa/RISC-V (single-word stores are atomic,
+//   no tearing). The discipline is:
+//     1. Writer = exactly ONE task (documented per variable).
+//     2. Reader(s) = documented tasks that only read, never write.
+//     3. No mutex or lock is added — doing so would defeat the purpose of
+//        keeping event handlers lightweight.
+//   If you add a new shared variable, follow this pattern and document writers/
+//   readers inline. Do NOT wrap in a mutex unless the data type requires it
+//   (e.g., multi-word structs → use a mutex or copy-by-value).
 #include "net_wifi.h"
 #include "config_store.h"
 #include "ui.h"
@@ -62,7 +74,7 @@ static int               s_skip_n;
 
 // Copy printable ASCII only (the LCD font has no glyphs outside 0x20-0x7E);
 // non-ASCII SSID bytes → '?'. Truncates to fit. Keeps status text legible.
-static void san(const char *in, char *out, size_t n)
+static void sanitize_ssid(const char *in, char *out, size_t n)
 {
     size_t o = 0;
     for (; in && *in && o + 1 < n; in++)
@@ -73,7 +85,7 @@ static void san(const char *in, char *out, size_t n)
 static void status_ssid(const char *fmt, const char *ssid)
 {
     char clean[24], line[64];
-    san(ssid, clean, sizeof clean);
+    sanitize_ssid(ssid, clean, sizeof clean);
     snprintf(line, sizeof line, fmt, clean);
     ui_set_status(line);
 }

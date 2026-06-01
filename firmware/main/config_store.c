@@ -42,7 +42,7 @@ static size_t get_str(const char *key, char *buf, size_t n, const char *dflt)
 // Any higher version means a newer firmware wrote it — reject to avoid misparse.
 #define WIFI_BLOB_VERSION  1u
 
-static void blob_init_empty(wifi_creds_t *w)
+static void init_wifi_blob_empty(wifi_creds_t *w)
 {
     memset(w, 0, sizeof *w);
     w->magic          = CFG_WIFI_BLOB_MAGIC;
@@ -75,8 +75,11 @@ static bool blob_load(wifi_creds_t *w)
     return true;
 }
 
-// One nvs_set_blob + nvs_commit => an LRU rotate/evict is atomic (a torn write
-// leaves the prior valid blob, never a half record).
+// Save the remembered-WiFi blob. One nvs_set_blob + nvs_commit => an LRU
+// rotate/evict is atomic (a torn write leaves the prior valid blob, never a
+// half record).
+// @note This function stamps struct_version before writing so newly saved blobs
+// are always recognised on read-back.
 static bool blob_save(const wifi_creds_t *w)
 {
     // Stamp the current version before writing so newly saved blobs are always
@@ -104,7 +107,7 @@ static void migrate_legacy_wifi(void)
     char ssid[CFG_SSID_MAX], pass[CFG_PASS_MAX];
     if (get_str("ssid", ssid, sizeof ssid, NULL) > 0) {
         get_str("pass", pass, sizeof pass, NULL);
-        blob_init_empty(&w);
+        init_wifi_blob_empty(&w);
         strlcpy(w.e[0].ssid, ssid, sizeof w.e[0].ssid);
         strlcpy(w.e[0].pass, pass, sizeof w.e[0].pass);
         w.count = 1;
@@ -113,7 +116,7 @@ static void migrate_legacy_wifi(void)
     } else {
         // Fresh chip / unprovisioned: write the empty blob so later reads hit
         // the fast valid-blob path instead of re-running this every boot.
-        blob_init_empty(&w);
+        init_wifi_blob_empty(&w);
         blob_save(&w);
     }
 }
@@ -200,7 +203,7 @@ bool config_store_wifi_add_or_update(const char *ssid, const char *pass)
     if (pass && strnlen(pass, CFG_PASS_MAX) >= CFG_PASS_MAX) return false;
 
     wifi_creds_t w;
-    if (!blob_load(&w)) blob_init_empty(&w);
+    if (!blob_load(&w)) init_wifi_blob_empty(&w);
 
     wifi_entry_t ne;
     memset(&ne, 0, sizeof ne);

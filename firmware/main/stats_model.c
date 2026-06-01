@@ -9,8 +9,10 @@
 
 static const char *TAG = "stats";
 
-// Fix K: renamed from cpy() to json_str_copy() for clarity.
-static void json_str_copy(char *dst, size_t n, const cJSON *s)
+// Safely copy a cJSON string value into dst, NUL-terminating on first call
+// and using strlcpy for bounded copy. Returns nothing (void) since the
+// caller always passes a pre-zeroed buffer.
+static void copy_json_string_safe(char *dst, size_t n, const cJSON *s)
 {
     dst[0] = '\0';
     if (cJSON_IsString(s) && s->valuestring) {
@@ -29,14 +31,17 @@ static int32_t i32_clamp(double v)
     return (int32_t)v;
 }
 
-// Fix J: use exact double boundaries matching INT64_MIN/INT64_MAX (2^63).
+// Exact double boundaries matching INT64_MIN/INT64_MAX (±2^63).
 // The previous approximation (-9.2e18 / 9.2e18) misclassified values in
 // the gap between 9.2e18 and the true limit 9223372036854775808.0.
+#define INT64_MIN_AS_DOUBLE  (-9223372036854775808.0)
+#define INT64_MAX_AS_DOUBLE   (9223372036854775808.0)
+
 static int64_t i64_clamp(double v)
 {
     if (isnan(v)) return 0;
-    if (v < -9223372036854775808.0) return INT64_MIN;
-    if (v >=  9223372036854775808.0) return INT64_MAX;
+    if (v < INT64_MIN_AS_DOUBLE) return INT64_MIN;
+    if (v >= INT64_MAX_AS_DOUBLE) return INT64_MAX;
     return (int64_t)v;
 }
 
@@ -294,26 +299,26 @@ stats_parse_t stats_model_parse(const char *body, stats_t *out)
     // (v2 = v1 + optional `cost` block, strict superset). A v3+ schema bump
     // must still be rejected, not rendered as best-effort garbage.
     if (out->v != 1 && out->v != 2) { cJSON_Delete(in); return STATS_PARSE_BAD; }
-    json_str_copy(out->ts, sizeof out->ts, ts);
+    copy_json_string_safe(out->ts, sizeof out->ts, ts);
 
     if (cJSON_IsArray(ps)) {
         const cJSON *e;
         cJSON_ArrayForEach(e, ps) {
             if (out->n >= STATS_MAX_PROVIDERS) break;
             stats_provider_t *p = &out->p[out->n];
-            json_str_copy(p->id, sizeof p->id, cJSON_GetObjectItemCaseSensitive(e, "id"));
+            copy_json_string_safe(p->id, sizeof p->id, cJSON_GetObjectItemCaseSensitive(e, "id"));
             const cJSON *ok = cJSON_GetObjectItemCaseSensitive(e, "ok");
             p->ok = cJSON_IsTrue(ok);
             // p/pr/s/sr are absent on !ok entries — handle gracefully.
             const cJSON *pp = cJSON_GetObjectItemCaseSensitive(e, "p");
             if (cJSON_IsNumber(pp)) { p->primary.has = true; p->primary.pct = f_sanitize(pp->valuedouble); }
-            json_str_copy(p->primary.reset, sizeof p->primary.reset, cJSON_GetObjectItemCaseSensitive(e, "pr"));
+            copy_json_string_safe(p->primary.reset, sizeof p->primary.reset, cJSON_GetObjectItemCaseSensitive(e, "pr"));
             const cJSON *sp = cJSON_GetObjectItemCaseSensitive(e, "s");
             if (cJSON_IsNumber(sp)) { p->secondary.has = true; p->secondary.pct = f_sanitize(sp->valuedouble); }
-            json_str_copy(p->secondary.reset, sizeof p->secondary.reset, cJSON_GetObjectItemCaseSensitive(e, "sr"));
+            copy_json_string_safe(p->secondary.reset, sizeof p->secondary.reset, cJSON_GetObjectItemCaseSensitive(e, "sr"));
             const cJSON *tp = cJSON_GetObjectItemCaseSensitive(e, "t");
             if (cJSON_IsNumber(tp)) { p->tertiary.has = true; p->tertiary.pct = f_sanitize(tp->valuedouble); }
-            json_str_copy(p->tertiary.reset, sizeof p->tertiary.reset, cJSON_GetObjectItemCaseSensitive(e, "tr"));
+            copy_json_string_safe(p->tertiary.reset, sizeof p->tertiary.reset, cJSON_GetObjectItemCaseSensitive(e, "tr"));
 
             parse_cost(e, p);
             parse_pi(e, p);

@@ -58,6 +58,9 @@ if [[ -z "$CODEXBAR_BIN" || ! -x "$CODEXBAR_BIN" ]]; then
   exit 1
 fi
 export CBAR_CONFIG="${CODEXBAR_CONFIG:-$HOME/.codexbar/config.json}"
+# Space-padded for membership test. Default 'codex' is included because it's
+# the cheapest/fastest to query (local CLI, no network fetch), so it always
+# runs even when other providers are missing.
 CLI_PROVIDERS=" ${${CBAR_CLI_PROVIDERS:-codex}//,/ } "   # space-padded for membership test
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/cbar.XXXXXX")" || { err "mktemp failed"; exit 1; }

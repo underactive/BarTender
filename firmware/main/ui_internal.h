@@ -28,7 +28,7 @@ extern const lv_font_t font_lemonmilk_23;
 #define ROW_TXT_X    48          // name/bar start (right of the icon column)
 // Per-provider page watermark: 32px icon at 10x, top-right, gaussian-blurred.
 #define PAGE_BG_ICON_SCALE   (256 * 10)   // LVGL image scale: 256 == 1.0x
-#define PAGE_BG_BLUR_RADIUS  67
+#define PAGE_BG_BLUR_RADIUS  67        // chosen for visual balance at 10x scale
 #define PAGE_BG_ICON_OPA     ((lv_opa_t)((255 * 23) / 100))  /* ~23%; no LV_OPA_23 */
 
 #define NAV_HIST_PTS STATS_HIST_MAX   // chart points == payload schema cap,
@@ -94,11 +94,11 @@ typedef enum {
 } provider_kind_t;
 
 typedef struct {
-    char id[STATS_ID_MAX];
-    bool seen;
-    bool has_sig;
-    uint32_t sig;
-    int64_t last_change_ms;
+    char               id[STATS_ID_MAX];
+    bool               seen;      // seen this cycle
+    bool               has_sig;   // has a valid sig (not all-zero)
+    uint32_t           sig;       // hash of provider id for comparison
+    int64_t            last_change_ms;
 } saver_activity_t;
 
 typedef struct { int x, y, w, h; } ui_rect_t;

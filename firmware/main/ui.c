@@ -29,7 +29,9 @@ struct ui_state st;
 // call from ui_handle_input off ui_task — no LVGL, mutate only st.scroll under
 // s_mtx, same discipline as the rest of the nav state) ────────────────────────
 
-// How many provider rows fit on screen below the title/status band.
+// Returns the number of provider rows that fit on screen below the title/
+// status band ("vis" = visible). Pure read of st + cached s_scr_h; safe
+// to call from ui_handle_input off the UI task.
 int summary_vis_rows(void)
 {
     const ui_page_grid_t g = ui_grid_from_height(s_scr_w, s_scr_h);
@@ -60,7 +62,8 @@ int summary_provider_at(int visible_idx)
     return -1;
 }
 
-// Pin st.scroll into [0, max(0, visible_count - visible_rows)].
+// Ensures scroll position stays within valid bounds for the visible
+// provider list: clamps to [0, max(0, visible_count - visible_rows)].
 void clamp_scroll(void)
 {
     int max = summary_visible_count() - summary_vis_rows();
@@ -69,8 +72,12 @@ void clamp_scroll(void)
     if (st.scroll < 0)    st.scroll = 0;
 }
 
-// Tap y -> provider index (accounting for compact visible-list scroll), or -1
-// on a miss / the inter-row gap. MUST mirror summary render geometry.
+// Translate a screen Y coordinate into a provider stats.p[] index, or -1
+// on a miss (outside content area, in the inter-row gap, or on header rows).
+// Accounts for compact visible-list scroll: hidden providers don't consume
+// slots, so the mapping goes through summary_provider_at() to bridge the
+// visible-slot space to the underlying stats.p[] array. MUST mirror
+// summary render geometry exactly.
 int summary_hit_test(int y)
 {
     const ui_page_grid_t g = ui_grid_from_height(s_scr_w, s_scr_h);
@@ -256,6 +263,57 @@ static card_kind_t next_card_for(card_kind_t cur, const stats_provider_t *p)
                               : (p->has_cost ? CARD_COST : CARD_LIMITS);
 }
 
+// ---- nav-level handlers (extracted to keep ui_handle_input flat) ----------
+
+// Handle an input event while on the provider summary list.
+// Returns UI_INPUT_PASS for events that should propagate (LONG_PRESS → portal),
+// UI_INPUT_CONSUMED otherwise. Mutates `st` under s_mtx.
+static ui_input_result_t handle_summary_event(const app_evt_t *ev)
+{
+    if (ev->type == APP_EVT_SWIPE_UP) {           // page down the list
+        st.scroll += summary_vis_rows();
+        clamp_scroll();
+        st.dirty = true;
+    } else if (ev->type == APP_EVT_SWIPE_DOWN) {  // lock the UI
+        st.locked = true;
+        st.dirty = true;
+    } else if (ev->type == APP_EVT_TAP) {
+        int pi = summary_hit_test(ev->y);
+        if (pi >= 0) {
+            const stats_provider_t *tp = &st.stats.p[pi];
+            st.nav_provider = pi;
+            strlcpy(st.nav_id, tp->id, sizeof st.nav_id);
+            st.nav_card = initial_card_for(tp);
+            st.nav_level = NAV_PAGE;
+            st.dirty = true;
+        }
+    } else if (ev->type == APP_EVT_LONG_PRESS) {
+        return UI_INPUT_PASS;                      // → enter_portal()
+    }
+    /* SWIPE_LEFT at the root: swallow (CONSUMED, no-op) */
+    return UI_INPUT_CONSUMED;
+}
+
+// Handle an input event while viewing a provider page.
+static void handle_page_event(const app_evt_t *ev)
+{
+    if (ev->type == APP_EVT_TAP) {
+        // All providers: 2-card toggle. provider_has_both_cards() decides
+        // whether the "no cost data" fallback applies (see next_card_for).
+        const stats_provider_t *np = &st.stats.p[st.nav_provider];
+        st.nav_card = next_card_for(st.nav_card, np);
+        st.dirty = true;
+    } else if (ev->type == APP_EVT_SWIPE_DOWN) {   // lock from provider page
+        st.locked = true;
+        st.dirty = true;
+    } else if (ev->type == APP_EVT_SWIPE_LEFT) {   // back to the list
+        st.nav_level = NAV_SUMMARY;
+        led_summary_reset();
+        st.dirty = true;
+    }
+    /* swipe up/long-press on a page: swallowed (CONSUMED) */
+}
+
 // Navigation state machine (ARCHITECTURE.md decision #9: nav lives in ui.c).
 // Runs on the CALLER's task (fetch_task), mutating only `st` under s_mtx —
 // exactly like the setters above; no LVGL call here (summary_hit_test /
@@ -287,45 +345,11 @@ ui_input_result_t ui_handle_input(const app_evt_t *ev)
 
     switch (st.nav_level) {
     case NAV_SUMMARY:
-        if (ev->type == APP_EVT_SWIPE_UP) {           // page down the list
-            st.scroll += summary_vis_rows();
-            clamp_scroll();
-            st.dirty = true;
-        } else if (ev->type == APP_EVT_SWIPE_DOWN) {  // lock the UI
-            st.locked = true;
-            st.dirty = true;
-        } else if (ev->type == APP_EVT_TAP) {
-            int pi = summary_hit_test(ev->y);
-            if (pi >= 0) {
-                const stats_provider_t *tp = &st.stats.p[pi];
-                st.nav_provider = pi;
-                strlcpy(st.nav_id, tp->id, sizeof st.nav_id);
-                st.nav_card = initial_card_for(tp);
-                st.nav_level = NAV_PAGE;
-                st.dirty = true;
-            }
-        } else if (ev->type == APP_EVT_LONG_PRESS) {
-            r = UI_INPUT_PASS;                         // → enter_portal()
-        }
-        /* SWIPE_LEFT at the root: swallow (CONSUMED, no-op) */
+        r = handle_summary_event(ev);
         break;
 
     case NAV_PAGE:
-        if (ev->type == APP_EVT_TAP) {
-            // All providers: 2-card toggle. provider_has_both_cards() decides
-            // whether the "no cost data" fallback applies (see next_card_for).
-            const stats_provider_t *np = &st.stats.p[st.nav_provider];
-            st.nav_card = next_card_for(st.nav_card, np);
-            st.dirty = true;
-        } else if (ev->type == APP_EVT_SWIPE_DOWN) {   // lock from provider page
-            st.locked = true;
-            st.dirty = true;
-        } else if (ev->type == APP_EVT_SWIPE_LEFT) {   // back to the list
-            st.nav_level = NAV_SUMMARY;
-            led_summary_reset();
-            st.dirty = true;
-        }
-        /* swipe up/long-press on a page: swallowed (CONSUMED) */
+        handle_page_event(ev);
         break;
     }
 
