@@ -35,16 +35,6 @@ ui_rect_t ui_grid_span(const ui_page_grid_t *g, int col, int row, int cols, int 
     };
 }
 
-int summary_vis_rows_from_grid(const ui_page_grid_t *g)
-{
-    int rows = g->content.h / g->cell_h;
-    if (rows < 1) rows = 1;
-    if (rows > ROWS) rows = ROWS;
-    rows -= UI_SUMMARY_TOP_ROWS;
-    if (rows < 0) rows = 0;
-    return rows;
-}
-
 // ── provider metric signature (screensaver activity hashing) ─────────────────
 bool provider_has_limits_card(const stats_provider_t *p)
 {

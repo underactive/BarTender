@@ -23,7 +23,7 @@ extern const lv_font_t font_lemonmilk_23;
 // ── Tunables / layout constants ──────────────────────────────────────────────
 #define ROWS         STATS_MAX_PROVIDERS
 #define ROW_Y0       20
-#define ROW_H        48          // icon column + name line + bar/% line
+#define ROW_H        39          // icon column + name line + bar/% line
 #define ROW_ICON_PX  32          // matches scripts/build/gen-provider-icons.py
 #define ROW_TXT_X    48          // name/bar start (right of the icon column)
 // Per-provider page watermark: 32px icon at 10x, top-right, gaussian-blurred.
@@ -33,6 +33,10 @@ extern const lv_font_t font_lemonmilk_23;
 
 #define NAV_HIST_PTS STATS_HIST_MAX   // chart points == payload schema cap,
                                       // NOT a UI choice (keep them equal)
+
+// Pixel offset per render frame for the automatic summary-page ticker scroll.
+// At ~60-100 fps this gives a smooth ~36-60 px/s scroll rate.
+#define AUTO_SCROLL_DELTA  1.2f
 
 #define SCREENSAVER_IDLE_MS     (5LL * 60LL * 1000LL)
 #define SCREENSAVER_ACTIVE_MS   (8LL * 60LL * 60LL * 1000LL)
@@ -158,7 +162,7 @@ extern struct ui_state {
                                 // refresh that REORDERS providers can't
                                 // silently swap which one the page shows
     card_kind_t nav_card;       // which page is showing in NAV_PAGE
-    int         scroll;         // NAV_SUMMARY: index of the top visible row
+    float       auto_scroll_px; // NAV_SUMMARY: pixel offset for automatic ticker scroll
     // Screensaver state: activity tracking, idle entry/exit, fade/dim state.
     saver_activity_t activity[STATS_MAX_PROVIDERS];
     bool saver_active, saver_dim_only;
@@ -167,7 +171,7 @@ extern struct ui_state {
     int saved_nav_provider;
     char saved_nav_id[STATS_ID_MAX];
     card_kind_t saved_nav_card;
-    int saved_scroll;
+
     char saver_id[STATS_ID_MAX];
     card_kind_t saver_card;
     int64_t last_input_ms, saver_next_cycle_ms;
@@ -211,7 +215,7 @@ static inline int clampi(int v, int lo, int hi)
 // ui_format.c — pure helpers (no st, no LVGL widget globals).
 ui_page_grid_t ui_grid_from_height(int screen_w, int screen_h);
 ui_rect_t ui_grid_span(const ui_page_grid_t *g, int col, int row, int cols, int rows);
-int summary_vis_rows_from_grid(const ui_page_grid_t *g);
+
 bool provider_has_limits_card(const stats_provider_t *p);
 int pct_tenths(bool has, float v);
 uint32_t hash_mix_u32(uint32_t h, uint32_t v);
@@ -233,11 +237,9 @@ void up_id(char *dst, size_t n, const char *src);
 int extra_pct(const stats_provider_t *p);
 void i64_hist_to_i32(int32_t *dst, const int64_t *src, int n);
 
-// ui.c — nav/summary geometry helpers (read st + cached size; mutate st.scroll).
-int summary_vis_rows(void);
+// ui.c — nav/summary geometry helpers (read st + cached size; use st.auto_scroll_px).
 int summary_visible_count(void);
 int summary_provider_at(int visible_idx);
-void clamp_scroll(void);
 int summary_hit_test(int y);
 int64_t summary_tok_today_total(void);
 

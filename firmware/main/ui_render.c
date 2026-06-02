@@ -16,7 +16,7 @@
 #include <stdio.h>
 
 // ── Widget globals (created once, mutated only on ui_task) ───────────────────
-static lv_obj_t *scr, *title, *status, *prov_box, *summary_top, *boot_img, *lock_badge;
+static lv_obj_t *scr, *title, *status, *prov_box, *summary_top, *boot_img, *lock_badge, *footer_bg;
 static lv_obj_t *row_id[ROWS], *row_bar[ROWS], *row_val[ROWS], *row_icon[ROWS], *row_bar_w[ROWS];
 
 // Card widget groups (declared extern in ui_internal.h; defined here).
@@ -28,7 +28,7 @@ hero_amount_t cost_hero, lim_hero;
 static nav_level_t s_prev_nav_level    = NAV_SUMMARY;
 static int         s_prev_nav_provider = -1;
 static card_kind_t s_prev_nav_card     = CARD_COST;
-static int         s_prev_row_bar[ROWS];   // last fill value per summary slot; -1 = unset
+
 
 // Cached screen size (declared extern in ui_internal.h; defined here; set in
 // build_widgets, read by ui.c nav helpers off ui_task — NO LVGL call off-task).
@@ -123,7 +123,7 @@ void build_widgets(void)
     const int H = lv_display_get_vertical_resolution(lv_display_get_default());
     s_scr_w = W;
     s_scr_h = H;
-    memset(s_prev_row_bar, -1, sizeof s_prev_row_bar);
+
 
     // Build order == paint order: summary chrome first, then the grid overlay,
     // then the two full-screen card panels (which must paint on top).
@@ -169,13 +169,13 @@ static void build_summary_widgets(int W)
         lv_obj_set_style_text_font(row_id[i], &lv_font_montserrat_14, 0);
         // Line 1: provider name, right of the icon column (long ids like
         // OPENROUTER no longer clip).
-        lv_obj_set_pos(row_id[i], ROW_TXT_X, y + 6);
+        lv_obj_set_pos(row_id[i], ROW_TXT_X, y + 2);
         lv_obj_set_width(row_id[i], W - ROW_TXT_X - 8);
 
         // Line 2: bar (spans to just before the % column) + % (right).
         row_bar[i] = lv_bar_create(scr);
         lv_obj_set_size(row_bar[i], val_x - ROW_TXT_X - 8, 7);
-        lv_obj_set_pos(row_bar[i], ROW_TXT_X, y + 30);
+        lv_obj_set_pos(row_bar[i], ROW_TXT_X, y + 21);
         lv_bar_set_range(row_bar[i], 0, 100);
         lv_obj_set_style_bg_color(row_bar[i], lv_color_hex(0x3a3a3a), 0);
         lv_obj_set_style_bg_opa(row_bar[i], LV_OPA_COVER, 0);
@@ -184,12 +184,12 @@ static void build_summary_widgets(int W)
         row_val[i] = lv_label_create(scr);
         lv_obj_set_style_text_color(row_val[i], lv_color_hex(0xffffff), 0);
         lv_obj_set_style_text_font(row_val[i], &lv_font_montserrat_14, 0);
-        lv_obj_set_pos(row_val[i], val_x, y + 26);
+        lv_obj_set_pos(row_val[i], val_x, y + 15);
 
         // Weekly bar: 3 px tall, right under the session bar (y+30 + 7 + 2 = y+39).
         row_bar_w[i] = lv_bar_create(scr);
         lv_obj_set_size(row_bar_w[i], val_x - ROW_TXT_X - 8, 3);
-        lv_obj_set_pos(row_bar_w[i], ROW_TXT_X, y + 39);
+        lv_obj_set_pos(row_bar_w[i], ROW_TXT_X, y + 28);
         lv_bar_set_range(row_bar_w[i], 0, 100);
         lv_obj_set_style_bg_color(row_bar_w[i], lv_color_hex(0x3a3a3a), 0);
         lv_obj_set_style_bg_opa(row_bar_w[i], LV_OPA_COVER, 0);
@@ -227,6 +227,16 @@ static void build_summary_widgets(int W)
     lv_obj_set_style_text_font(lock_badge, &lv_font_montserrat_12, 0);
     lv_obj_set_style_pad_all(lock_badge, 0, 0);
     lv_obj_add_flag(lock_badge, LV_OBJ_FLAG_HIDDEN);
+
+    // Opaque footer background — blocks provider rows that extend past
+    // the content area from showing behind the status label.
+    footer_bg = lv_obj_create(scr);
+    lv_obj_set_style_bg_color(footer_bg, lv_color_hex(0x0b0b0b), 0);
+    lv_obj_set_style_bg_opa(footer_bg, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(footer_bg, 0, 0);
+    lv_obj_set_style_pad_all(footer_bg, 0, 0);
+    lv_obj_clear_flag(footer_bg, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(footer_bg, LV_OBJ_FLAG_HIDDEN);
 }
 
 // Dashed debug-grid overlay (hidden unless UI_SHOW_GRID_LINES). Extracted
@@ -616,6 +626,7 @@ static void hide_summary_chrome(void)  // hide title/status/rows before a card
     lv_obj_add_flag(status,      LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(prov_box,    LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(summary_top, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(footer_bg,   LV_OBJ_FLAG_HIDDEN);
     hide_hero_amount(&cost_hero);
     lv_obj_set_style_text_font(cost_hero.num, &font_lemonmilk_48, 0);
     lv_obj_set_style_pad_top(cost_hero.num, -8, 0);
@@ -1582,13 +1593,13 @@ static void render_summary_secondary_bar(int slot, const stats_provider_t *p)
         || rpk == PK_LMSTUDIO
         || (rpk == PK_OPENCODEGO && p->secondary.has)) {
         int wv = clampi((int)(p->secondary.pct + 0.5f), 0, 100);
-        lv_bar_set_value(row_bar_w[slot], bar_fill(wv), LV_ANIM_ON);
+        lv_bar_set_value(row_bar_w[slot], bar_fill(wv), LV_ANIM_OFF);
         lv_obj_set_style_bg_color(row_bar_w[slot], bar_color(p, p->secondary.pct), LV_PART_INDICATOR);
         update_bar_pulse(row_bar_w[slot], p->secondary.pct);
         lv_obj_clear_flag(row_bar_w[slot], LV_OBJ_FLAG_HIDDEN);
     } else if (rpk == PK_OPENROUTER && p->has_cost && p->extra_limit_c > 0) {
         int xv = extra_pct(p);
-        lv_bar_set_value(row_bar_w[slot], bar_fill(xv), LV_ANIM_ON);
+        lv_bar_set_value(row_bar_w[slot], bar_fill(xv), LV_ANIM_OFF);
         lv_obj_set_style_bg_color(row_bar_w[slot], bar_color(p, (float)xv), LV_PART_INDICATOR);
         update_bar_pulse(row_bar_w[slot], (float)xv);
         lv_obj_clear_flag(row_bar_w[slot], LV_OBJ_FLAG_HIDDEN);
@@ -1597,26 +1608,27 @@ static void render_summary_secondary_bar(int slot, const stats_provider_t *p)
     }
 }
 
-// Render one visible summary slot: grid position, provider name + icon, primary
-// session bar + %, and the secondary bar. `slot` is the visual row index.
+// Render one visible summary row: provider name + icon, primary session bar +
+// %, and the secondary bar, positioned at pixel_y (pixel-level ticker offset).
+// `slot` is the provider index in the visible list (NOT a grid position).
 // Extracted from render() (Fowler audit).
 static void render_summary_row(int slot, const stats_provider_t *p,
-                               const ui_page_grid_t *g)
+                               int pixel_y, int W)
 {
+    const int val_x = W - 52;
     lv_obj_clear_flag(row_id[slot],  LV_OBJ_FLAG_HIDDEN);
     lv_obj_clear_flag(row_val[slot], LV_OBJ_FLAG_HIDDEN);
     {
-        const ui_rect_t r = ui_grid_span(g, 0, UI_SUMMARY_TOP_ROWS + slot, 2, 1);
         bool cu_warn = cursor_sess_refresh_needed(p);
         lv_obj_set_size(row_icon[slot], 32, 32);
-        lv_obj_set_pos(row_icon[slot], r.x + 8, r.y + 1);
-        lv_obj_set_pos(row_id[slot], r.x + ROW_TXT_X, r.y + 2);
-        lv_obj_set_width(row_id[slot], r.w - ROW_TXT_X - 8);
-        lv_obj_set_pos(row_bar[slot], r.x + ROW_TXT_X, r.y + 21);
-        lv_obj_set_size(row_bar[slot], r.w - ROW_TXT_X - 60, 5);
-        lv_obj_set_pos(row_val[slot], r.x + r.w - 52, r.y + 15);
-        lv_obj_set_pos(row_bar_w[slot], r.x + ROW_TXT_X, r.y + 28);
-        lv_obj_set_size(row_bar_w[slot], r.w - ROW_TXT_X - 60, 2);
+        lv_obj_set_pos(row_icon[slot], 8, pixel_y + (ROW_H - ROW_ICON_PX) / 2);
+        lv_obj_set_pos(row_id[slot], ROW_TXT_X, pixel_y + 2);
+        lv_obj_set_width(row_id[slot], W - ROW_TXT_X - 8);
+        lv_obj_set_pos(row_bar[slot], ROW_TXT_X, pixel_y + 21);
+        lv_obj_set_size(row_bar[slot], val_x - ROW_TXT_X - 8, 5);
+        lv_obj_set_pos(row_val[slot], val_x, pixel_y + 15);
+        lv_obj_set_pos(row_bar_w[slot], ROW_TXT_X, pixel_y + 28);
+        lv_obj_set_size(row_bar_w[slot], val_x - ROW_TXT_X - 8, 2);
         lv_label_set_text(row_id[slot], summary_provider_name(p->id));
         lv_obj_set_style_text_color(row_id[slot],
             cu_warn ? lv_color_hex(CURSOR_SESS_AMBER) : lv_color_hex(0xe8eaed), 0);
@@ -1653,10 +1665,7 @@ static void render_summary_row(int slot, const stats_provider_t *p,
         int v = clampi((int)(p->primary.pct + 0.5f), 0, 100);
         int fill = bar_fill(v);
         lv_obj_clear_flag(row_bar[slot], LV_OBJ_FLAG_HIDDEN);
-        if (fill != s_prev_row_bar[slot]) {
-            lv_bar_set_value(row_bar[slot], fill, LV_ANIM_ON);
-            s_prev_row_bar[slot] = fill;
-        }
+        lv_bar_set_value(row_bar[slot], fill, LV_ANIM_OFF);
         // Per-provider accent (Claude orange); un-themed providers keep
         // the green/amber/red usage ramp.
         lv_obj_set_style_bg_color(row_bar[slot], bar_color(p, p->primary.pct), LV_PART_INDICATOR);
@@ -1719,8 +1728,6 @@ void render(void)   // ui_task only
             st.nav_provider = j;          // follow reorder by identity
         }
     }
-    clamp_scroll();
-
     if (st.nav_level == NAV_PAGE) {
         // During screensaver transitions, led_transition_tick() drives the
         // interpolation — skip led_set_provider() while a transition is in
@@ -1783,35 +1790,20 @@ void render(void)   // ui_task only
     }
     lv_obj_add_flag(boot_img, LV_OBJ_FLAG_HIDDEN);
 
-    // Scrollable window: `vis` rows fit; st.scroll is the top visible-provider
-    // index in the compact list (hidden providers do not consume slots).
-    // ASCII-only " +N more" hint (font ships 0x20-0x7F + 0xB0 + 0x2022 only)
-    // when the list is longer than the screen, so it never looks truncated.
-    int vis  = summary_vis_rows();
-    int shown_n = summary_visible_count();
-    int more = shown_n - (st.scroll + vis);       // rows hidden BELOW current window
-    if (more < 0) more = 0;
-    char hint[24];   // "  +" + up to 11-digit %d + " more" + NUL (-Werror
-                      // format-truncation is static; size for the worst %d)
-    hint[0] = '\0';
-    if (more > 0) snprintf(hint, sizeof hint, "  +%d more", more);
+    // Provider rows start at the bottom of the I/O TOKENS hero area (grid
+    // rows 0..UI_SUMMARY_TOP_ROWS-1), so scrolled content never overlaps it.
+    int const content_y0 = g.content.y + UI_SUMMARY_TOP_ROWS * g.cell_h;
 
-    // Audit State§HIGH/MED: compose the age suffix HERE from st.fetched_ms
-    // (a local buffer — never mutate shared st.status). This removes the old
-    // save/restore-under-mutex hack and the freshness gap where the counter
-    // froze ~10 s after a fetch.
+    // Automatic ticker: pixel-by-pixel scroll with looping. The list cycles
+    // continuously — no "+N more" hint since there's no end.
     // --- Footer Widget (Age Suffix) ---
     if (st.fetched_ms > 0) {
         int age = (int)((esp_timer_get_time() / 1000 - st.fetched_ms) / 1000);
         if (age < 0) age = 0;
-        char line[128];  // st.status(<=63) + " • updated <int>s ago" + hint
+        char line[128];
         snprintf(line, sizeof line,
-                 "%s " LV_SYMBOL_BULLET " updated %ds ago%s",
-                 st.status, age, hint);
-        lv_label_set_text(status, line);
-    } else if (more > 0) {
-        char line[96];   // st.status(<=63) + hint(<=23) + NUL
-        snprintf(line, sizeof line, "%s%s", st.status, hint);
+                 "%s " LV_SYMBOL_BULLET " updated %ds ago",
+                 st.status, age);
         lv_label_set_text(status, line);
     } else {
         lv_label_set_text(status, st.status);
@@ -1819,10 +1811,14 @@ void render(void)   // ui_task only
 
     {
         const ui_rect_t top_r = ui_grid_span(&g, 0, 0, 2, UI_SUMMARY_TOP_ROWS);
-        lv_obj_set_pos(summary_top, top_r.x, top_r.y);
-        lv_obj_set_size(summary_top, top_r.w, top_r.h);
+        lv_obj_set_pos(summary_top, 0, 0);
+        lv_obj_set_size(summary_top, s_scr_w, content_y0);
         if (st.fetched_ms > 0 && st.stats.n > 0) {
             lv_obj_clear_flag(summary_top, LV_OBJ_FLAG_HIDDEN);
+            // Opaque background blocks any provider rows that overlap the
+            // hero area from showing through the transparent container.
+            lv_obj_set_style_bg_opa(summary_top, LV_OPA_COVER, 0);
+            lv_obj_set_style_bg_color(summary_top, lv_color_hex(0x0b0b0b), 0);
             cost_hero_set_parent(scr);
             place_summary_hero_amount(&cost_hero, &top_r, "I/O TOKENS");
             char tk[32];
@@ -1832,25 +1828,57 @@ void render(void)   // ui_task only
             lv_obj_add_flag(summary_top, LV_OBJ_FLAG_HIDDEN);
         }
     }
+    // Opaque footer background blocks provider rows that extend past the
+    // content area from showing behind the status label.
+    lv_obj_set_pos(footer_bg, footer_slot.x, footer_slot.y);
+    lv_obj_set_size(footer_bg, footer_slot.w, footer_slot.h);
+    lv_obj_clear_flag(footer_bg, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(status);
+
     render_lock_badge(st.locked, s_scr_w - 18, 4);
-    for (int i = 0; i < ROWS; i++) {
-        int pi = summary_provider_at(st.scroll + i); // i = visual slot, pi = stats.p[] index
-        if (i >= vis || pi < 0) {
-            // Audit (Frontend§MED): stop any infinite pulse animations before
-            // hiding the slot. hide_summary_chrome() does this on card entry,
-            // but a row that simply scrolls off-screen took the HIDDEN path
-            // below and kept its ≥90% bar-pulse / cursor-amber anim running on
-            // an invisible widget — wasted timer/CPU churn until reuse.
-            update_bar_pulse(row_bar[i],   0.0f);
-            update_bar_pulse(row_bar_w[i], 0.0f);
-            update_cursor_sess_pulse(row_icon[i], false);
-            lv_obj_add_flag(row_id[i],   LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(row_bar[i],  LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(row_val[i],  LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(row_icon[i], LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(row_bar_w[i], LV_OBJ_FLAG_HIDDEN);
-            continue;
+    // True ticker sequence: render enough repeated row instances to cover
+    // the viewport, then map each visible row instance to a provider via
+    // modulo. This avoids the visible seam between Cursor and Pi.
+    int count = summary_visible_count();
+    int total_h = count * ROW_H;
+    if (count <= 0 || total_h <= 0) {
+        for (int slot = 0; slot < ROWS; slot++) {
+            update_bar_pulse(row_bar[slot],   0.0f);
+            update_bar_pulse(row_bar_w[slot], 0.0f);
+            update_cursor_sess_pulse(row_icon[slot], false);
+            lv_obj_add_flag(row_id[slot],   LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(row_bar[slot],  LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(row_val[slot],  LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(row_icon[slot], LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(row_bar_w[slot], LV_OBJ_FLAG_HIDDEN);
         }
-        render_summary_row(i, &st.stats.p[pi], &g);
+        return;
+    }
+    while (st.auto_scroll_px >= (float)total_h)
+        st.auto_scroll_px -= (float)total_h;
+    const int row_shift = (int)(st.auto_scroll_px / ROW_H) % count;
+    const int pixel_shift = (int)st.auto_scroll_px % ROW_H;
+    const int viewport_h = footer_slot.y - content_y0;
+    int rows_to_draw = (viewport_h + ROW_H - 1) / ROW_H + 2;
+    if (rows_to_draw > ROWS) rows_to_draw = ROWS;
+    for (int slot = 0; slot < ROWS; slot++) {
+        // Stop any in-flight animations first (prevents stray pulses on
+        // hidden widgets).
+        update_bar_pulse(row_bar[slot],   0.0f);
+        update_bar_pulse(row_bar_w[slot], 0.0f);
+        update_cursor_sess_pulse(row_icon[slot], false);
+        // Hide slot defaults — re-shown only for visible provider rows.
+        lv_obj_add_flag(row_id[slot],   LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(row_bar[slot],  LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(row_val[slot],  LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(row_icon[slot], LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(row_bar_w[slot], LV_OBJ_FLAG_HIDDEN);
+    }
+    for (int slot = 0; slot < rows_to_draw; slot++) {
+        int pi = summary_provider_at((row_shift + slot) % count);
+        if (pi < 0) continue;
+        int y = content_y0 + slot * ROW_H - pixel_shift;
+        if (y > s_scr_h) continue;
+        render_summary_row(slot, &st.stats.p[pi], y, s_scr_w);
     }
 }

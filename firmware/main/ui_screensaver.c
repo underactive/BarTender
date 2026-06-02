@@ -133,7 +133,6 @@ void saver_step_fade_locked(int64_t now)
                 if (st.saver_next_show_summary) {
                     st.saver_show_summary = true;
                     st.nav_level = NAV_SUMMARY;
-                    st.scroll = 0;
                 } else {
                     st.saver_show_summary = false;
                     strlcpy(st.saver_id, st.saver_next_id, sizeof st.saver_id);
@@ -173,7 +172,7 @@ void saver_enter_locked(int64_t now)
     st.saved_nav_provider = st.nav_provider;
     strlcpy(st.saved_nav_id, st.nav_id, sizeof st.saved_nav_id);
     st.saved_nav_card = st.nav_card;
-    st.saved_scroll = st.scroll;
+
     st.saver_active = true;
     st.saver_show_summary = false;
     st.saver_dim_only = !saver_candidate_at(now, 0, st.saver_id, sizeof st.saver_id, &st.saver_card);
@@ -260,8 +259,6 @@ void saver_exit_locked(int64_t now)
     st.nav_provider = st.saved_nav_provider;
     strlcpy(st.nav_id, st.saved_nav_id, sizeof st.nav_id);
     st.nav_card = st.saved_nav_card;
-    st.scroll = st.saved_scroll;
     saver_start_fade_locked(st.saver_brightness, config_store_get_brightness(), now);
-    clamp_scroll();
     st.dirty = true;
 }

@@ -26,17 +26,8 @@ SemaphoreHandle_t s_shot_sem;  // binary; given by ui_task after snapshot render
 struct ui_state st;
 
 // ── scrollable-summary geometry (pure reads of st + cached s_scr_h; safe to
-// call from ui_handle_input off ui_task — no LVGL, mutate only st.scroll under
-// s_mtx, same discipline as the rest of the nav state) ────────────────────────
-
-// Returns the number of provider rows that fit on screen below the title/
-// status band ("vis" = visible). Pure read of st + cached s_scr_h; safe
-// to call from ui_handle_input off the UI task.
-int summary_vis_rows(void)
-{
-    const ui_page_grid_t g = ui_grid_from_height(s_scr_w, s_scr_h);
-    return summary_vis_rows_from_grid(&g);
-}
+// call from ui_handle_input off ui_task — no LVGL, mutate only st.auto_scroll_px
+// under s_mtx, same discipline as the rest of the nav state) ──────────────────
 
 // Summary rows are compacted over visible providers: hidden providers must not
 // consume scroll slots or tap targets, otherwise later visible providers (Pi)
@@ -62,32 +53,35 @@ int summary_provider_at(int visible_idx)
     return -1;
 }
 
-// Ensures scroll position stays within valid bounds for the visible
-// provider list: clamps to [0, max(0, visible_count - visible_rows)].
-void clamp_scroll(void)
-{
-    int max = summary_visible_count() - summary_vis_rows();
-    if (max < 0)          max = 0;
-    if (st.scroll > max)  st.scroll = max;
-    if (st.scroll < 0)    st.scroll = 0;
-}
 
-// Translate a screen Y coordinate into a provider stats.p[] index, or -1
-// on a miss (outside content area, in the inter-row gap, or on header rows).
-// Accounts for compact visible-list scroll: hidden providers don't consume
-// slots, so the mapping goes through summary_provider_at() to bridge the
-// visible-slot space to the underlying stats.p[] array. MUST mirror
-// summary render geometry exactly.
+
+// Translate a screen Y coordinate into a provider stats.p[] index using
+// the repeating row-sequence ticker, or -1 on a miss. MUST mirror the ticker
+// render geometry exactly.
 int summary_hit_test(int y)
 {
     const ui_page_grid_t g = ui_grid_from_height(s_scr_w, s_scr_h);
-    if (y < g.content.y || y >= g.content.y + g.content.h) return -1;
-    const int grid_row = (y - g.content.y) / g.cell_h;
-    if (grid_row < UI_SUMMARY_TOP_ROWS) return -1;
-    const int slot = grid_row - UI_SUMMARY_TOP_ROWS;
-    if (slot < 0 || slot >= summary_vis_rows_from_grid(&g)) return -1;
-    if ((y - g.content.y) % g.cell_h > g.cell_h - UI_SUMMARY_GAP) return -1;
-    return summary_provider_at(st.scroll + slot);
+    int content_y0 = g.content.y + UI_SUMMARY_TOP_ROWS * g.cell_h;
+    const ui_rect_t footer_slot = {
+        .x = g.content.x,
+        .y = g.content.y + g.content.h,
+        .w = g.content.w,
+        .h = UI_CHROME_BOTTOM,
+    };
+    if (y < content_y0 || y >= footer_slot.y) return -1;
+    int count = summary_visible_count();
+    int total_h = count * ROW_H;
+    if (count <= 0 || total_h <= 0) return -1;
+    float scroll_px = st.auto_scroll_px;
+    while (scroll_px >= (float)total_h)
+        scroll_px -= (float)total_h;
+    const int row_shift = (int)(scroll_px / ROW_H) % count;
+    const int pixel_shift = (int)scroll_px % ROW_H;
+    int rel = y - content_y0 + pixel_shift;
+    int slot = rel / ROW_H;
+    if (slot < 0) return -1;
+    if (rel % ROW_H >= ROW_H - 8) return -1;
+    return summary_provider_at((row_shift + slot) % count);
 }
 
 // Sum of today's tokens across all summary-visible providers.
@@ -137,6 +131,12 @@ static void ui_task(void *arg)
                 led_transition_enable();
             }
             saver_advance_locked(now);
+            // Automatic ticker scroll on the summary page: increment pixel
+            // offset every frame and trigger a re-render for smooth animation.
+            if (st.mode == UI_STATS && st.nav_level == NAV_SUMMARY) {
+                st.auto_scroll_px += AUTO_SCROLL_DELTA;
+                st.dirty = true;
+            }
             // Re-render every 10 s so the "updated Ns ago" counter ticks even
             // without new data. render() recomputes the age from st.fetched_ms,
             // so this is always accurate (no gap). Audit (Perf§MED): the age
@@ -266,14 +266,15 @@ static card_kind_t next_card_for(card_kind_t cur, const stats_provider_t *p)
 // ---- nav-level handlers (extracted to keep ui_handle_input flat) ----------
 
 // Handle an input event while on the provider summary list.
-// Returns UI_INPUT_PASS for events that should propagate (LONG_PRESS → portal),
-// UI_INPUT_CONSUMED otherwise. Mutates `st` under s_mtx.
+// Touch scrolling is replaced by automatic pixel-ticker scroll. TAP opens
+// a provider page; SWIPE_DOWN locks; SWIPE_UP does nothing (unlocking is
+// handled before dispatch in ui_handle_input). LONG_PRESS passes through
+// to the portal handler.
+// Returns UI_INPUT_PASS for LONG_PRESS, UI_INPUT_CONSUMED otherwise.
 static ui_input_result_t handle_summary_event(const app_evt_t *ev)
 {
-    if (ev->type == APP_EVT_SWIPE_UP) {           // page down the list
-        st.scroll += summary_vis_rows();
-        clamp_scroll();
-        st.dirty = true;
+    if (ev->type == APP_EVT_SWIPE_UP) {
+        // Consumed — no-op: auto-ticker replaces touch scrolling.
     } else if (ev->type == APP_EVT_SWIPE_DOWN) {  // lock the UI
         st.locked = true;
         st.dirty = true;
@@ -316,8 +317,8 @@ static void handle_page_event(const app_evt_t *ev)
 
 // Navigation state machine (ARCHITECTURE.md decision #9: nav lives in ui.c).
 // Runs on the CALLER's task (fetch_task), mutating only `st` under s_mtx —
-// exactly like the setters above; no LVGL call here (summary_hit_test /
-// clamp_scroll are pure reads/writes of `st` + the cached height).
+// exactly like the setters above; no LVGL call here (summary_hit_test
+// reads st.auto_scroll_px + the cached height).
 // Returns UI_INPUT_PASS ONLY for a LONG_PRESS on the summary (→ fetch.c
 // opens the add-network portal) or any event in provisioning mode. Every
 // other event is consumed by the nav machine.
