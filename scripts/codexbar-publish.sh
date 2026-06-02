@@ -238,126 +238,12 @@ cmd_set_opencodego_cookie_clipboard() {
 # is NEVER read. Cache filename schema churns (claude-v1/v2/...) — pick the
 # highest version; on ANY structural mismatch exit non-zero so the caller
 # publishes usage-only (fail-safe, never abort, never corrupt the payload).
-read -r -d '' COST_MERGE_JXA <<'EOF'
-ObjC.import('Foundation'); ObjC.import('stdlib');
-// objectForKey on a MISSING key returns a truthy JXA nil-wrapper whose .js is
-// undefined -> must test .js, not the wrapper (else missing keys read as the
-// string "undefined"). Same defensive idiom as readFile() below.
-function env(k){ var v=$.NSProcessInfo.processInfo.environment.objectForKey(k);
-  return (v && v.js!==undefined) ? String(v.js) : ''; }
-function eprint(s){ $.NSFileHandle.fileHandleWithStandardError
-  .writeData($.NSString.alloc.initWithUTF8String("cost-merge: "+s+"\n").dataUsingEncoding(4)); }
-function rf(p){ try { var s=$.NSString.stringWithContentsOfFileEncodingError(p,4,null);
-  return (s && s.js!==undefined) ? s.js : null; } catch(e){ return null; } }
-var jsonPath=env('CBPUB_JSON'); if(!jsonPath){ eprint("no CBPUB_JSON"); $.exit(2); }
-var home=env('HOME'); if(!home){ home=String($.NSHomeDirectory()); }
-var dir=env('CBPUB_COST_CACHE_DIR');
-if(!dir){ dir=home+"/Library/Caches/CodexBar/cost-usage"; }
-var fm=$.NSFileManager.defaultManager;
-var names=fm.contentsOfDirectoryAtPathError(dir,null);
-var arr=names?names.js:null;
-if(!arr||arr.length===undefined){ eprint("cache dir absent/empty: "+dir); $.exit(3); }
-var best=null, bestV=-1;
-for(var i=0;i<arr.length;i++){ var fn=String(arr[i].js!==undefined?arr[i].js:arr[i]);
-  var m=fn.match(/^claude-v(\d+)\.json$/); if(!m) continue;
-  var vv=parseInt(m[1],10); if(vv>bestV){bestV=vv;best=fn;} }
-if(!best){ eprint("no claude-v*.json in "+dir); $.exit(3); }
-var cTxt=rf(dir+"/"+best); if(!cTxt){ eprint("unreadable "+best); $.exit(3); }
-var cache; try{cache=JSON.parse(cTxt);}catch(e){ eprint("parse fail "+best); $.exit(3); }
-var days=cache&&cache.days;
-if(!days||typeof days!=='object'||Array.isArray(days)){ eprint("no days map (schema churn?)"); $.exit(3); }
-var dk=Object.keys(days).filter(function(k){return /^\d{4}-\d{2}-\d{2}$/.test(k);}).sort();
-if(dk.length===0){ eprint("empty days"); $.exit(3); }
-function dms(k){var p=k.split('-');return Date.UTC(+p[0],+p[1]-1,+p[2]);}
-function roll(o){var c=0,t=0,any=false;
-  for(var mdl in o){var a=o[mdl];
-    if(!Array.isArray(a)||a.length<5)continue;
-    var cn=+a[4]; if(isNaN(cn))continue;
-    c+=cn/1e7; t+=(+a[0]||0)+(+a[1]||0)+(+a[2]||0)+(+a[3]||0); any=true;}
-  return any?{c:Math.round(c),t:Math.round(t)}:null;}
-var today=dk[dk.length-1], tr=roll(days[today]);
-if(!tr){ eprint("today rollup empty (schema churn?)"); $.exit(3); }
-// If the latest cache key is a prior day (no API calls yet today), today's cost
-// and token count are 0. The cache will gain a new key on the first API call.
-var sysToday=(function(){var d=new Date();
-  return d.getFullYear()+'-'
-    +String(d.getMonth()+1).padStart(2,'0')+'-'
-    +String(d.getDate()).padStart(2,'0');})();
-var todayCents=(today===sysToday)?tr.c:0;
-var todayTok  =(today===sysToday)?tr.t:0;
-var tms=dms(today), cm=0, tm=0, hist=[];
-for(var i=0;i<dk.length;i++){var r=roll(days[dk[i]]); if(!r)continue;
-  if((tms-dms(dk[i]))/86400000<=29){cm+=r.c;tm+=r.t;}}
-// last <=31 day keys, OLDEST -> NEWEST to match firmware stats_model.h hist[]
-var hk=dk.slice(-31);
-for(var i=0;i<hk.length;i++){var r=roll(days[hk[i]]); hist.push(r?r.c:0);}
-var pTxt=rf(jsonPath); if(!pTxt){ eprint("payload unreadable"); $.exit(2); }
-var pay; try{pay=JSON.parse(pTxt);}catch(e){ eprint("payload parse fail"); $.exit(2); }
-if(!pay||!Array.isArray(pay.providers)){ eprint("payload shape"); $.exit(2); }
-var did=false;
-for(var i=0;i<pay.providers.length;i++){var pr=pay.providers[i];
-  if(pr&&pr.id==='claude'){pr.cost=pr.cost||{};
-    pr.cost.ct=todayCents; pr.cost.cm=cm; pr.cost.tt=todayTok; pr.cost.tm=tm; pr.cost.h=hist;
-    did=true;}}
-if(!did){ eprint("no claude provider in payload — nothing to merge"); $.exit(0); }
-var w=$.NSString.alloc.initWithUTF8String(JSON.stringify(pay))
-  .writeToFileAtomicallyEncodingError(jsonPath,true,4,null);
-if(!w){ eprint("payload writeback failed"); $.exit(2); }
-eprint("merged claude cost: today="+todayCents+"c/"+todayTok+"tok (cache="+today+"/sys="+sysToday+") 30d="+cm+"c/"+tm+"tok hist="+hist.length+"d");
-$.exit(0);
-EOF
 
 # Add a 24h SESSION usage-% sparkline (`ph`) to Claude from CodexBar's hourly
 # history file (~/Library/Application Support/com.steipete.codexbar/history/
 # claude.json). This is usage %, NOT cost — feeds the Limits-card sparkline.
 # Same fail-safe contract: any structural problem -> exit non-zero, caller
 # publishes without `ph` (never abort, never corrupt the payload).
-read -r -d '' PCT_MERGE_JXA <<'EOF'
-ObjC.import('Foundation'); ObjC.import('stdlib');
-function env(k){ var v=$.NSProcessInfo.processInfo.environment.objectForKey(k);
-  return (v && v.js!==undefined) ? String(v.js) : ''; }
-function eprint(s){ $.NSFileHandle.fileHandleWithStandardError
-  .writeData($.NSString.alloc.initWithUTF8String("pct-merge: "+s+"\n").dataUsingEncoding(4)); }
-function rf(p){ try { var s=$.NSString.stringWithContentsOfFileEncodingError(p,4,null);
-  return (s && s.js!==undefined) ? s.js : null; } catch(e){ return null; } }
-var jsonPath=env('CBPUB_JSON'); if(!jsonPath){ eprint("no CBPUB_JSON"); $.exit(2); }
-var home=env('HOME'); if(!home){ home=String($.NSHomeDirectory()); }
-var fp=env('CBPUB_PCT_HISTORY');
-if(!fp){ fp=home+"/Library/Application Support/com.steipete.codexbar/history/claude.json"; }
-var hTxt=rf(fp); if(!hTxt){ eprint("history file absent: "+fp); $.exit(3); }
-var H; try{H=JSON.parse(hTxt);}catch(e){ eprint("history parse fail"); $.exit(3); }
-var acc=H&&H.accounts;
-if(!acc||typeof acc!=='object'||Array.isArray(acc)){ eprint("no accounts map (schema churn?)"); $.exit(3); }
-var ak=H.preferredAccountKey; if(!ak||!acc[ak]){ ak=Object.keys(acc)[0]; }
-var wins=ak?acc[ak]:null;
-if(!Array.isArray(wins)||wins.length===0){ eprint("no windows"); $.exit(3); }
-var sess=null;
-for(var i=0;i<wins.length;i++){ if(wins[i]&&wins[i].name==='session'){ sess=wins[i]; break; } }
-if(!sess){ var mw=1e18; for(var i=0;i<wins.length;i++){ var w=wins[i];
-  if(w&&typeof w.windowMinutes==='number'&&w.windowMinutes<mw){ mw=w.windowMinutes; sess=w; } } }
-if(!sess||!Array.isArray(sess.entries)){ eprint("no session window/entries"); $.exit(3); }
-var now=Date.now(), out=[];
-for(var i=0;i<sess.entries.length;i++){ var e=sess.entries[i];
-  if(!e||e.usedPercent==null||!e.capturedAt) continue;
-  var t=Date.parse(e.capturedAt); if(isNaN(t)) continue;
-  if((now-t)/1000 > 24*3600) continue;
-  var v=Math.round(Number(e.usedPercent));
-  if(isNaN(v)) continue; if(v<0)v=0; if(v>100)v=100;
-  out.push(v); }
-if(out.length>24){ out=out.slice(out.length-24); }   // most recent 24, oldest->newest
-var pTxt=rf(jsonPath); if(!pTxt){ eprint("payload unreadable"); $.exit(2); }
-var pay; try{pay=JSON.parse(pTxt);}catch(e){ eprint("payload parse fail"); $.exit(2); }
-if(!pay||!Array.isArray(pay.providers)){ eprint("payload shape"); $.exit(2); }
-var did=false;
-for(var i=0;i<pay.providers.length;i++){ var pr=pay.providers[i];
-  if(pr&&pr.id==='claude'){ if(out.length) pr.ph=out; did=true; } }
-if(!did){ eprint("no claude provider — nothing to merge"); $.exit(0); }
-var w=$.NSString.alloc.initWithUTF8String(JSON.stringify(pay))
-  .writeToFileAtomicallyEncodingError(jsonPath,true,4,null);
-if(!w){ eprint("payload writeback failed"); $.exit(2); }
-eprint("merged claude session 24h pct: "+out.length+" pts");
-$.exit(0);
-EOF
 
 # Roll up Codex total spend / tokens / 30-day history from CodexBar's LOCAL
 # cost cache and merge into the v2 payload. Primary: highest pi-sessions-v*.json
@@ -367,323 +253,21 @@ EOF
 # days[date][model]=[inp,cached,out] decoded via hardcoded pricing table. Same
 # fail-safe contract as COST_MERGE_JXA: any structural mismatch -> exit non-zero
 # so the caller publishes without Codex cost (never abort, never corrupt).
-read -r -d '' CODEX_COST_MERGE_JXA <<'EOF'
-ObjC.import('Foundation'); ObjC.import('stdlib');
-function env(k){ var v=$.NSProcessInfo.processInfo.environment.objectForKey(k);
-  return (v && v.js!==undefined) ? String(v.js) : ''; }
-function eprint(s){ $.NSFileHandle.fileHandleWithStandardError
-  .writeData($.NSString.alloc.initWithUTF8String("codex-cost-merge: "+s+"\n").dataUsingEncoding(4)); }
-function rf(p){ try { var s=$.NSString.stringWithContentsOfFileEncodingError(p,4,null);
-  return (s && s.js!==undefined) ? s.js : null; } catch(e){ return null; } }
-var jsonPath=env('CBPUB_JSON'); if(!jsonPath){ eprint("no CBPUB_JSON"); $.exit(2); }
-var home=env('HOME'); if(!home){ home=String($.NSHomeDirectory()); }
-var dir=env('CBPUB_COST_CACHE_DIR');
-if(!dir){ dir=home+"/Library/Caches/CodexBar/cost-usage"; }
-var fm=$.NSFileManager.defaultManager;
-var dirNames=fm.contentsOfDirectoryAtPathError(dir,null);
-var dirArr=dirNames?dirNames.js:null;
-if(!dirArr||dirArr.length===undefined){ eprint("cache dir absent/empty: "+dir); $.exit(3); }
-var bestPi=null,bestPiV=-1,bestCdx=null,bestCdxV=-1;
-for(var i=0;i<dirArr.length;i++){
-  var fn=String(dirArr[i].js!==undefined?dirArr[i].js:dirArr[i]),mm;
-  mm=fn.match(/^pi-sessions-v(\d+)\.json$/);
-  if(mm){var v1=parseInt(mm[1],10); if(v1>bestPiV){bestPiV=v1;bestPi=fn;}}
-  mm=fn.match(/^codex-v(\d+)\.json$/);
-  if(mm){var v2=parseInt(mm[1],10); if(v2>bestCdxV){bestCdxV=v2;bestCdx=fn;}} }
-if(!bestPi){ eprint("no pi-sessions-v*.json in "+dir); $.exit(3); }
-var cTxt=rf(dir+"/"+bestPi); if(!cTxt){ eprint("unreadable "+bestPi); $.exit(3); }
-var piCache; try{piCache=JSON.parse(cTxt);}catch(e){ eprint("parse fail "+bestPi); $.exit(3); }
-var dbp=piCache&&piCache.daysByProvider;
-if(!dbp||typeof dbp!=='object'||Array.isArray(dbp)){ eprint("no daysByProvider"); $.exit(3); }
-var piDays=dbp['codex'];
-if(!piDays||typeof piDays!=='object'||Array.isArray(piDays)){ eprint("no codex in daysByProvider"); $.exit(3); }
-function dms(k){var p=k.split('-');return Date.UTC(+p[0],+p[1]-1,+p[2]);}
-function rollPi(o){var c=0,t=0,any=false;
-  for(var mdl in o){var m=o[mdl]; if(!m||typeof m!=='object') continue;
-    var cn=+m.costNanos; if(!isNaN(cn)){c+=cn/1e7; any=true;}
-    var tn=+(m.totalTokens||0); if(!isNaN(tn)) t+=tn;}
-  return any?{c:Math.round(c),t:Math.round(t)}:null;}
-var piDk=Object.keys(piDays).filter(function(k){return /^\d{4}-\d{2}-\d{2}$/.test(k);}).sort();
-if(piDk.length===0){ eprint("empty codex days in pi-sessions"); $.exit(3); }
-var merged={};
-for(var i=0;i<piDk.length;i++){var r=rollPi(piDays[piDk[i]]); if(r) merged[piDk[i]]=r;}
-// supplement: codex-v days absent from pi-sessions (Cache.db eviction drops history)
-// Prices in $/M tokens; cost_cents = ((inp-cached)*i + cached*r + out*o) / 1e4
-var PRICES={'gpt-5.5':{i:5,r:0.5,o:30},'gpt-5.4':{i:2.5,r:0.25,o:15},
-  'gpt-5.4-mini':{i:0.75,r:0.075,o:4.5},'gpt-5.3-codex':{i:1.75,r:0.175,o:14}};
-if(bestCdx){
-  var cTxt2=rf(dir+"/"+bestCdx);
-  if(cTxt2){ var cdxJ; try{cdxJ=JSON.parse(cTxt2);}catch(e){cdxJ=null;}
-    var cdxDays=cdxJ&&cdxJ.days;
-    if(cdxDays&&typeof cdxDays==='object'&&!Array.isArray(cdxDays)){
-      var cdxDk=Object.keys(cdxDays).filter(function(k){return /^\d{4}-\d{2}-\d{2}$/.test(k);});
-      for(var j=0;j<cdxDk.length;j++){var ck=cdxDk[j];
-        if(merged[ck]) continue;
-        var dayModels=cdxDays[ck]; if(!dayModels||typeof dayModels!=='object') continue;
-        var dc=0,dt=0,anyM=false;
-        for(var mdl2 in dayModels){var ta=dayModels[mdl2];
-          if(!Array.isArray(ta)||ta.length<3) continue;
-          var inp=+ta[0],cachedT=+ta[1],out=+ta[2];
-          if(isNaN(inp)||isNaN(cachedT)||isNaN(out)) continue;
-          var pp=PRICES[mdl2]; if(!pp) continue;
-          dc+=((inp-cachedT)*pp.i+cachedT*pp.r+out*pp.o)/1e4; dt+=inp+out; anyM=true;}
-        if(anyM) merged[ck]={c:Math.round(dc),t:Math.round(dt)};}}}}
-// Derive today from the fully merged set (pi-sessions + codex-v supplement) so
-// that codex-v today data is not missed when pi-sessions hasn't cached today yet.
-var allDk=Object.keys(merged).filter(function(k){return /^\d{4}-\d{2}-\d{2}$/.test(k);}).sort();
-if(allDk.length===0){ eprint("merged days empty"); $.exit(3); }
-var today=allDk[allDk.length-1], tr=merged[today];
-if(!tr){ eprint("today rollup empty"); $.exit(3); }
-// Always use the most-recent-cache-day data as "today" so the device matches
-// the CodexBar app, which shows the latest available day regardless of date.
-// sysToday is kept only for the diagnostic log line below.
-var sysToday=(function(){var d=new Date();
-  return d.getFullYear()+'-'
-    +String(d.getMonth()+1).padStart(2,'0')+'-'
-    +String(d.getDate()).padStart(2,'0');})();
-var todayCents=tr.c;
-var todayTok  =tr.t;
-var tms=dms(today), cm=0, tm=0;
-for(var i=0;i<allDk.length;i++){var r=merged[allDk[i]]; if(!r) continue;
-  if((tms-dms(allDk[i]))/86400000<=29){cm+=r.c;tm+=r.t;}}
-var hk=allDk.slice(-31), hist=[];
-for(var i=0;i<hk.length;i++){var r=merged[hk[i]]; hist.push(r?r.c:0);}
-var pTxt=rf(jsonPath); if(!pTxt){ eprint("payload unreadable"); $.exit(2); }
-var pay; try{pay=JSON.parse(pTxt);}catch(e){ eprint("payload parse fail"); $.exit(2); }
-if(!pay||!Array.isArray(pay.providers)){ eprint("payload shape"); $.exit(2); }
-var did=false;
-for(var i=0;i<pay.providers.length;i++){var pv=pay.providers[i];
-  if(pv&&pv.id==='codex'){pv.cost=pv.cost||{};
-    pv.cost.ct=todayCents; pv.cost.cm=cm; pv.cost.tt=todayTok; pv.cost.tm=tm; pv.cost.h=hist;
-    did=true;}}
-if(!did){ eprint("no codex provider in payload — nothing to merge"); $.exit(0); }
-var w=$.NSString.alloc.initWithUTF8String(JSON.stringify(pay))
-  .writeToFileAtomicallyEncodingError(jsonPath,true,4,null);
-if(!w){ eprint("payload writeback failed"); $.exit(2); }
-eprint("merged codex cost: today="+todayCents+"c/"+todayTok+"tok (cache="+today+"/sys="+sysToday+") 30d="+cm+"c/"+tm+"tok hist="+hist.length+"d (pi="+piDk.length+"d cdx-supp="+(allDk.length-piDk.length)+"d)");
-$.exit(0);
-EOF
 
 # Merge the reduced Pi Agent provider object emitted by pi-agent-stats.sh into
 # the provider array. The helper output is sanitized here to the public payload
 # contract so accidental extra local fields never cross the Upstash boundary.
-read -r -d '' PI_MERGE_JXA <<'EOF'
-ObjC.import('Foundation'); ObjC.import('stdlib');
-function env(k){ var v=$.NSProcessInfo.processInfo.environment.objectForKey(k);
-  return (v && v.js!==undefined) ? String(v.js) : ''; }
-function eprint(s){ $.NSFileHandle.fileHandleWithStandardError
-  .writeData($.NSString.alloc.initWithUTF8String("pi-merge: "+s+"\n").dataUsingEncoding(4)); }
-function rf(p){ try { var s=$.NSString.stringWithContentsOfFileEncodingError(p,4,null);
-  return (s && s.js!==undefined) ? s.js : null; } catch(e){ return null; } }
-function i32(v){ var n=Number(v); if(isNaN(n)) return null;
-  if(n < -2147483648) n=-2147483648; if(n > 2147483647) n=2147483647;
-  return Math.round(n); }
-function i64(v){ var n=Number(v); return isNaN(n) ? null : Math.round(n); }
-function num(v){ var n=Number(v); return isNaN(n) ? null : n; }
-var jsonPath=env('CBPUB_JSON'), piPath=env('CBPUB_PI_JSON');
-if(!jsonPath || !piPath){ eprint('missing CBPUB_JSON/CBPUB_PI_JSON'); $.exit(2); }
-var pTxt=rf(jsonPath), piTxt=rf(piPath);
-if(!pTxt || !piTxt){ eprint('payload/helper unreadable'); $.exit(2); }
-var pay, src;
-try{ pay=JSON.parse(pTxt); }catch(e){ eprint('payload parse fail'); $.exit(2); }
-try{ src=JSON.parse(piTxt); }catch(e){ eprint('helper parse fail'); $.exit(3); }
-if(!pay || !Array.isArray(pay.providers)){ eprint('payload shape'); $.exit(2); }
-if(!src || src.id!=='pi' || src.ok!==true || !src.pi || typeof src.pi!=='object' || Array.isArray(src.pi)){
-  eprint('helper shape'); $.exit(3);
-}
-var ts=i32(src.pi.ts), tt=i64(src.pi.tt), ps=i32(src.pi.ps), pt=i64(src.pi.pt), p=num(src.p);
-if(ts===null || tt===null || ps===null || pt===null || !Array.isArray(src.pi.h)){ eprint('helper pi fields'); $.exit(3); }
-var h=[];
-for(var i=0;i<src.pi.h.length && h.length<30;i++){ var hv=i32(src.pi.h[i]); if(hv!==null) h.push(hv); }
-if(h.length===0){ eprint('empty helper history'); $.exit(3); }
-var dst={id:'pi', ok:true, pi:{ts:ts, tt:tt, ps:ps, pt:pt, h:h}};
-if(p!==null){ if(p<0)p=0; if(p>100)p=100; dst.p=Math.round(p*10)/10; }
-var hadPi=false;
-var next=[];
-for(var i=0;i<pay.providers.length;i++){
-  if(pay.providers[i] && pay.providers[i].id==='pi') { hadPi=true; continue; }
-  next.push(pay.providers[i]);
-}
-// Keep Pi first in the payload/provider summary so it is visible above Claude.
-next.unshift(dst);
-pay.providers=next;
-var w=$.NSString.alloc.initWithUTF8String(JSON.stringify(pay))
-  .writeToFileAtomicallyEncodingError(jsonPath,true,4,null);
-if(!w){ eprint('payload writeback failed'); $.exit(2); }
-eprint((hadPi?'replaced':'prepended')+' pi provider: today='+ts+'c/'+tt+'tok max='+ps+'c/'+pt+'tok hist='+h.length+'d');
-$.exit(0);
-EOF
 
 # Merge the reduced LM Studio provider object emitted by lmstudio-stats.sh into
 # the provider array. Same fail-safe contract as PI_MERGE_JXA: validates helper
 # shape, extracts lm fields, and prepends/replaces. Any structural problem exits
 # non-zero so the caller publishes without LM Studio (never abort, never corrupt).
-read -r -d '' LM_MERGE_JXA <<'EOF'
-ObjC.import('Foundation'); ObjC.import('stdlib');
-function env(k){ var v=$.NSProcessInfo.processInfo.environment.objectForKey(k);
-  return (v && v.js!==undefined) ? String(v.js) : ''; }
-function eprint(s){ $.NSFileHandle.fileHandleWithStandardError
-  .writeData($.NSString.alloc.initWithUTF8String("lm-merge: "+s+"\n").dataUsingEncoding(4)); }
-function rf(p){ try { var s=$.NSString.stringWithContentsOfFileEncodingError(p,4,null);
-  return (s && s.js!==undefined) ? s.js : null; } catch(e){ return null; } }
-function i32(v){ var n=Number(v); if(isNaN(n)) return null;
-  if(n < -2147483648) n=-2147483648; if(n > 2147483647) n=2147483647;
-  return Math.round(n); }
-function i64(v){ var n=Number(v); return isNaN(n) ? null : Math.round(n); }
-function num(v){ var n=Number(v); return isNaN(n) ? null : n; }
-var jsonPath=env('CBPUB_JSON'), lmPath=env('CBPUB_LM_JSON');
-if(!jsonPath || !lmPath){ eprint('missing CBPUB_JSON/CBPUB_LM_JSON'); $.exit(2); }
-var pTxt=rf(jsonPath), lmTxt=rf(lmPath);
-if(!pTxt || !lmTxt){ eprint('payload/helper unreadable'); $.exit(2); }
-var pay, src;
-try{ pay=JSON.parse(pTxt); }catch(e){ eprint('payload parse fail'); $.exit(2); }
-try{ src=JSON.parse(lmTxt); }catch(e){ eprint('helper parse fail'); $.exit(3); }
-if(!pay || !Array.isArray(pay.providers)){ eprint('payload shape'); $.exit(2); }
-if(!src || src.id!=='lmstudio' || src.ok!==true || !src.lm || typeof src.lm!=='object' || Array.isArray(src.lm)){
-  eprint('helper shape'); $.exit(3);
-}
-var rq=i32(src.lm.rq), tk=i64(src.lm.tk), mxr=i32(src.lm.mxr), mxt=i64(src.lm.mxt);
-var p=num(src.p), s=num(src.s);
-if(rq===null || tk===null || mxr===null || mxt===null){ eprint('helper lm fields'); $.exit(3); }
-var dst={id:'lmstudio', ok:true, lm:{rq:rq, tk:tk, mxr:mxr, mxt:mxt}};
-if(p!==null){ if(p<0)p=0; if(p>100)p=100; dst.p=Math.round(p*10)/10; }
-if(s!==null){ if(s<0)s=0; if(s>100)s=100; dst.s=Math.round(s*10)/10; }
-// Conditionally forward optional cache fields
-if(src.lm.cp!==undefined && src.lm.cp!==null){ var cp=num(src.lm.cp); if(cp!==null) dst.lm.cp=cp; }
-if(src.lm.ch!==undefined && src.lm.ch!==null){ var ch=num(src.lm.ch); if(ch!==null) dst.lm.ch=ch; }
-// Forward history arrays (optional)
-if(Array.isArray(src.lm.hr)){ var hr=[];
-  for(var i=0;i<src.lm.hr.length && hr.length<31;i++){ var hv=i32(src.lm.hr[i]); if(hv!==null) hr.push(hv); }
-  if(hr.length) dst.lm.hr=hr; }
-if(Array.isArray(src.lm.ht)){ var ht=[];
-  for(var i=0;i<src.lm.ht.length && ht.length<31;i++){ var hv=i64(src.lm.ht[i]); if(hv!==null) ht.push(hv); }
-  if(ht.length) dst.lm.ht=ht; }
-// Forward models array (optional)
-if(Array.isArray(src.lm.models)){ dst.lm.models=[];
-  for(var i=0;i<Math.min(src.lm.models.length,10);i++){ var m=src.lm.models[i];
-    if(m && typeof m.id==='string' && m.id && typeof m.rq==='number'){
-      dst.lm.models.push({id:m.id, rq:i32(m.rq)}); } } }
-// Forward week array (optional)
-if(Array.isArray(src.lm.week)){ dst.lm.week=[];
-  for(var i=0;i<Math.min(src.lm.week.length,7);i++){ var w=src.lm.week[i];
-    if(w && typeof w.d==='string' && w.d && typeof w.rq==='number'){
-      var we={d:w.d, rq:i32(w.rq), tk:i64(w.tk)};
-      if(typeof w.cp==='number') we.cp=num(w.cp);
-      if(typeof w.ch==='number') we.ch=num(w.ch);
-      dst.lm.week.push(we); } } }
-var hadLm=false;
-var next=[];
-for(var i=0;i<pay.providers.length;i++){
-  if(pay.providers[i] && pay.providers[i].id==='lmstudio') { hadLm=true; continue; }
-  next.push(pay.providers[i]);
-}
-// Keep LM Studio near the front (after Pi, before Claude)
-var piIdx=-1;
-for(var i=0;i<next.length;i++){ if(next[i] && next[i].id==='pi'){ piIdx=i; break; } }
-if(piIdx>=0) next.splice(piIdx+1,0,dst); else next.unshift(dst);
-pay.providers=next;
-var w=$.NSString.alloc.initWithUTF8String(JSON.stringify(pay))
-  .writeToFileAtomicallyEncodingError(jsonPath,true,4,null);
-if(!w){ eprint('payload writeback failed'); $.exit(2); }
-eprint((hadLm?'replaced':'prepended')+' lmstudio provider: today='+rq+'rq/'+tk+'tok');
-$.exit(0);
-EOF
 
 # Patch `cu` onto the existing CodexBar `cursor` limits row (in-place, like
 # COST_MERGE_JXA). Does NOT replace the provider (unlike LM_MERGE_JXA).
-read -r -d '' CURSOR_MERGE_JXA <<'EOF'
-ObjC.import('Foundation'); ObjC.import('stdlib');
-function env(k){ var v=$.NSProcessInfo.processInfo.environment.objectForKey(k);
-  return (v && v.js!==undefined) ? String(v.js) : ''; }
-function eprint(s){ $.NSFileHandle.fileHandleWithStandardError
-  .writeData($.NSString.alloc.initWithUTF8String("cursor-merge: "+s+"\n").dataUsingEncoding(4)); }
-function rf(p){ try { var s=$.NSString.stringWithContentsOfFileEncodingError(p,4,null);
-  return (s && s.js!==undefined) ? s.js : null; } catch(e){ return null; } }
-function i32(v){ var n=Number(v); if(isNaN(n)) return null;
-  if(n < -2147483648) n=-2147483648; if(n > 2147483647) n=2147483647;
-  return Math.round(n); }
-function i64(v){ var n=Number(v); return isNaN(n) ? null : Math.round(n); }
-var jsonPath=env('CBPUB_JSON'), curPath=env('CBPUB_CURSOR_JSON');
-if(!jsonPath || !curPath){ eprint('missing CBPUB_JSON/CBPUB_CURSOR_JSON'); $.exit(2); }
-var pTxt=rf(jsonPath), curTxt=rf(curPath);
-if(!pTxt || !curTxt){ eprint('payload/helper unreadable'); $.exit(2); }
-var pay, src;
-try{ pay=JSON.parse(pTxt); }catch(e){ eprint('payload parse fail'); $.exit(2); }
-try{ src=JSON.parse(curTxt); }catch(e){ eprint('helper parse fail'); $.exit(3); }
-if(!pay || !Array.isArray(pay.providers)){ eprint('payload shape'); $.exit(2); }
-if(!src || src.id!=='cursor' || src.ok!==true || !src.cu || typeof src.cu!=='object' || Array.isArray(src.cu)){
-  eprint('helper shape'); $.exit(3);
-}
-var tk=i32(src.cu.tk), mxt=i64(src.cu.mxt);
-if(tk===null || mxt===null){ eprint('helper cu fields'); $.exit(3); }
-var ht=[];
-if(Array.isArray(src.cu.ht)){
-  for(var i=0;i<src.cu.ht.length && ht.length<31;i++){
-    var hv=i64(src.cu.ht[i]); if(hv!==null) ht.push(hv);
-  }
-}
-var sessOk=(src.cu.sess===true);
-var did=false;
-for(var i=0;i<pay.providers.length;i++){
-  var pr=pay.providers[i];
-  if(pr && pr.id==='cursor'){
-    pr.cu={tk:tk, mxt:mxt, ht:ht, sess:sessOk};
-    did=true;
-  }
-}
-if(!did){ eprint('no cursor provider — nothing to merge'); $.exit(0); }
-var w=$.NSString.alloc.initWithUTF8String(JSON.stringify(pay))
-  .writeToFileAtomicallyEncodingError(jsonPath,true,4,null);
-if(!w){ eprint('payload writeback failed'); $.exit(2); }
-eprint('merged cursor cu: today='+tk+'tok mxt='+mxt+'tok hist='+ht.length+'d');
-$.exit(0);
-EOF
 
 # Patch `oc` onto the existing CodexBar `opencodego` provider (in-place, like
 # CURSOR_MERGE_JXA). Fail-soft: helper failure -> publish limits-only opencodego.
-read -r -d '' OG_MERGE_JXA <<'EOF'
-ObjC.import('Foundation'); ObjC.import('stdlib');
-function env(k){ var v=$.NSProcessInfo.processInfo.environment.objectForKey(k);
-  return (v && v.js!==undefined) ? String(v.js) : ''; }
-function eprint(s){ $.NSFileHandle.fileHandleWithStandardError
-  .writeData($.NSString.alloc.initWithUTF8String("og-merge: "+s+"\n").dataUsingEncoding(4)); }
-function rf(p){ try { var s=$.NSString.stringWithContentsOfFileEncodingError(p,4,null);
-  return (s && s.js!==undefined) ? s.js : null; } catch(e){ return null; } }
-function i32(v){ var n=Number(v); if(isNaN(n)) return null;
-  if(n < -2147483648) n=-2147483648; if(n > 2147483647) n=2147483647;
-  return Math.round(n); }
-function i64(v){ var n=Number(v); return isNaN(n) ? null : Math.round(n); }
-var jsonPath=env('CBPUB_JSON'), ogPath=env('CBPUB_OG_JSON');
-if(!jsonPath || !ogPath){ eprint('missing CBPUB_JSON/CBPUB_OG_JSON'); $.exit(2); }
-var pTxt=rf(jsonPath), ogTxt=rf(ogPath);
-if(!pTxt || !ogTxt){ eprint('payload/helper unreadable'); $.exit(2); }
-var pay, src;
-try{ pay=JSON.parse(pTxt); }catch(e){ eprint('payload parse fail'); $.exit(2); }
-try{ src=JSON.parse(ogTxt); }catch(e){ eprint('helper parse fail'); $.exit(3); }
-if(!pay || !Array.isArray(pay.providers)){ eprint('payload shape'); $.exit(2); }
-if(!src || src.id!=='opencodego' || src.ok!==true || !src.oc || typeof src.oc!=='object' || Array.isArray(src.oc)){
-  eprint('helper shape'); $.exit(3); }
-var tk=i64(src.oc.tk), ct=i32(src.oc.ct), mxt=i64(src.oc.mxt);
-if(tk===null || ct===null || mxt===null){ eprint('helper oc fields'); $.exit(3); }
-var ht=[];
-if(Array.isArray(src.oc.ht)){
-  for(var i=0;i<src.oc.ht.length && ht.length<31;i++){
-    var hv=i64(src.oc.ht[i]); if(hv!==null) ht.push(hv); } }
-var did=false;
-for(var i=0;i<pay.providers.length;i++){
-  var pr=pay.providers[i];
-  if(pr && pr.id==='opencodego'){
-    pr.oc={tk:tk, ct:ct, mxt:mxt, ht:ht};
-    did=true;
-  }
-}
-if(!did){ eprint('no opencodego provider — nothing to merge'); $.exit(0); }
-var w=$.NSString.alloc.initWithUTF8String(JSON.stringify(pay))
-  .writeToFileAtomicallyEncodingError(jsonPath,true,4,null);
-if(!w){ eprint('payload writeback failed'); $.exit(2); }
-eprint('merged opencodego oc: today='+tk+'tok ct='+ct+'cents mxt='+mxt+'tok hist='+ht.length+'d');
-$.exit(0);
-EOF
 
 cmd_once() {
   mkdir -p "$LOG_DIR"
@@ -716,7 +300,7 @@ cmd_once() {
 
   # Augment Claude with total spend/tokens/30d history from the local cost
   # cache. Fail-safe: any cache problem -> publish the usage-only payload.
-  if CBPUB_JSON="$json" osascript -l JavaScript -e "$COST_MERGE_JXA" 2>>"$LOG"; then
+  if CBPUB_JSON="$json" osascript -l JavaScript "$SELF_DIR/lib/merge-cost.js" 2>>"$LOG"; then
     bytes=$(wc -c <"$json" | tr -d ' ')
   else
     log "note: Claude cost-cache merge skipped (absent/unrecognized) — publishing usage-only"
@@ -724,7 +308,7 @@ cmd_once() {
 
   # Augment Codex with total spend/tokens/30d history from pi-sessions cache.
   # Same fail-safe contract: any cache problem -> publish without Codex cost.
-  if CBPUB_JSON="$json" osascript -l JavaScript -e "$CODEX_COST_MERGE_JXA" 2>>"$LOG"; then
+  if CBPUB_JSON="$json" osascript -l JavaScript "$SELF_DIR/lib/merge-codex-cost.js" 2>>"$LOG"; then
     bytes=$(wc -c <"$json" | tr -d ' ')
   else
     log "note: Codex cost-cache merge skipped (absent/unrecognized) — publishing usage-only"
@@ -732,7 +316,7 @@ cmd_once() {
 
   # Add the 24h SESSION usage-% sparkline (`ph`). Independent + fail-safe: a
   # missing/churned history file just omits `ph`, never blocks the publish.
-  if CBPUB_JSON="$json" osascript -l JavaScript -e "$PCT_MERGE_JXA" 2>>"$LOG"; then
+  if CBPUB_JSON="$json" osascript -l JavaScript "$SELF_DIR/lib/merge-pct.js" 2>>"$LOG"; then
     bytes=$(wc -c <"$json" | tr -d ' ')
   else
     log "note: Claude 24h pct-history skipped (absent/unrecognized)"
@@ -752,7 +336,7 @@ cmd_once() {
       "$PI_STATS" >"$pi_json" 2>>"$LOG"; pi_rc=$?
     fi
     if [[ $pi_rc -eq 0 ]]; then
-      if CBPUB_JSON="$json" CBPUB_PI_JSON="$pi_json" osascript -l JavaScript -e "$PI_MERGE_JXA" 2>>"$LOG"; then
+      if CBPUB_JSON="$json" CBPUB_PI_JSON="$pi_json" osascript -l JavaScript "$SELF_DIR/lib/merge-pi.js" 2>>"$LOG"; then
         bytes=$(wc -c <"$json" | tr -d ' ')
       else
         log "note: Pi Agent merge skipped (malformed helper output) — publishing without Pi"
@@ -779,7 +363,7 @@ cmd_once() {
       "$LM_STATS" >"$lm_json" 2>>"$LOG"; lm_rc=$?
     fi
     if [[ $lm_rc -eq 0 ]]; then
-      if CBPUB_JSON="$json" CBPUB_LM_JSON="$lm_json" osascript -l JavaScript -e "$LM_MERGE_JXA" 2>>"$LOG"; then
+      if CBPUB_JSON="$json" CBPUB_LM_JSON="$lm_json" osascript -l JavaScript "$SELF_DIR/lib/merge-lm.js" 2>>"$LOG"; then
         bytes=$(wc -c <"$json" | tr -d ' ')
       else
         log "note: LM Studio merge skipped (malformed helper output) — publishing without LM Studio"
@@ -806,7 +390,7 @@ cmd_once() {
       "$CURSOR_STATS" >"$cursor_json" 2>>"$LOG"; cursor_rc=$?
     fi
     if [[ $cursor_rc -eq 0 ]]; then
-      if CBPUB_JSON="$json" CBPUB_CURSOR_JSON="$cursor_json" osascript -l JavaScript -e "$CURSOR_MERGE_JXA" 2>>"$LOG"; then
+      if CBPUB_JSON="$json" CBPUB_CURSOR_JSON="$cursor_json" osascript -l JavaScript "$SELF_DIR/lib/merge-cursor.js" 2>>"$LOG"; then
         bytes=$(wc -c <"$json" | tr -d ' ')
       else
         log "note: Cursor token merge skipped (malformed helper output) — publishing limits-only cursor"
@@ -833,7 +417,7 @@ cmd_once() {
       "$OPENCODE_GO_STATS" >"$og_json" 2>>"$LOG"; og_rc=$?
     fi
     if [[ $og_rc -eq 0 ]]; then
-      if CBPUB_JSON="$json" CBPUB_OG_JSON="$og_json" osascript -l JavaScript -e "$OG_MERGE_JXA" 2>>"$LOG"; then
+      if CBPUB_JSON="$json" CBPUB_OG_JSON="$og_json" osascript -l JavaScript "$SELF_DIR/lib/merge-og.js" 2>>"$LOG"; then
         bytes=$(wc -c <"$json" | tr -d ' ')
       else
         log "note: OpenCode Go merge skipped (malformed helper output) — publishing limits-only opencodego"
