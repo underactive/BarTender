@@ -10,14 +10,16 @@
 static const char *TAG = "stats";
 
 // Safely copy a cJSON string value into dst, NUL-terminating on first call
-// and using strlcpy for bounded copy. Returns nothing (void) since the
-// caller always passes a pre-zeroed buffer.
-static void copy_json_string_safe(char *dst, size_t n, const cJSON *s)
+// and using strlcpy for bounded copy. Returns true if a non-empty string was
+// copied, false otherwise.
+static bool copy_json_string_safe(char *dst, size_t n, const cJSON *s)
 {
     dst[0] = '\0';
-    if (cJSON_IsString(s) && s->valuestring) {
+    if (cJSON_IsString(s) && s->valuestring && s->valuestring[0]) {
         strlcpy(dst, s->valuestring, n);
+        return true;
     }
+    return false;
 }
 
 // Audit Security§MED: cJSON->valuedouble is untrusted (the store could be
@@ -277,7 +279,6 @@ static void parse_ph(const cJSON *e, stats_provider_t *p)
             // Guard before narrowing: (int)NaN / (int)Inf is undefined behavior,
             // and would slip past the < 0 / > 100 clamp below.
             double d = pv->valuedouble;
-            if (isnan(d)) continue;
             int v = (d <= 0.0) ? 0 : (d >= 100.0) ? 100 : (int)d;
             p->pct_hist[p->pct_hist_n++] = (uint8_t)v;
         }
@@ -344,6 +345,9 @@ stats_parse_t stats_model_parse(const char *body, stats_t *out)
             if (cJSON_IsNumber(tp)) { p->tertiary.has = true; p->tertiary.pct = f_sanitize(tp->valuedouble); }
             copy_json_string_safe(p->tertiary.reset, sizeof p->tertiary.reset, cJSON_GetObjectItemCaseSensitive(e, "tr"));
 
+            // All per-provider parse_* functions below depend on p->id being
+            // populated first. Do not reorder above the copy_json_string_safe
+            // call for id.
             parse_cost(e, p);
             parse_pi(e, p);
             parse_lm(e, p);

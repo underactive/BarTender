@@ -52,8 +52,8 @@ static wifi_entry_t make_entry(const char *ssid, const char *pass)
 {
     wifi_entry_t e;
     memset(&e, 0, sizeof e);
-    strncpy(e.ssid, ssid, CFG_SSID_MAX - 1);
-    strncpy(e.pass, pass, CFG_PASS_MAX - 1);
+    strlcpy(e.ssid, ssid, sizeof e.ssid);
+    strlcpy(e.pass, pass, sizeof e.pass);
     return e;
 }
 
