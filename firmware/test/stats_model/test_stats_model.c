@@ -600,6 +600,35 @@ static void test_cursor_sess_false(void)
     CHECK(st.p[0].cu_sess_ok == false);
 }
 
+static void test_opencodego_provider_parsed(void)
+{
+    TEST("opencodego_provider_parsed");
+
+    const char *inner =
+        "{\"v\":2,\"ts\":\"2024-01-01T00:00:00Z\","
+        "\"providers\":["
+        "{\"id\":\"opencodego\",\"ok\":true,\"p\":45.0,\"pr\":\"5h\","
+        "\"s\":30.0,\"sr\":\"weekly\",\"t\":10.0,\"tr\":\"monthly\","
+        "\"oc\":{\"tk\":75000,\"ct\":123,\"mxt\":200000,\"ht\":[5000,6000,7000]}}"
+        "]}";
+
+    char *env = make_envelope(inner);
+    stats_t st;
+    stats_parse_t r = stats_model_parse(env, &st);
+    free(env);
+
+    CHECK_EQ_INT(r, STATS_PARSE_OK);
+    CHECK_STR(st.p[0].id, "opencodego");
+    CHECK(st.p[0].has_oc == true);
+    CHECK_EQ_INT((long long)st.p[0].oc_tok_today, 75000LL);
+    CHECK_EQ_INT(st.p[0].oc_cost_today_c, 123);
+    CHECK_EQ_INT((long long)st.p[0].oc_tok_month_max, 200000LL);
+    CHECK_EQ_INT(st.p[0].oc_ht_n, 3);
+    CHECK_EQ_INT((long long)st.p[0].oc_ht[0], 5000LL);
+    CHECK_EQ_INT((long long)st.p[0].oc_ht[1], 6000LL);
+    CHECK_EQ_INT((long long)st.p[0].oc_ht[2], 7000LL);
+}
+
 static void test_pi_block_ignored_for_non_pi_provider(void)
 {
     TEST("pi_block_ignored_for_non_pi_provider");
@@ -703,6 +732,38 @@ static void test_reorder_known_providers_sorted(void)
     CHECK_STR(st.p[1].id, "openrouter");
     CHECK_STR(st.p[2].id, "claude");
     CHECK_STR(st.p[3].id, "cursor");
+}
+
+static void test_reorder_opencodego_insertion(void)
+{
+    TEST("reorder_opencodego_insertion");
+
+    // opencodego inserts between lmstudio (1) and openrouter (2) in canonical order.
+    // Canonical: pi=0, lmstudio=1, opencodego=2, openrouter=3, claude=4, codex=5, cursor=6
+    const char *inner =
+        "{\"v\":1,\"ts\":\"2024-01-01T00:00:00Z\","
+        "\"providers\":["
+        "{\"id\":\"openrouter\",\"ok\":true},"
+        "{\"id\":\"lmstudio\",\"ok\":true},"
+        "{\"id\":\"opencodego\",\"ok\":true},"
+        "{\"id\":\"pi\",\"ok\":true},"
+        "{\"id\":\"cursor\",\"ok\":true}"
+        "]}";
+
+    char *env = make_envelope(inner);
+    stats_t st;
+    stats_model_parse(env, &st);
+    free(env);
+
+    stats_model_reorder(&st);
+
+    CHECK_EQ_INT(st.n, 5);
+    // Expected: pi(0), lmstudio(1), opencodego(2), openrouter(3), cursor(6)
+    CHECK_STR(st.p[0].id, "pi");
+    CHECK_STR(st.p[1].id, "lmstudio");
+    CHECK_STR(st.p[2].id, "opencodego");
+    CHECK_STR(st.p[3].id, "openrouter");
+    CHECK_STR(st.p[4].id, "cursor");
 }
 
 static void test_reorder_unknown_sinks_to_end(void)
@@ -966,10 +1027,12 @@ int main(void)
     test_pi_provider_parsed();
     test_cursor_provider_parsed();
     test_cursor_sess_false();
+    test_opencodego_provider_parsed();
     test_pi_block_ignored_for_non_pi_provider();
     test_provider_with_no_id_skipped();
     test_multiple_providers();
     test_reorder_known_providers_sorted();
+    test_reorder_opencodego_insertion();
     test_reorder_unknown_sinks_to_end();
     test_reorder_single_provider_safe();
     test_reorder_empty_safe();

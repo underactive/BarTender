@@ -109,6 +109,17 @@ uint32_t provider_metric_sig(const stats_provider_t *p)
         h = hash_mix_u32(h, (uint32_t)p->lm_models_n);
         h = hash_mix_u32(h, (uint32_t)p->lm_week_n);
     }
+    h = hash_mix_u32(h, p->has_oc ? 1U : 0U);
+    if (p->has_oc) {
+        h = hash_mix_u32(h, (uint32_t)p->oc_tok_today);
+        h = hash_mix_u32(h, (uint32_t)(p->oc_tok_today >> 32));
+        h = hash_mix_u32(h, (uint32_t)p->oc_cost_today_c);
+        h = hash_mix_u32(h, (uint32_t)p->oc_tok_month_max);
+        h = hash_mix_u32(h, (uint32_t)(p->oc_tok_month_max >> 32));
+        h = hash_mix_u32(h, (uint32_t)p->oc_ht_n);
+        for (int i = 0; i < p->oc_ht_n && i < STATS_HIST_MAX; i++)
+            h = hash_mix_u32(h, (uint32_t)p->oc_ht[i]);
+    }
     h = hash_mix_u32(h, p->has_cu ? 1U : 0U);
     if (p->has_cu) {
         h = hash_mix_u32(h, p->cu_sess_ok ? 1U : 0U);
@@ -126,7 +137,7 @@ uint32_t provider_metric_sig(const stats_provider_t *p)
 bool provider_card_available(const stats_provider_t *p, card_kind_t card)
 {
     switch (card) {
-        case CARD_COST:         return p->has_cost || p->has_lm || p->has_cu;
+        case CARD_COST:         return p->has_cost || p->has_lm || p->has_cu || p->has_oc;
         case CARD_LIMITS:       return provider_has_limits_card(p) || p->has_lm;
     }
     return false;
@@ -181,6 +192,7 @@ provider_kind_t provider_kind(const char *id)
     if (strcmp(id, "codex")      == 0) return PK_CODEX;
     if (strcmp(id, "lmstudio")   == 0) return PK_LMSTUDIO;
     if (strcmp(id, "cursor")     == 0) return PK_CURSOR;
+    if (strcmp(id, "opencodego") == 0) return PK_OPENCODEGO;
     if (strcmp(id, "openrouter") == 0) return PK_OPENROUTER;
     return PK_UNKNOWN;
 }
@@ -217,6 +229,7 @@ int64_t provider_tok_today(const stats_provider_t *p)
     switch (provider_kind(p->id)) {
     case PK_LMSTUDIO: return p->has_lm ? p->lm_tok_today : 0;
     case PK_CURSOR:   return p->has_cu ? p->cu_tok_today : 0;
+    case PK_OPENCODEGO: return p->has_oc ? p->oc_tok_today : 0;
     default:          return p->has_cost ? p->tok_today : 0;
     }
 }
@@ -230,6 +243,7 @@ const char *summary_provider_name(const char *id)
     case PK_CLAUDE:     return "Claude";
     case PK_CODEX:      return "Codex";
     case PK_CURSOR:     return "Cursor";
+    case PK_OPENCODEGO: return "OpenCode Go";
     default:            return id ? id : "";
     }
 }

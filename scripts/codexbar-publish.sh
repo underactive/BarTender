@@ -8,6 +8,8 @@
 #   codexbar-publish.sh --set-token     # store the Upstash WRITE token (Keychain)
 #   codexbar-publish.sh --set-cursor-session  # paste Cookie header (terminal; Cmd+V works)
 #   codexbar-publish.sh --set-cursor-session-clipboard  # read Cookie from pbpaste
+#   codexbar-publish.sh --set-opencodego-cookie  # paste OpenCode Go Cookie header
+#   codexbar-publish.sh --set-opencodego-cookie-clipboard  # read from pbpaste
 #   codexbar-publish.sh --install       # install + start the launchd schedule
 #   codexbar-publish.sh --uninstall     # stop + remove the launchd schedule
 #   codexbar-publish.sh --status        # job state + recent log + readiness
@@ -62,6 +64,8 @@ STATS="$SELF_DIR/codexbar-stats.sh"
 PI_STATS="${CBPUB_PI_STATS:-$SELF_DIR/pi-agent-stats.sh}"
 LM_STATS="${CBPUB_LM_STATS:-$SELF_DIR/lmstudio-stats.sh}"
 CURSOR_STATS="${CBPUB_CURSOR_STATS:-$SELF_DIR/cursor-stats.sh}"
+OPENCODE_GO_STATS="${CBPUB_OPENCODE_GO_STATS:-$SELF_DIR/opencodego-stats.sh}"
+KC_ACCOUNT_OG="${CBPUB_KC_ACCOUNT_OG:-opencodego-session}"
 work=""   # temp dir for cmd_once; referenced by its global EXIT trap
 TPL="$SELF_DIR/../launchd/$LABEL.plist.template"
 
@@ -166,6 +170,65 @@ cmd_set_cursor_session_clipboard() {
   local session; session=$(pbpaste)
   [[ -n "${session//[$'\r\n\t ']}" ]] || die "clipboard empty — copy Cookie header first" 5
   store_cursor_session "$session"
+}
+
+# ── OpenCode Go session helpers (mirrors Cursor keychain pattern) ────────
+get_opencodego_session() {
+  security find-generic-password -s "$KC_SERVICE" -a "$KC_ACCOUNT_OG" -w 2>/dev/null
+}
+
+store_opencodego_session() {
+  local session="$1"
+  session="${session//$'\r'/}"
+  if [[ "$session" == *$'\n'* ]] || [[ "$session" != *"="* ]]; then
+    local extracted
+    extracted=$(print -r -- "$session" | awk '
+      BEGIN { IGNORECASE=1 }
+      /^cookie:[[:space:]]*/ {
+        sub(/^[^:]*:[[:space:]]*/, "")
+        print
+        exit
+      }
+    ')
+    [[ -n "$extracted" ]] && session="$extracted"
+  fi
+  session="${session%%$'\n'*}"
+  session="${session## }"; session="${session%% }"
+  [[ -n "$session" ]] || die "empty session — nothing stored" 5
+  if ! security add-generic-password -U -s "$KC_SERVICE" -a "$KC_ACCOUNT_OG" \
+        -l "CodexBar toy OpenCode Go session" -w "$session"; then
+    die "security add-generic-password failed (session NOT stored)"
+  fi
+  local n; n=$(get_opencodego_session | wc -c | tr -d ' ')
+  [[ "${n:-0}" -ge 2 ]] || die "no session captured (empty) — re-run --set-opencodego-cookie" 5
+  log "OpenCode Go session stored in Keychain (${n} bytes incl. trailing newline)"
+}
+
+cmd_set_opencodego_cookie() {
+  print -r -- "Storing OpenCode Go session cookie in Keychain"
+  print -r -- "(service=$KC_SERVICE account=$KC_ACCOUNT_OG)."
+  print -r -- ""
+  print -r -- "Copy from DevTools → Network → opencode.ai API request →"
+  print -r -- "Request Headers → Cookie (full string), then paste below."
+  print -r -- ""
+  print -r -- "Or: copy first, then run: $0 --set-opencodego-cookie-clipboard"
+  print -r -- ""
+  local session
+  if [[ ! -t 0 ]]; then
+    session=$(cat)
+    print -r -- "(read from stdin)"
+  else
+    print -r -- "Paste Cookie header, then Enter (visible; Cmd+V works):"
+    read -r session
+  fi
+  store_opencodego_session "$session"
+}
+
+cmd_set_opencodego_cookie_clipboard() {
+  command -v pbpaste >/dev/null 2>&1 || die "pbpaste not found (macOS only)"
+  local session; session=$(pbpaste)
+  [[ -n "${session//[$'\r\n\t ']}" ]] || die "clipboard empty — copy Cookie header first" 5
+  store_opencodego_session "$session"
 }
 
 # Roll up Claude total spend / tokens / 30-day history from CodexBar's LOCAL
@@ -576,6 +639,52 @@ eprint('merged cursor cu: today='+tk+'tok mxt='+mxt+'tok hist='+ht.length+'d');
 $.exit(0);
 EOF
 
+# Patch `oc` onto the existing CodexBar `opencodego` provider (in-place, like
+# CURSOR_MERGE_JXA). Fail-soft: helper failure -> publish limits-only opencodego.
+read -r -d '' OG_MERGE_JXA <<'EOF'
+ObjC.import('Foundation'); ObjC.import('stdlib');
+function env(k){ var v=$.NSProcessInfo.processInfo.environment.objectForKey(k);
+  return (v && v.js!==undefined) ? String(v.js) : ''; }
+function eprint(s){ $.NSFileHandle.fileHandleWithStandardError
+  .writeData($.NSString.alloc.initWithUTF8String("og-merge: "+s+"\n").dataUsingEncoding(4)); }
+function rf(p){ try { var s=$.NSString.stringWithContentsOfFileEncodingError(p,4,null);
+  return (s && s.js!==undefined) ? s.js : null; } catch(e){ return null; } }
+function i32(v){ var n=Number(v); if(isNaN(n)) return null;
+  if(n < -2147483648) n=-2147483648; if(n > 2147483647) n=2147483647;
+  return Math.round(n); }
+function i64(v){ var n=Number(v); return isNaN(n) ? null : Math.round(n); }
+var jsonPath=env('CBPUB_JSON'), ogPath=env('CBPUB_OG_JSON');
+if(!jsonPath || !ogPath){ eprint('missing CBPUB_JSON/CBPUB_OG_JSON'); $.exit(2); }
+var pTxt=rf(jsonPath), ogTxt=rf(ogPath);
+if(!pTxt || !ogTxt){ eprint('payload/helper unreadable'); $.exit(2); }
+var pay, src;
+try{ pay=JSON.parse(pTxt); }catch(e){ eprint('payload parse fail'); $.exit(2); }
+try{ src=JSON.parse(ogTxt); }catch(e){ eprint('helper parse fail'); $.exit(3); }
+if(!pay || !Array.isArray(pay.providers)){ eprint('payload shape'); $.exit(2); }
+if(!src || src.id!=='opencodego' || src.ok!==true || !src.oc || typeof src.oc!=='object' || Array.isArray(src.oc)){
+  eprint('helper shape'); $.exit(3); }
+var tk=i64(src.oc.tk), ct=i32(src.oc.ct), mxt=i64(src.oc.mxt);
+if(tk===null || ct===null || mxt===null){ eprint('helper oc fields'); $.exit(3); }
+var ht=[];
+if(Array.isArray(src.oc.ht)){
+  for(var i=0;i<src.oc.ht.length && ht.length<31;i++){
+    var hv=i64(src.oc.ht[i]); if(hv!==null) ht.push(hv); } }
+var did=false;
+for(var i=0;i<pay.providers.length;i++){
+  var pr=pay.providers[i];
+  if(pr && pr.id==='opencodego'){
+    pr.oc={tk:tk, ct:ct, mxt:mxt, ht:ht};
+    did=true;
+  }
+}
+if(!did){ eprint('no opencodego provider — nothing to merge'); $.exit(0); }
+var w=$.NSString.alloc.initWithUTF8String(JSON.stringify(pay))
+  .writeToFileAtomicallyEncodingError(jsonPath,true,4,null);
+if(!w){ eprint('payload writeback failed'); $.exit(2); }
+eprint('merged opencodego oc: today='+tk+'tok ct='+ct+'cents mxt='+mxt+'tok hist='+ht.length+'d');
+$.exit(0);
+EOF
+
 cmd_once() {
   mkdir -p "$LOG_DIR"
   [[ -x "$STATS" ]] || die "sibling codexbar-stats.sh not found/executable at $STATS"
@@ -711,6 +820,33 @@ cmd_once() {
     log "note: Cursor stats skipped (absent/unrecognized) — publishing limits-only cursor"
   fi
 
+  # Patch `oc` onto the existing CodexBar `opencodego` provider from opencodego-stats.sh.
+  # Fail-safe: helper failure -> publish limits-only opencodego (never abort).
+  local og_json="$work/opencodego.json"
+  local og_rc=127
+  if [[ -x "$OPENCODE_GO_STATS" ]]; then
+    if command -v timeout >/dev/null 2>&1; then
+      timeout 30 "$OPENCODE_GO_STATS" >"$og_json" 2>>"$LOG"; og_rc=$?
+    elif command -v gtimeout >/dev/null 2>&1; then
+      gtimeout 30 "$OPENCODE_GO_STATS" >"$og_json" 2>>"$LOG"; og_rc=$?
+    else
+      "$OPENCODE_GO_STATS" >"$og_json" 2>>"$LOG"; og_rc=$?
+    fi
+    if [[ $og_rc -eq 0 ]]; then
+      if CBPUB_JSON="$json" CBPUB_OG_JSON="$og_json" osascript -l JavaScript -e "$OG_MERGE_JXA" 2>>"$LOG"; then
+        bytes=$(wc -c <"$json" | tr -d ' ')
+      else
+        log "note: OpenCode Go merge skipped (malformed helper output) — publishing limits-only opencodego"
+      fi
+    elif [[ $og_rc -eq 124 ]]; then
+      log "note: OpenCode Go helper timed out after 30s — publishing limits-only opencodego"
+    else
+      log "note: OpenCode Go helper failed (exit code $og_rc) — publishing limits-only opencodego"
+    fi
+  else
+    log "note: OpenCode Go stats skipped (absent/unrecognized) — publishing limits-only opencodego"
+  fi
+
   local tok; tok="$(get_token)"
   [[ -n "$tok" ]] || die "no Upstash token in Keychain — run: codexbar-publish.sh --set-token" 5
 
@@ -793,6 +929,8 @@ cmd_status() {
   print -r -- "token:        $([[ -n "$(get_token)" ]] && echo 'in Keychain' || echo 'MISSING — run --set-token')"
   print -r -- "cursor sess:  $([[ -n "$(get_cursor_session)" ]] && echo 'in Keychain' || echo 'MISSING — run --set-cursor-session')"
   print -r -- "cursor stats: $([[ -x "$CURSOR_STATS" ]] && echo "$CURSOR_STATS" || echo "MISSING/not executable — $CURSOR_STATS")"
+  print -r -- "og sess:      $([[ -n "$(get_opencodego_session)" ]] && echo 'in Keychain' || echo 'MISSING — run --set-opencodego-cookie')"
+  print -r -- "og stats:     $([[ -x "$OPENCODE_GO_STATS" ]] && echo "$OPENCODE_GO_STATS" || echo "MISSING/not executable — $OPENCODE_GO_STATS")"
   print -r -- "--- last log lines ---"
   [[ -f "$LOG" ]] && tail -n 8 "$LOG" || print -r -- "(no log yet)"
 }
@@ -802,6 +940,8 @@ case "${1:---once}" in
   --set-token) cmd_set_token ;;
   --set-cursor-session) cmd_set_cursor_session ;;
   --set-cursor-session-clipboard) cmd_set_cursor_session_clipboard ;;
+  --set-opencodego-cookie) cmd_set_opencodego_cookie ;;
+  --set-opencodego-cookie-clipboard) cmd_set_opencodego_cookie_clipboard ;;
   --install)   cmd_install ;;
   --uninstall) cmd_uninstall ;;
   --status)    cmd_status ;;

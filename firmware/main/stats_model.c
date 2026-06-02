@@ -239,6 +239,30 @@ static void parse_cu(const cJSON *e, stats_provider_t *p)
     if (any_cu) p->has_cu = true;
 }
 
+// v2 optional `oc` block: OpenCode Go token/cost rollup from opencode.ai API.
+// Dedicated fields (not cost-slot reuse) — token-focused hero, cost is secondary text.
+static void parse_oc(const cJSON *e, stats_provider_t *p)
+{
+    const cJSON *oc = cJSON_GetObjectItemCaseSensitive(e, "oc");
+    if (strcmp(p->id, "opencodego") != 0 || !cJSON_IsObject(oc)) return;
+    bool any_oc = false;
+    if (get_i64(oc, "tk",  &p->oc_tok_today))    any_oc = true;
+    if (get_i32(oc, "ct",  &p->oc_cost_today_c)) any_oc = true;
+    if (get_i64(oc, "mxt", &p->oc_tok_month_max)) any_oc = true;
+    const cJSON *ht = cJSON_GetObjectItemCaseSensitive(oc, "ht");
+    if (cJSON_IsArray(ht)) {
+        const cJSON *hv;
+        cJSON_ArrayForEach(hv, ht) {
+            if (p->oc_ht_n >= STATS_HIST_MAX) break;
+            if (cJSON_IsNumber(hv)) {
+                p->oc_ht[p->oc_ht_n++] = i64_clamp(hv->valuedouble);
+                any_oc = true;
+            }
+        }
+    }
+    if (any_oc) p->has_oc = true;
+}
+
 // v2 optional `ph`: 24h usage-% history (provider-level, sibling of `cost`).
 // Absent => pct_hist_n stays 0 (memset). For Pi provider: represents Current
 // vs Max (today vs peak usage).
@@ -324,6 +348,7 @@ stats_parse_t stats_model_parse(const char *body, stats_t *out)
             parse_pi(e, p);
             parse_lm(e, p);
             parse_cu(e, p);
+            parse_oc(e, p);
             parse_ph(e, p);
 
             if (p->id[0]) out->n++;
@@ -338,11 +363,12 @@ stats_parse_t stats_model_parse(const char *body, stats_t *out)
 
 // Canonical summary-page display sequence. Providers not listed here follow
 // in their original relative order at the bottom of the list.
-// Reminder: hidden providers (ollama, opencode, opencodego) are filtered
+// Reminder: hidden providers (ollama, opencode) are filtered
 // in ui.c by is_hidden_provider() — they affect neither order nor slots.
 static const char *s_display_order[] = {
     "pi",
     "lmstudio",
+    "opencodego",
     "openrouter",
     "claude",
     "codex",

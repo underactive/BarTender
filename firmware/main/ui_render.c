@@ -983,6 +983,87 @@ static void render_cursor_chart(const stats_provider_t *p,
                             p->cu_ht, p->cu_ht_n, false, 0, 0, card_entered);
 }
 
+// Format millicents (1/1000 cent = 1/100000 dollar) for the OpenCode Go cost
+// display. The API returns cost in millicents, so the display must use a
+// finer-grained format than fmt_money (which expects cents).
+//   345     → "$0.00345"   (5 decimal places for sub-cent)
+//   12345   → "$0.12345"
+//   123456  → "$1.23"      (2 decimal places for dollar+)
+static void fmt_milli(char *buf, size_t n, int32_t mc)
+{
+    if (mc < 0 || n < 3) { snprintf(buf, n, "$?"); return; }
+    int dollars = mc / 100000;
+    int frac = mc % 100000;
+    if (dollars > 0)
+        snprintf(buf, n, "$%d.%02d", dollars, frac / 1000);
+    else
+        snprintf(buf, n, "$0.%05d", frac);
+}
+
+// OpenCode Go TODAY card: tokens hero + cost line + 30-day token bar chart.
+static void render_opencodego_today(const stats_provider_t *p,
+                                    const ui_page_grid_t *g,
+                                    const ui_rect_t *hero,
+                                    bool card_entered)
+{
+    lv_obj_t *hide[] = { cost.or_lbl, cost.or_row1, cost.or_row2,
+                         cost.bar, cost.bar_lbl };
+    for (unsigned i = 0; i < sizeof hide / sizeof *hide; i++)
+        lv_obj_add_flag(hide[i], LV_OBJ_FLAG_HIDDEN);
+    cost_tok_set_parent(cost.card);
+    lv_obj_clear_flag(cost.tok, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(cost.tok_unit, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(cost.cost_30, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(cost.chart, LV_OBJ_FLAG_HIDDEN);
+
+    // Hero: rows 0-1, 2 cols — tokens count with "TOKENS" caption
+    place_hero_amount(&cost_hero, hero, "TOKENS");
+    char tk[16];
+    fmt_tokens(tk, sizeof tk, p->oc_tok_today);
+    set_hero_amount(&cost_hero, NULL, tk, NULL);
+
+    // Row 2 — cost line from millicents
+    const ui_rect_t cost_r = ui_grid_span(g, 0, 2, 2, 1);
+    lv_obj_set_pos(cost.tok, cost_r.x + 12, cost_r.y + 2);
+    char ct[16];
+    fmt_milli(ct, sizeof ct, p->oc_cost_today_c);
+    lv_label_set_text(cost.tok, ct);
+    lv_label_set_text(cost.tok_unit, "spend");
+    lv_obj_align_to(cost.tok_unit, cost.tok, LV_ALIGN_OUT_RIGHT_BOTTOM, 5, 0);
+
+    // Chart: rows 3-8 — 30-day token bar chart
+    const ui_rect_t chart_r = ui_grid_span(g, 0, 3, 2, 5);
+    lv_obj_set_size(cost.chart, chart_r.w - 24, chart_r.h - 8);
+    lv_obj_set_pos(cost.chart, chart_r.x + 12, chart_r.y + 4);
+
+    // Footer: row 8 — max tokens . max spend
+    const ui_rect_t footer_r = ui_grid_span(g, 0, 8, 2, 1);
+    lv_obj_set_pos(cost.cost_30, footer_r.x + 12, footer_r.y + 2);
+    char tk30[16], ct_today[16];
+    fmt_tokens(tk30, sizeof tk30, p->oc_tok_month_max);
+    fmt_milli(ct_today, sizeof ct_today, p->oc_cost_today_c);
+    lv_label_set_text_fmt(cost.cost_30, "30 DAY MAX: %s Toks  " LV_SYMBOL_BULLET "  %s", tk30, ct_today);
+
+    // Row 8b — resets time from primary usage tier
+    lv_obj_clear_flag(cost.cap, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_pos(cost.cap, footer_r.x + 12, footer_r.y + 26);
+    if (p->primary.has && p->primary.reset[0]) {
+        lv_label_set_text_fmt(cost.cap, "Resets %s", p->primary.reset);
+    } else {
+        lv_obj_add_flag(cost.cap, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    // Render bar chart with token history
+    int n = p->oc_ht_n;
+    if (n > NAV_HIST_PTS) n = NAV_HIST_PTS;
+    lv_color_t cc;
+    int32_t ht32[STATS_HIST_MAX];
+    i64_hist_to_i32(ht32, p->oc_ht, n);
+    (void)render_cost_bar_chart(cost.chart, cost.ser, ht32, n,
+        prov_accent(p->id, &cc) ? cc : lv_color_hex(UI_DEFAULT_CHART_COLOR));
+    if (card_entered) anim_chart_fadein(cost.chart);
+}
+
 // OpenRouter TODAY card: spend hero + this-week secondary + balance footer.
 static void render_cost_openrouter(const stats_provider_t *p,
                                    const ui_page_grid_t *g,
@@ -1118,7 +1199,7 @@ static void render_cost_card(const stats_provider_t *p,
         });
     }
 
-    if (!p->has_cost && !p->has_lm && !p->has_cu) {
+    if (!p->has_cost && !p->has_lm && !p->has_cu && !p->has_oc) {
         lv_obj_clear_flag(cost.na, LV_OBJ_FLAG_HIDDEN);
         hide_hero_amount(&cost_hero);
         lv_obj_t *all[] = { cost.tok, cost.tok_unit, cost.cost_30, cost.cap,
@@ -1147,6 +1228,12 @@ static void render_cost_card(const stats_provider_t *p,
     case PK_CURSOR:
         if (p->has_cu) {
             render_cursor_chart(p, g, hero, card_entered);
+            return;
+        }
+        break;
+    case PK_OPENCODEGO:
+        if (p->has_oc) {
+            render_opencodego_today(p, g, hero, card_entered);
             return;
         }
         break;
@@ -1492,7 +1579,8 @@ static void render_summary_secondary_bar(int slot, const stats_provider_t *p)
 {
     provider_kind_t rpk = provider_kind(p->id);
     if (((rpk == PK_CLAUDE || rpk == PK_CODEX) && p->secondary.has)
-        || rpk == PK_LMSTUDIO) {
+        || rpk == PK_LMSTUDIO
+        || (rpk == PK_OPENCODEGO && p->secondary.has)) {
         int wv = clampi((int)(p->secondary.pct + 0.5f), 0, 100);
         lv_bar_set_value(row_bar_w[slot], bar_fill(wv), LV_ANIM_ON);
         lv_obj_set_style_bg_color(row_bar_w[slot], bar_color(p, p->secondary.pct), LV_PART_INDICATOR);

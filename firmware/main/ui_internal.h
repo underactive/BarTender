@@ -56,7 +56,7 @@ extern const lv_font_t font_lemonmilk_23;
 
 // Providers hidden from the summary page. Add/remove IDs here to toggle
 // visibility — no structural changes needed.
-#define HIDDEN_PROVIDERS "ollama", "opencode", "opencodego"
+#define HIDDEN_PROVIDERS "ollama", "opencode"
 
 #define UI_GRID_COLS     2
 #define UI_GRID_ROWS     8
@@ -90,6 +90,7 @@ typedef enum {
     PK_CODEX,
     PK_LMSTUDIO,
     PK_CURSOR,
+    PK_OPENCODEGO,
     PK_OPENROUTER,
 } provider_kind_t;
 

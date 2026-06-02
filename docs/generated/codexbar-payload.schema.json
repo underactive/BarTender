@@ -111,6 +111,23 @@
             },
             "additionalProperties": false
           },
+          "oc": {
+            "type": "object",
+            "description": "v2 optional, OpenCode Go provider only. Token rollup + today's cost from opencode.ai API. Present only on provider id `opencodego`; workos-session cookie never published.",
+            "required": ["tk", "ct", "mxt", "ht"],
+            "properties": {
+              "tk":  { "type": "integer", "description": "Tokens today (local calendar day)." },
+              "ct":  { "type": "integer", "description": "Cost today in cents." },
+              "mxt": { "type": "integer", "description": "30-day max daily tokens." },
+              "ht":  {
+                "type": "array",
+                "items": { "type": "integer" },
+                "maxItems": 31,
+                "description": "Daily token totals, oldest -> newest. Firmware caps at STATS_HIST_MAX."
+              }
+            },
+            "additionalProperties": false
+          },
           "cu": {
             "type": "object",
             "description": "v2 optional, Cursor provider only. Mac-local daily token rollup from scripts/cursor-stats.sh merged by codexbar-publish.sh. Present only on provider id `cursor`; WorkosCursorSessionToken never published.",

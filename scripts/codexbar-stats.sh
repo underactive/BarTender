@@ -171,6 +171,24 @@ if (env('CBAR_MODE')==='json'){
   // cache. Relaxed single-user privacy model: docs/SECURITY.md.
   var num=function(n){ if (n==null||isNaN(n)) return null;
     return parseFloat(Number(n).toFixed(1)); };
+  var fmtReset=function(isoStr){
+    if (!isoStr) return null;
+    var d=new Date(isoStr); if (isNaN(d.getTime())) return null;
+    var now=new Date();
+    // Compare local date boundaries
+    var today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+    var tom=new Date(today.getTime()+86400000);
+    var hr=String(d.getHours()).padStart(2,'0');
+    var mn=String(d.getMinutes()).padStart(2,'0');
+    var hm=hr+':'+mn;
+    if (d>=today && d<tom) return 'today '+hm;
+    var day2=new Date(today.getTime()+2*86400000);
+    if (d>=tom && d<day2) return 'tomorrow '+hm;
+    var week=new Date(today.getTime()+7*86400000);
+    if (d<week) return ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]+' '+hm;
+    var mo=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()];
+    return mo+' '+d.getDate()+' '+hm;
+  };
   var cents=function(n){ if (n==null||isNaN(n)) return null;
     return Math.round(Number(n)*100); };
   var project=function(e){
@@ -180,11 +198,14 @@ if (env('CBAR_MODE')==='json'){
     if (!pr && !se && !te){ o.ok=false; return o; }
     o.ok=true;
     if (pr){ var pp=num(pr.usedPercent); if (pp!=null) o.p=pp;
-      if (pr.resetDescription) o.pr=String(pr.resetDescription); }
+      if (pr.resetDescription) o.pr=String(pr.resetDescription);
+      else { var rfs=fmtReset(pr.resetsAt); if (rfs) o.pr=rfs; } }
     if (se){ var sp=num(se.usedPercent); if (sp!=null) o.s=sp;
-      if (se.resetDescription) o.sr=String(se.resetDescription); }
+      if (se.resetDescription) o.sr=String(se.resetDescription);
+      else { var rfs=fmtReset(se.resetsAt); if (rfs) o.sr=rfs; } }
     if (te){ var tp=num(te.usedPercent); if (tp!=null) o.t=tp;
-      if (te.resetDescription) o.tr=String(te.resetDescription); }
+      if (te.resetDescription) o.tr=String(te.resetDescription);
+      else { var rfs=fmtReset(te.resetsAt); if (rfs) o.tr=rfs; } }
     var cobj={};
     var co=u.providerCost;
     if (co){ var xu=cents(co.used), xl=cents(co.limit);

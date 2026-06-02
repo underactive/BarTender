@@ -244,7 +244,7 @@ void ui_set_stats(const stats_t *s, int64_t fetched_uptime_ms)
 static bool provider_has_both_cards(const stats_provider_t *p)
 {
     provider_kind_t pk = provider_kind(p->id);
-    return pk == PK_LMSTUDIO || (pk == PK_CURSOR && p->has_cu);
+    return pk == PK_LMSTUDIO || (pk == PK_CURSOR && p->has_cu) || (pk == PK_OPENCODEGO && p->has_oc);
 }
 
 // Card a provider page opens on when tapped from the summary list.

@@ -102,6 +102,15 @@ typedef struct {
     int64_t  cu_tok_month_max;          // 30-day max daily tokens
     int      cu_ht_n;                   // valid entries in cu_ht[]
     int64_t  cu_ht[STATS_HIST_MAX];     // daily tokens, oldest -> newest
+
+    // v2 optional `oc` block: OpenCode Go token/cost data from opencode.ai API.
+    // Token-only history chart, single today's cost value.
+    bool     has_oc;
+    int64_t  oc_tok_today;              // tokens today
+    int32_t  oc_cost_today_c;           // cost today in cents
+    int64_t  oc_tok_month_max;          // 30-day max daily tokens
+    int      oc_ht_n;                   // valid entries in oc_ht[]
+    int64_t  oc_ht[STATS_HIST_MAX];     // daily token totals, oldest -> newest
 } stats_provider_t;
 
 typedef struct {
