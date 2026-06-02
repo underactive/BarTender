@@ -50,6 +50,7 @@ void led_init(void)
         led_strip_clear(s_strip);
 }
 
+// First 16 entries are intentionally 0 (sub-threshold sRGB values).
 // sRGB -> linear gamma LUT for WS2812.  Display brand colors are sRGB; LEDs
 // respond linearly, so 0xCC (204) on-screen would drive the red diode at 80%
 // power instead of the ~60% the eye perceives — all channels bloat toward

@@ -122,7 +122,13 @@ static void ui_task(void *arg)
         if (xSemaphoreTake(s_mtx, pdMS_TO_TICKS(5)) == pdTRUE) {
             int64_t now = esp_timer_get_time() / 1000;
             // Screensaver timers.
-            if (st.mode != UI_STATS) { st.saver_active = false; st.saver_fade_end_ms = 0; st.saver_transitioning = false; st.saver_show_summary = false; st.saver_next_show_summary = false; }
+            if (st.mode != UI_STATS) {
+            st.saver_active = false;
+            st.saver_fade_end_ms = 0;
+            st.saver_transitioning = false;
+            st.saver_show_summary = false;
+            st.saver_next_show_summary = false;
+        }
             boot_step_fade_locked(now);
             if (st.boot_fade == BOOT_FADE_NONE)
                 saver_step_fade_locked(now);
@@ -183,6 +189,9 @@ void ui_start(void)
     s_shot_sem = xSemaphoreCreateBinary();
     st.mode = UI_STATS;
     st.nav_level = NAV_SUMMARY;
+    st.prev_nav_level    = NAV_SUMMARY;
+    st.prev_nav_provider = -1;
+    st.prev_nav_card     = CARD_COST;
     strlcpy(st.status, "starting...", sizeof st.status);
     st.dirty = true;
     xTaskCreate(ui_task, "ui", 8192, NULL, 5, NULL);
@@ -224,7 +233,7 @@ void ui_set_stats(const stats_t *s, int64_t fetched_uptime_ms)
 {
     xSemaphoreTake(s_mtx, portMAX_DELAY);
     st.mode = UI_STATS;
-    if (s) { update_provider_activity_locked(s, fetched_uptime_ms); st.stats = *s; stats_model_reorder(&st.stats); }
+    if (s) { update_provider_activity_locked(s, fetched_uptime_ms); st.stats = *s; stats_model_reorder(&st.stats); st.prev_nav_level = NAV_SUMMARY; st.prev_nav_provider = -1; st.prev_nav_card = CARD_COST; }
     st.fetched_ms = fetched_uptime_ms;
     if (!st.boot_complete && st.boot_fade == BOOT_FADE_NONE) {
         int64_t now = esp_timer_get_time() / 1000;

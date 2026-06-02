@@ -97,7 +97,7 @@ firmware/
     touch.*                                ← vendored; event retargeted
     config_store.* wifi_lru.h              ← NVS (pattern reused, new keys)
     app_event.h net_wifi.* upstash.* stats_model.* fetch.* main.c  ← new
-    ui.* ui_format.c ui_render.c ui_screensaver.c ui_internal.h     ← UI (ui.c split by concern)
+    ui.* ui_format.c ui_render_core.c ui_render_card.c ui_render_summary.c ui_screensaver.c ui_internal.h     ← UI (split by concern)
     led.* boot_splash.* provision.* screenshot.*                    ← new
     provider_icons.* provider_colors.h font_*.c                     ← generated/assets
 ```

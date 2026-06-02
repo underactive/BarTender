@@ -1,7 +1,8 @@
 // firmware/main/ui_internal.h
 //
 // PRIVATE shared header for the ui_*.c translation units (ui.c, ui_format.c,
-// ui_render.c, ui_screensaver.c). NOT part of the public API — callers use
+// ui_render_core.c, ui_render_card.c, ui_render_summary.c, ui_screensaver.c).
+// NOT part of the public API — callers use
 // ui.h. This header carries the types, tunables, shared mutable state (declared
 // `extern`; defined in exactly one .c), and the formerly-file-static functions
 // that became cross-file after ui.c was split.
@@ -141,7 +142,7 @@ typedef struct {
 } ui_page_chrome_desc_t;
 
 // ── Shared mutable state ──────────────────────────────────────────────────────
-// Owned by ui.c (definitions there); referenced by ui_render.c / ui_screensaver.c.
+// Owned by ui.c (definitions there); referenced by ui_render_*.c / ui_screensaver.c.
 extern SemaphoreHandle_t s_mtx;
 extern SemaphoreHandle_t s_shot_sem;
 
@@ -162,6 +163,11 @@ extern struct ui_state {
                                 // refresh that REORDERS providers can't
                                 // silently swap which one the page shows
     card_kind_t nav_card;       // which page is showing in NAV_PAGE
+    // Card-transition tracking: set by render() on card entry so the NEXT
+    // card-entry render can detect the transition and trigger entry animations.
+    nav_level_t prev_nav_level;
+    int         prev_nav_provider;
+    card_kind_t prev_nav_card;
     float       auto_scroll_px; // NAV_SUMMARY: pixel offset for automatic ticker scroll
     // Screensaver state: activity tracking, idle entry/exit, fade/dim state.
     saver_activity_t activity[STATS_MAX_PROVIDERS];
@@ -190,19 +196,27 @@ extern struct ui_state {
     int64_t boot_fade_start_ms, boot_fade_end_ms;
 } st;
 
-// Cached screen size — defined in ui_render.c (set in build_widgets), read by
+// Summary-row widget arrays — defined in ui_render_core.c (set in build_widgets),
+// accessed by ui_render_summary.c for row rendering.
+extern lv_obj_t *row_id[ROWS];
+extern lv_obj_t *row_bar[ROWS];
+extern lv_obj_t *row_val[ROWS];
+extern lv_obj_t *row_icon[ROWS];
+extern lv_obj_t *row_bar_w[ROWS];
+
+// Cached screen size — defined in ui_render_core.c (set in build_widgets), read by
 // ui.c nav helpers off ui_task (no LVGL call). NEVER mutated outside build_widgets.
 extern int s_scr_w;
 extern int s_scr_h;
 
-// Card widget groups — defined in ui_render.c, referenced across render helpers.
+// Card widget groups — defined in ui_render_core.c, referenced across render helpers.
 extern cost_card_t cost;
 extern lim_card_t  lim;
 extern hero_amount_t cost_hero, lim_hero;
 
 // Clamp an int to [lo, hi]. Shared by the formatting + render paths to replace
 // the open-coded `if (v < lo) v = lo; else if (v > hi) v = hi;` idiom that was
-// duplicated across ui_format.c / ui_render.c. static inline: each TU gets its
+// duplicated across ui_format.c / ui_render_*.c. static inline: each TU gets its
 // own copy, no link conflict, identical codegen to the hand-written version.
 static inline int clampi(int v, int lo, int hi)
 {
@@ -254,7 +268,44 @@ void saver_enter_locked(int64_t now);
 void saver_advance_locked(int64_t now);
 void saver_exit_locked(int64_t now);
 
-// ui_render.c — LVGL widget construction + draw/update (ui_task only).
+// ui_render_core.c — LVGL widget construction + draw/update (ui_task only).
 void build_widgets(void);
 void render(void);
 lv_obj_t *ui_active_screen(void);  // active screen, NULL before build_widgets()
+
+// Helpers used across ui_render_*.c files (ui_task only, no mutex).
+// Animation callbacks (defined in ui_render_core.c, used via function ptr
+// from ui_render_card.c and ui_render_summary.c).
+void count_pct_cb(void *obj, int32_t v);
+void count_cents_cb(void *obj, int32_t v);
+
+void hide_summary_chrome(void);
+void cost_hero_set_parent(lv_obj_t *parent);
+void cost_tok_set_parent(lv_obj_t *card);
+void anim_count_up(lv_obj_t *lbl, int32_t target, lv_anim_exec_xcb_t cb);
+void anim_chart_fadein(lv_obj_t *chart);
+int32_t render_cost_bar_chart(lv_obj_t *chart, lv_chart_series_t *ser,
+                               const int32_t *hist, int n, lv_color_t color);
+void set_reset_lbl(lv_obj_t *lbl, const char *ts);
+void place_hero_amount(hero_amount_t *h, const ui_rect_t *hero, const char *caption);
+void place_summary_hero_amount(hero_amount_t *h, const ui_rect_t *hero,
+                                const char *caption);
+void set_hero_amount(hero_amount_t *h, const char *prefix,
+                     const char *num, const char *suffix);
+void set_hero_pct(hero_amount_t *h, bool has, float v);
+void set_hero_money(hero_amount_t *h, int32_t cents);
+void hide_hero_amount(hero_amount_t *h);
+void set_bar(lv_obj_t *bar, bool has, float v, const stats_provider_t *p);
+void render_page_chrome(lv_obj_t *hdr, lv_obj_t *logo, lv_obj_t *bg_logo,
+                        int card_w, const ui_page_chrome_desc_t *desc);
+void ui_update_grid_overlay(const ui_page_grid_t *g);
+void update_bar_pulse(lv_obj_t *bar, float pct);
+void update_cursor_sess_pulse(lv_obj_t *icon, bool needs);
+void render_lock_badge(bool locked, int x, int y);
+bool cursor_sess_refresh_needed(const stats_provider_t *p);
+
+// ui_render_card.c — card page rendering (ui_task only).
+void render_card(void);
+
+// ui_render_summary.c — summary row rendering (ui_task only).
+void render_summary_row(int slot, const stats_provider_t *p, int pixel_y, int W);

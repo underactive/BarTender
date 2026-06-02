@@ -100,7 +100,7 @@ Config on the user's machine (not in repo): `~/.config/codexbar-toy/`; secrets i
 | Payload model | `stats_model.{c,h}` | Parse/clamp Upstash JSON → `stats_t` |
 | Network / cloud | `net_wifi.{c,h}`, `upstash.{c,h}`, `fetch.{c,h}` | WiFi, HTTPS GET, fetch loop |
 | Provisioning | `provision.{c,h}` | Captive portal setup |
-| UI | `ui.{c,h}`, `ui_render.c`, `ui_format.c`, `ui_screensaver.c`, `ui_internal.h` | LVGL (single UI task) |
+| UI | `ui.{c,h}`, `ui_render_core.c`, `ui_render_card.c`, `ui_render_summary.c`, `ui_format.c`, `ui_screensaver.c`, `ui_internal.h` | LVGL (single UI task) |
 | Display / input / LED | `display.{c,h}`, `touch.{c,h}`, `i2c_bus.{c,h}`, `led.{c,h}` | Hardware adapters |
 | Branding / assets | `provider_icons.{c,h}`, `provider_colors.h`, `font_lemonmilk_*.c`, `boot_splash.{c,h}` | Generated or embedded assets |
 | Diagnostics | `screenshot.{c,h}`, `board_config.h` | Screenshot protocol, pin/board defs |
