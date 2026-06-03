@@ -443,15 +443,17 @@ static void hide_tier_row(lv_obj_t *lbl, lv_obj_t *big, lv_obj_t *bar, lv_obj_t 
     if (rst) lv_obj_add_flag(rst, LV_OBJ_FLAG_HIDDEN);
 }
 
-// Limits "AUTO"/"WEEKLY" secondary tier (lim.a_*): occupies the chart area when
+// Limits secondary tier (lim.a_*): occupies the chart area when
 // there's no sparkline and a secondary % exists. OpenRouter (has_balance) has no
 // secondary tier. Extracted from render_limits_card (Fowler audit).
-static void render_limits_auto(const stats_provider_t *p, bool has_balance)
+static void render_limits_auto(const stats_provider_t *p, bool has_balance,
+                                provider_kind_t pk)
 {
     if (!has_balance && p->pct_hist_n == 0 && p->secondary.has) {
         char pb[12];
         show_tier_row(lim.a_lbl, lim.a_big, lim.a_bar);
-        lv_label_set_text(lim.a_lbl, p->tertiary.has ? "AUTO" : "WEEKLY");
+        lv_label_set_text(lim.a_lbl, pk == PK_OPENCODEGO ? "WEEKLY" :
+                          (p->tertiary.has ? "AUTO" : "WEEKLY"));
         fmt_pct(pb, sizeof pb, p->secondary.has, p->secondary.pct);
         lv_label_set_text(lim.a_big, pb);
         set_bar(lim.a_bar, p->secondary.has, p->secondary.pct, p);
@@ -461,15 +463,16 @@ static void render_limits_auto(const stats_provider_t *p, bool has_balance)
     }
 }
 
-// Limits tertiary tier (lim.w_*): "API" for providers with a tertiary % and no
-// sparkline (Cursor), else "WEEKLY" when a sparkline is present (Claude).
-// Extracted from render_limits_card (Fowler audit).
-static void render_limits_weekly(const stats_provider_t *p)
+// Limits tertiary tier (lim.w_*): "MONTHLY" for OpenCodeGo (otherwise "API")
+// when a tertiary % and no sparkline exist, else "WEEKLY" when a sparkline is
+// present. Extracted from render_limits_card (Fowler audit).
+static void render_limits_weekly(const stats_provider_t *p,
+                                  provider_kind_t pk)
 {
     char pb[12];
     if (p->tertiary.has && p->pct_hist_n == 0) {
         show_tier_row(lim.w_lbl, lim.w_big, lim.w_bar);
-        lv_label_set_text(lim.w_lbl, "API");
+        lv_label_set_text(lim.w_lbl, pk == PK_OPENCODEGO ? "MONTHLY" : "API");
         fmt_pct(pb, sizeof pb, p->tertiary.has, p->tertiary.pct);
         lv_label_set_text(lim.w_big, pb);
         set_bar(lim.w_bar, p->tertiary.has, p->tertiary.pct, p);
@@ -619,7 +622,8 @@ static void render_limits_card(const stats_provider_t *p,
     // the hero_amount pair. Pi's "SESSION" falls out of the same ternary
     // (no balance, no total tier).
     place_hero_amount(&lim_hero, hero,
-                      has_balance ? "API KEY" : (p->tertiary.has ? "TOTAL" : "SESSION"));
+                      has_balance ? "API KEY" : (p->tertiary.has ?
+                          (pk == PK_OPENCODEGO ? "5-HOUR" : "TOTAL") : "SESSION"));
     if (card_entered && p->primary.has) {
         anim_count_up(lim_hero.num, (int32_t)(p->primary.pct * 10.0f + 0.5f), count_pct_cb);
     } else {
@@ -632,10 +636,10 @@ static void render_limits_card(const stats_provider_t *p,
         set_reset_lbl(lim.s_rst, p->primary.reset);
     }
 
-    render_limits_auto(p, has_balance);
+    render_limits_auto(p, has_balance, pk);
     // weekly BEFORE extra: the OpenRouter budget branch in render_limits_extra
     // repurposes lim.w_bar, so it must override whatever weekly set.
-    render_limits_weekly(p);
+    render_limits_weekly(p, pk);
     render_limits_extra(p, g, has_balance);
     render_limits_sparkline(p, card_entered);
 }
