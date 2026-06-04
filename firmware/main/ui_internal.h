@@ -69,6 +69,7 @@ extern const lv_font_t font_lemonmilk_23;
 #define UI_CHROME_BOTTOM 16
 #define UI_SUMMARY_GAP      8
 #define UI_SUMMARY_TOP_ROWS 2   // content-grid rows reserved above provider list
+#define SUMMARY_GRID_SLOTS ((UI_GRID_ROWS - UI_SUMMARY_TOP_ROWS) * UI_GRID_COLS)
 #define UI_GRID_COLOR    0x8da4c0
 #define UI_GRID_OPA      LV_OPA_90
 
@@ -109,6 +110,12 @@ typedef struct {
 
 typedef struct { int x, y, w, h; } ui_rect_t;
 typedef struct { ui_rect_t content; int cell_w; int cell_h; } ui_page_grid_t;
+
+// Last-rendered summary grid cell (filled each NAV_SUMMARY frame on ui_task).
+typedef struct {
+    ui_rect_t cell;
+    int       pi;   // stats.p[] index, or -1 if empty
+} summary_grid_slot_t;
 
 // A hero_amount is a caption + big number placed together as one unit, so the
 // two can never drift apart. One instance per card.
@@ -169,6 +176,7 @@ extern struct ui_state {
     int         prev_nav_provider;
     card_kind_t prev_nav_card;
     float       auto_scroll_px; // NAV_SUMMARY: pixel offset for automatic ticker scroll
+    summary_grid_slot_t summary_grid[SUMMARY_GRID_SLOTS];
     // Screensaver state: activity tracking, idle entry/exit, fade/dim state.
     saver_activity_t activity[STATS_MAX_PROVIDERS];
     bool saver_active, saver_dim_only;
@@ -251,10 +259,10 @@ void up_id(char *dst, size_t n, const char *src);
 int extra_pct(const stats_provider_t *p);
 void i64_hist_to_i32(int32_t *dst, const int64_t *src, int n);
 
-// ui.c — nav/summary geometry helpers (read st + cached size; use st.auto_scroll_px).
+// ui.c — nav/summary geometry helpers (read st + cached size; grid-cell arithmetic).
 int summary_visible_count(void);
 int summary_provider_at(int visible_idx);
-int summary_hit_test(int y);
+int summary_hit_test(int x, int y);
 int64_t summary_tok_today_total(void);
 
 // ui_screensaver.c — screensaver / boot backlight / idle dimming (all under s_mtx).
@@ -309,3 +317,4 @@ void render_card(void);
 
 // ui_render_summary.c — summary row rendering (ui_task only).
 void render_summary_row(int slot, const stats_provider_t *p, int pixel_y, int W);
+void render_grid_tile(int slot, const stats_provider_t *p, const ui_rect_t *cell);

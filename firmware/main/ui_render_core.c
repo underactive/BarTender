@@ -1008,27 +1008,7 @@ void render(void)   // ui_task only
 
     render_lock_badge(st.locked, s_scr_w - 18, 4);
     int count = summary_visible_count();
-    int total_h = count * ROW_H;
-    if (count <= 0 || total_h <= 0) {
-        for (int slot = 0; slot < ROWS; slot++) {
-            update_bar_pulse(row_bar[slot],   0.0f);
-            update_bar_pulse(row_bar_w[slot], 0.0f);
-            update_cursor_sess_pulse(row_icon[slot], false);
-            lv_obj_add_flag(row_id[slot],   LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(row_bar[slot],  LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(row_val[slot],  LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(row_icon[slot], LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(row_bar_w[slot], LV_OBJ_FLAG_HIDDEN);
-        }
-        return;
-    }
-    while (st.auto_scroll_px >= (float)total_h)
-        st.auto_scroll_px -= (float)total_h;
-    const int row_shift = (int)(st.auto_scroll_px / ROW_H) % count;
-    const int pixel_shift = (int)st.auto_scroll_px % ROW_H;
-    const int viewport_h = footer_slot.y - content_y0;
-    int rows_to_draw = (viewport_h + ROW_H - 1) / ROW_H + 2;
-    if (rows_to_draw > ROWS) rows_to_draw = ROWS;
+    // Hide all widget slots first, then show only populated tiles
     for (int slot = 0; slot < ROWS; slot++) {
         update_bar_pulse(row_bar[slot],   0.0f);
         update_bar_pulse(row_bar_w[slot], 0.0f);
@@ -1039,11 +1019,20 @@ void render(void)   // ui_task only
         lv_obj_add_flag(row_icon[slot], LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(row_bar_w[slot], LV_OBJ_FLAG_HIDDEN);
     }
-    for (int slot = 0; slot < rows_to_draw; slot++) {
-        int pi = summary_provider_at((row_shift + slot) % count);
-        if (pi < 0) continue;
-        int y = content_y0 + slot * ROW_H - pixel_shift;
-        if (y > s_scr_h) continue;
-        render_summary_row(slot, &st.stats.p[pi], y, s_scr_w);
+    for (int s = 0; s < SUMMARY_GRID_SLOTS; s++)
+        st.summary_grid[s].pi = -1;
+    if (count > 0) {
+        int slot = 0;
+        for (int row = UI_SUMMARY_TOP_ROWS; row < UI_GRID_ROWS; row++) {
+            for (int col = 0; col < UI_GRID_COLS; col++) {
+                const ui_rect_t cell = ui_grid_span(&g, col, row, 1, 1);
+                int pi = summary_provider_at(slot);
+                st.summary_grid[slot].cell = cell;
+                st.summary_grid[slot].pi = pi;
+                if (pi >= 0)
+                    render_grid_tile(slot, &st.stats.p[pi], &cell);
+                slot++;
+            }
+        }
     }
 }

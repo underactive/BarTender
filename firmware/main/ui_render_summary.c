@@ -104,3 +104,76 @@ void render_summary_row(int slot, const stats_provider_t *p,
         render_summary_secondary_bar(slot, p);
     }
 }
+
+// Render one 1x1 grid tile: icon + percentage + primary bar + secondary bar.
+// `slot` indexes into the row_*[ROWS] widget arrays (0..ROWS-1).
+// `cell` is the precomputed grid cell rect from ui_grid_span().
+// Provider name is NOT shown — the percentage label takes its place.
+void render_grid_tile(int slot, const stats_provider_t *p,
+                      const ui_rect_t *cell)
+{
+    lv_obj_clear_flag(row_id[slot],  LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(row_val[slot], LV_OBJ_FLAG_HIDDEN);  // percentage now in row_id
+
+    // Compact icon: 24x24, left-aligned in cell, vertically centered
+    lv_obj_set_size(row_icon[slot], 24, 24);
+    lv_obj_set_pos(row_icon[slot], cell->x + 4,
+                   cell->y + (cell->h - 24) / 2);
+
+    // Percentage label where the provider name used to be
+    char pctbuf[12];
+    if (p->ok && p->primary.has) {
+        fmt_pct(pctbuf, sizeof pctbuf, true, p->primary.pct);
+    } else {
+        snprintf(pctbuf, sizeof pctbuf, "--");
+    }
+    lv_label_set_text(row_id[slot], pctbuf);
+    lv_obj_set_style_text_color(row_id[slot], lv_color_hex(0xe8eaed), 0);
+    lv_obj_set_pos(row_id[slot], cell->x + 32, cell->y + 2);
+    lv_obj_set_width(row_id[slot], cell->w - 36);
+
+    // Primary bar
+    lv_obj_set_pos(row_bar[slot], cell->x + 32, cell->y + 18);
+    lv_obj_set_size(row_bar[slot], cell->w - 36, 5);
+
+    // Secondary bar
+    lv_obj_set_pos(row_bar_w[slot], cell->x + 32, cell->y + 25);
+    lv_obj_set_size(row_bar_w[slot], cell->w - 36, 2);
+
+    // Provider logo: A8 silhouette (tinted via recolor) or ARGB8888
+    // full-color image (no tinting). Hidden if no icon for this id.
+    const lv_image_dsc_t *ic = provider_summary_icon(p->id);
+    if (ic) {
+        lv_image_set_src(row_icon[slot], ic);
+        if (provider_icon_is_full_color(p->id)) {
+            lv_obj_set_style_image_recolor_opa(
+                row_icon[slot], LV_OPA_TRANSP, 0);
+        } else {
+            lv_color_t tc;
+            lv_obj_set_style_image_recolor_opa(
+                row_icon[slot], LV_OPA_COVER, 0);
+            lv_obj_set_style_image_recolor(row_icon[slot],
+                prov_accent(p->id, &tc) ? tc : lv_color_hex(0xe8eaed), 0);
+        }
+        lv_obj_clear_flag(row_icon[slot], LV_OBJ_FLAG_HIDDEN);
+        update_cursor_sess_pulse(row_icon[slot], cursor_sess_refresh_needed(p));
+    } else {
+        lv_obj_add_flag(row_icon[slot], LV_OBJ_FLAG_HIDDEN);
+        update_cursor_sess_pulse(row_icon[slot], false);
+    }
+
+    if (!p->ok || !p->primary.has) {
+        update_bar_pulse(row_bar[slot], 0.0f);
+        lv_obj_add_flag(row_bar[slot], LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_text_color(row_id[slot], lv_color_hex(0x6b7075), 0);
+    } else {
+        int v = clampi((int)(p->primary.pct + 0.5f), 0, 100);
+        int fill = bar_fill(v);
+        lv_obj_clear_flag(row_bar[slot], LV_OBJ_FLAG_HIDDEN);
+        lv_bar_set_value(row_bar[slot], fill, LV_ANIM_OFF);
+        lv_obj_set_style_bg_color(row_bar[slot], bar_color(p, p->primary.pct), LV_PART_INDICATOR);
+        update_bar_pulse(row_bar[slot], p->primary.pct);
+        lv_obj_set_style_text_color(row_id[slot], lv_color_hex(0xffffff), 0);
+        render_summary_secondary_bar(slot, p);
+    }
+}

@@ -11,6 +11,7 @@
 #include "provider_colors.h"
 #include "led.h"
 #include "config_store.h"
+#include "board_config.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
@@ -25,9 +26,9 @@ SemaphoreHandle_t s_mtx;
 SemaphoreHandle_t s_shot_sem;  // binary; given by ui_task after snapshot render
 struct ui_state st;
 
-// ── scrollable-summary geometry (pure reads of st + cached s_scr_h; safe to
-// call from ui_handle_input off ui_task — no LVGL, mutate only st.auto_scroll_px
-// under s_mtx, same discipline as the rest of the nav state) ──────────────────
+// ── summary grid geometry (pure reads of st + cached s_scr_h; safe to call
+// from ui_handle_input off ui_task — no LVGL, reads only under s_mtx, same
+// discipline as the rest of the nav state) ────────────────────────────────────
 
 // Summary rows are compacted over visible providers: hidden providers must not
 // consume scroll slots or tap targets, otherwise later visible providers (Pi)
@@ -55,33 +56,36 @@ int summary_provider_at(int visible_idx)
 
 
 
-// Translate a screen Y coordinate into a provider stats.p[] index using
-// the repeating row-sequence ticker, or -1 on a miss. MUST mirror the ticker
-// render geometry exactly.
-int summary_hit_test(int y)
+// Map raw touch X into the same horizontal space as LVGL widget positions.
+// Panel/touch mirror flags can disagree with where tiles are drawn; invert
+// within the content band when effective mirror_x matches display_set_flipped.
+static int summary_touch_x(int x)
 {
     const ui_page_grid_t g = ui_grid_from_height(s_scr_w, s_scr_h);
-    int content_y0 = g.content.y + UI_SUMMARY_TOP_ROWS * g.cell_h;
-    const ui_rect_t footer_slot = {
-        .x = g.content.x,
-        .y = g.content.y + g.content.h,
-        .w = g.content.w,
-        .h = UI_CHROME_BOTTOM,
-    };
-    if (y < content_y0 || y >= footer_slot.y) return -1;
-    int count = summary_visible_count();
-    int total_h = count * ROW_H;
-    if (count <= 0 || total_h <= 0) return -1;
-    float scroll_px = st.auto_scroll_px;
-    while (scroll_px >= (float)total_h)
-        scroll_px -= (float)total_h;
-    const int row_shift = (int)(scroll_px / ROW_H) % count;
-    const int pixel_shift = (int)scroll_px % ROW_H;
-    int rel = y - content_y0 + pixel_shift;
-    int slot = rel / ROW_H;
-    if (slot < 0) return -1;
-    if (rel % ROW_H >= ROW_H - 8) return -1;
-    return summary_provider_at((row_shift + slot) % count);
+    if (x < g.content.x || x >= g.content.x + g.content.w)
+        return x;
+    bool mx = BOARD_LCD_MIRROR_X;
+    if (config_store_get_display_flipped())
+        mx = !mx;
+    if (!mx)
+        return x;
+    int rel = x - g.content.x;
+    return g.content.x + (g.content.w - 1) - rel;
+}
+
+// Translate screen (x,y) into a provider stats.p[] index. Uses the cell rects
+// recorded during the last summary render so taps match drawn tiles.
+int summary_hit_test(int x, int y)
+{
+    const int tx = summary_touch_x(x);
+    for (int s = 0; s < SUMMARY_GRID_SLOTS; s++) {
+        if (st.summary_grid[s].pi < 0) continue;
+        const ui_rect_t *c = &st.summary_grid[s].cell;
+        if (tx >= c->x && tx < c->x + c->w &&
+            y >= c->y && y < c->y + c->h)
+            return st.summary_grid[s].pi;
+    }
+    return -1;
 }
 
 // Sum of today's tokens across all summary-visible providers.
@@ -137,10 +141,9 @@ static void ui_task(void *arg)
                 led_transition_enable();
             }
             saver_advance_locked(now);
-            // Automatic ticker scroll on the summary page: increment pixel
-            // offset every frame and trigger a re-render for smooth animation.
+            // Trigger re-render every frame on the summary page so the
+            // "updated Ns ago" counter and grid render stay fresh.
             if (st.mode == UI_STATS && st.nav_level == NAV_SUMMARY) {
-                st.auto_scroll_px += AUTO_SCROLL_DELTA;
                 st.dirty = true;
             }
             // Re-render every 10 s so the "updated Ns ago" counter ticks even
@@ -288,7 +291,7 @@ static ui_input_result_t handle_summary_event(const app_evt_t *ev)
         st.locked = true;
         st.dirty = true;
     } else if (ev->type == APP_EVT_TAP) {
-        int pi = summary_hit_test(ev->y);
+        int pi = summary_hit_test(ev->x, ev->y);
         if (pi >= 0) {
             const stats_provider_t *tp = &st.stats.p[pi];
             st.nav_provider = pi;
@@ -327,7 +330,7 @@ static void handle_page_event(const app_evt_t *ev)
 // Navigation state machine (ARCHITECTURE.md decision #9: nav lives in ui.c).
 // Runs on the CALLER's task (fetch_task), mutating only `st` under s_mtx —
 // exactly like the setters above; no LVGL call here (summary_hit_test
-// reads st.auto_scroll_px + the cached height).
+// uses grid cell arithmetic + the cached height).
 // Returns UI_INPUT_PASS ONLY for a LONG_PRESS on the summary (→ fetch.c
 // opens the add-network portal) or any event in provisioning mode. Every
 // other event is consumed by the nav machine.
