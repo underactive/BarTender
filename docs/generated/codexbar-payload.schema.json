@@ -16,7 +16,7 @@
         "properties": {
           "id": { "type": "string", "description": "Provider id, e.g. claude/codex/cursor/openrouter." },
           "ok": { "type": "boolean", "description": "Provider returned usable usage data." },
-          "p":  { "type": "number", "description": "Primary/session used %, 0-100." },
+          "p":  { "type": "number", "description": "Primary/session used %. Typically 0-100; Pi compares today to the prior 29-day peak and may exceed 100." },
           "pr": { "type": "string", "description": "Primary reset hint." },
           "s":  { "type": "number", "description": "Secondary/weekly used %, 0-100." },
           "sr": { "type": "string", "description": "Secondary reset hint." },

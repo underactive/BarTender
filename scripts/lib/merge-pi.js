@@ -27,7 +27,7 @@ var h=[];
 for(var i=0;i<src.pi.h.length && h.length<30;i++){ var hv=i32(src.pi.h[i]); if(hv!==null) h.push(hv); }
 if(h.length===0){ eprint('empty helper history'); $.exit(3); }
 var dst={id:'pi', ok:true, pi:{ts:ts, tt:tt, ps:ps, pt:pt, h:h}};
-if(p!==null){ if(p<0)p=0; if(p>100)p=100; dst.p=Math.round(p*10)/10; }
+if(p!==null){ if(p<0)p=0; dst.p=Math.round(p*10)/10; }
 var hadPi=false;
 var next=[];
 for(var i=0;i<pay.providers.length;i++){

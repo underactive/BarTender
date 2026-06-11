@@ -14,15 +14,16 @@
 #   {"id":"pi","ok":true,"p":41.2,"pi":{"ts":512,"tt":123456,"ps":1245,"pt":893421,"h":[...]}}
 #
 # Field units:
-#   p      current usage as % of 30-day max spend (or max tokens if spend=0)
+#   p      today's usage as % of the prior 29-day peak (or peak tokens if
+#          spend=0); exceeds 100 when today beats that prior peak
 #   pi.ts  today's spend, integer cents
 #   pi.tt  today's tokens
 #   pi.ps  max daily spend over the last 30 calendar days, integer cents
 #   pi.pt  max daily tokens over the last 30 calendar days
 #   pi.h   daily spend history, integer cents, oldest -> newest, 30 points
 #
-# Note: The 'p' field represents Current vs Max - today's usage compared to
-#       the busiest day in the last 30 days.
+# Note: 'p' is today vs the busiest prior day (excluding today), so a new
+#       record can exceed 100%. ps/pt are the overall 30-day peaks.
 #
 # Env overrides (testability hooks; default to real Pi Agent paths):
 #   PI_AGENT_HOME          default: ~/.pi/agent
@@ -211,16 +212,21 @@ if files == 0:
 hist = []
 max_spend = 0
 max_tokens = 0
+prior_max_spend = 0
+prior_max_tokens = 0
 latest_spend = 0
 latest_tokens = 0
 any_usage = False
-for day in dates:
+for i, day in enumerate(dates):
     vals = window[day]
     cents = int(round(vals["dollars"] * 100))
     tokens = int(round(vals["tokens"]))
     hist.append(cents)
     max_spend = max(max_spend, cents)
     max_tokens = max(max_tokens, tokens)
+    if i < len(dates) - 1:
+        prior_max_spend = max(prior_max_spend, cents)
+        prior_max_tokens = max(prior_max_tokens, tokens)
     any_usage = any_usage or cents > 0 or tokens > 0
     latest_spend, latest_tokens = cents, tokens
 
@@ -228,13 +234,19 @@ if not any_usage:
     eprint(f"no usable Pi usage in last 30 days (files={files}, rows={rows})")
     sys.exit(3)
 
-if max_spend > 0:
-    pct = round((latest_spend * 100.0) / max_spend, 1)
+# Session % compares today against the peak single day before today so a new
+# record can read above 100%. ps/pt still carry the overall 30-day max.
+if prior_max_spend > 0:
+    pct = round((latest_spend * 100.0) / prior_max_spend, 1)
+elif prior_max_tokens > 0:
+    pct = round((latest_tokens * 100.0) / prior_max_tokens, 1)
+elif max_spend > 0:
+    pct = 100.0
 elif max_tokens > 0:
-    pct = round((latest_tokens * 100.0) / max_tokens, 1)
+    pct = 100.0
 else:
     pct = 0.0
-pct = max(0.0, min(100.0, pct))
+pct = max(0.0, pct)
 
 provider = {
     "id": "pi",
