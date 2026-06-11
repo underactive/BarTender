@@ -590,10 +590,10 @@ void render_page_chrome(lv_obj_t *hdr, lv_obj_t *logo, lv_obj_t *bg_logo,
 
 static void hide_cards(void)     // hide all card panels (chrome stays)
 {
-    update_bar_pulse(lim.s_bar, 0.0f);
-    update_bar_pulse(lim.a_bar, 0.0f);
-    update_bar_pulse(lim.w_bar, 0.0f);
-    update_bar_pulse(lim.x_bar, 0.0f);
+    update_bar_pulse(lim.s_bar, 0.0f, NULL);
+    update_bar_pulse(lim.a_bar, 0.0f, NULL);
+    update_bar_pulse(lim.w_bar, 0.0f, NULL);
+    update_bar_pulse(lim.x_bar, 0.0f, NULL);
     lv_obj_add_flag(cost.card, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(lim.card,  LV_OBJ_FLAG_HIDDEN);
 }
@@ -610,8 +610,8 @@ void hide_summary_chrome(void)  // hide title/status/rows before a card
     lv_obj_set_style_pad_top(cost_hero.num, -8, 0);
     cost_hero_set_parent(cost.card);
     for (int i = 0; i < ROWS; i++) {
-        update_bar_pulse(row_bar[i], 0.0f);
-        update_bar_pulse(row_bar_w[i], 0.0f);
+        update_bar_pulse(row_bar[i], 0.0f, NULL);
+        update_bar_pulse(row_bar_w[i], 0.0f, NULL);
         lv_obj_add_flag(row_id[i],   LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(row_bar[i],  LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(row_val[i],  LV_OBJ_FLAG_HIDDEN);
@@ -627,23 +627,56 @@ static void bar_opa_cb(void *obj, int32_t opa)
     lv_obj_set_style_bg_opa((lv_obj_t *)obj, (lv_opa_t)opa, LV_PART_INDICATOR);
 }
 
-void update_bar_pulse(lv_obj_t *bar, float pct)
+static void bar_col_pulse_cb(void *obj, int32_t mix)
 {
-    bool should  = (pct >= 90.0f);
-    bool running = (lv_anim_get(bar, bar_opa_cb) != NULL);
-    if (should && !running) {
+    lv_obj_t *bar = (lv_obj_t *)obj;
+    lv_color_t c = lv_color_mix(lv_color_hex(BAR_PULSE_WHITE_HEX),
+                                lv_color_hex(BAR_PULSE_GREY_HEX),
+                                (uint8_t)mix);
+    lv_obj_set_style_bg_color(bar, c, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, LV_PART_INDICATOR);
+}
+
+static bool bar_pulse_running(lv_obj_t *bar)
+{
+    return lv_anim_get(bar, bar_opa_cb) != NULL
+        || lv_anim_get(bar, bar_col_pulse_cb) != NULL;
+}
+
+static void bar_pulse_stop(lv_obj_t *bar)
+{
+    lv_anim_delete(bar, bar_opa_cb);
+    lv_anim_delete(bar, bar_col_pulse_cb);
+    lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, LV_PART_INDICATOR);
+}
+
+void update_bar_pulse(lv_obj_t *bar, float pct, const char *provider_id)
+{
+    bool should  = bar_should_pulse(pct);
+    bool color   = should && bar_pulse_uses_color_cycle(provider_id);
+    bool opa_run = lv_anim_get(bar, bar_opa_cb) != NULL;
+    bool col_run = lv_anim_get(bar, bar_col_pulse_cb) != NULL;
+    if (should && !bar_pulse_running(bar)) {
         lv_anim_t a;
         lv_anim_init(&a);
         lv_anim_set_var(&a, bar);
-        lv_anim_set_exec_cb(&a, bar_opa_cb);
-        lv_anim_set_values(&a, LV_OPA_40, LV_OPA_COVER);
+        if (color) {
+            lv_anim_set_exec_cb(&a, bar_col_pulse_cb);
+            lv_anim_set_values(&a, LV_OPA_40, LV_OPA_COVER);
+        } else {
+            lv_anim_set_exec_cb(&a, bar_opa_cb);
+            lv_anim_set_values(&a, LV_OPA_40, LV_OPA_COVER);
+        }
         lv_anim_set_duration(&a, BAR_PULSE_ANIM_MS);
         lv_anim_set_playback_duration(&a, BAR_PULSE_ANIM_MS);
         lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
         lv_anim_start(&a);
-    } else if (!should && running) {
-        lv_anim_delete(bar, bar_opa_cb);
-        lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, LV_PART_INDICATOR);
+    } else if (should && ((color && opa_run) || (!color && col_run))) {
+        // Mode switched (e.g. provider id now available) — restart once.
+        bar_pulse_stop(bar);
+        update_bar_pulse(bar, pct, provider_id);
+    } else if (!should && bar_pulse_running(bar)) {
+        bar_pulse_stop(bar);
     }
 }
 
@@ -721,8 +754,10 @@ void set_bar(lv_obj_t *bar, bool has, float v, const stats_provider_t *p)
 {
     int iv = clampi((int)(v + 0.5f), 0, 100);
     lv_bar_set_value(bar, has ? bar_fill(iv) : 0, LV_ANIM_ON);
-    lv_obj_set_style_bg_color(bar, bar_color(p, v), LV_PART_INDICATOR);
-    update_bar_pulse(bar, has ? v : 0.0f);
+    if (!has || !bar_should_pulse(v) || !bar_pulse_uses_color_cycle(p->id)) {
+        lv_obj_set_style_bg_color(bar, bar_color(p, v), LV_PART_INDICATOR);
+    }
+    update_bar_pulse(bar, has ? v : 0.0f, p->id);
 }
 
 int32_t render_cost_bar_chart(lv_obj_t *chart, lv_chart_series_t *ser,
@@ -776,8 +811,9 @@ void set_hero_amount(hero_amount_t *h, const char *prefix,
 void set_hero_pct(hero_amount_t *h, bool has, float v)
 {
     if (!has) { set_hero_amount(h, NULL, "--", NULL); return; }
-    int tenths = clampi((int)(v * 10.0f + 0.5f), 0, 1000);
-    char nb[8];
+    int tenths = (int)(v * 10.0f + 0.5f);
+    if (tenths < 0) tenths = 0;
+    char nb[12];
     snprintf(nb, sizeof nb, "%d.%d", tenths / 10, tenths % 10);
     set_hero_amount(h, NULL, nb, "%");
 }
@@ -1010,9 +1046,6 @@ void render(void)   // ui_task only
     int count = summary_visible_count();
     // Hide all widget slots first, then show only populated tiles
     for (int slot = 0; slot < ROWS; slot++) {
-        update_bar_pulse(row_bar[slot],   0.0f);
-        update_bar_pulse(row_bar_w[slot], 0.0f);
-        update_cursor_sess_pulse(row_icon[slot], false);
         lv_obj_add_flag(row_id[slot],   LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(row_bar[slot],  LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(row_val[slot],  LV_OBJ_FLAG_HIDDEN);
@@ -1029,10 +1062,21 @@ void render(void)   // ui_task only
                 int pi = summary_provider_at(slot);
                 st.summary_grid[slot].cell = cell;
                 st.summary_grid[slot].pi = pi;
-                if (pi >= 0)
+                if (pi >= 0) {
                     render_grid_tile(slot, &st.stats.p[pi], &cell);
+                } else {
+                    update_bar_pulse(row_bar[slot], 0.0f, NULL);
+                    update_bar_pulse(row_bar_w[slot], 0.0f, NULL);
+                    update_cursor_sess_pulse(row_icon[slot], false);
+                }
                 slot++;
             }
+        }
+    } else {
+        for (int slot = 0; slot < ROWS; slot++) {
+            update_bar_pulse(row_bar[slot], 0.0f, NULL);
+            update_bar_pulse(row_bar_w[slot], 0.0f, NULL);
+            update_cursor_sess_pulse(row_icon[slot], false);
         }
     }
 }

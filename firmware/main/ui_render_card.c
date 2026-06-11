@@ -453,7 +453,8 @@ static void render_limits_auto(const stats_provider_t *p, bool has_balance,
         char pb[12];
         show_tier_row(lim.a_lbl, lim.a_big, lim.a_bar);
         lv_label_set_text(lim.a_lbl, pk == PK_OPENCODEGO ? "WEEKLY" :
-                          (p->tertiary.has ? "AUTO" : "WEEKLY"));
+                          (p->tertiary.has ? (pk == PK_CURSOR ? "AUTO / COMPOSER" : "AUTO")
+                                           : "WEEKLY"));
         fmt_pct(pb, sizeof pb, p->secondary.has, p->secondary.pct);
         lv_label_set_text(lim.a_big, pb);
         set_bar(lim.a_bar, p->secondary.has, p->secondary.pct, p);
@@ -521,8 +522,8 @@ static void render_limits_extra(const stats_provider_t *p,
             lv_obj_add_flag(lim.w_big, LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(lim.w_rst, LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(lim.w_bar, LV_OBJ_FLAG_HIDDEN);
-            set_bar(lim.w_bar, true, (float)xp, p);
-            update_bar_pulse(lim.x_bar, 0.0f);
+            set_bar(lim.w_bar, true, (float)(100 - xp), p);
+            update_bar_pulse(lim.x_bar, 0.0f, NULL);
             hide_tier_row(lim.x_lbl, lim.x_val, lim.x_bar, NULL);
         } else {
             show_tier_row(lim.x_lbl, lim.x_val, lim.x_bar);
@@ -532,12 +533,14 @@ static void render_limits_extra(const stats_provider_t *p,
             lv_label_set_text(lim.x_lbl, "EXTRA USAGE");
             lv_label_set_text_fmt(lim.x_val, "%s / %s", a, b);
             lv_bar_set_value(lim.x_bar, bar_fill(xp), LV_ANIM_ON);
-            lv_obj_set_style_bg_color(lim.x_bar, bar_color(p, (float)xp),
-                                      LV_PART_INDICATOR);
-            update_bar_pulse(lim.x_bar, (float)xp);
+            if (!bar_should_pulse((float)xp) || !bar_pulse_uses_color_cycle(p->id)) {
+                lv_obj_set_style_bg_color(lim.x_bar, bar_color(p, (float)xp),
+                                          LV_PART_INDICATOR);
+            }
+            update_bar_pulse(lim.x_bar, (float)xp, p->id);
         }
     } else {
-        update_bar_pulse(lim.x_bar, 0.0f);
+        update_bar_pulse(lim.x_bar, 0.0f, NULL);
         hide_tier_row(lim.x_lbl, lim.x_val, lim.x_bar, NULL);
     }
 }

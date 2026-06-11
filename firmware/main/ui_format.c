@@ -46,7 +46,7 @@ int pct_tenths(bool has, float v)
 {
     if (!has) return -1;
     int t = (int)(v * 10.0f + 0.5f);
-    return clampi(t, 0, 1000);
+    return t < 0 ? 0 : t;
 }
 
 uint32_t hash_mix_u32(uint32_t h, uint32_t v)
@@ -209,6 +209,25 @@ int bar_fill(int pct)
     return s_bar_invert ? 100 - pct : pct;
 }
 
+// True when a usage bar should heartbeat-pulse (opacity fade). Over-100% only:
+// fill is clamped to 100 but the indicator keeps the provider accent color.
+bool bar_should_pulse(float pct)
+{
+    return pct > BAR_PULSE_OVER_PCT;
+}
+
+// Light brand accents (Pi, ElevenLabs, …) fade poorly on a dark UI; cycle
+// grey↔white instead of opacity on the near-white swatch.
+bool bar_pulse_uses_color_cycle(const char *provider_id)
+{
+    uint32_t hex = prov_color_hex(provider_id);
+    if (!hex) return false;
+    unsigned r = (hex >> 16) & 0xffu;
+    unsigned g = (hex >> 8)  & 0xffu;
+    unsigned b =  hex        & 0xffu;
+    return (r + g + b) >= BAR_PULSE_LIGHT_SUM_MIN;
+}
+
 // ── token / money / pct / id formatting ──────────────────────────────────────
 // tokens -> "123.2M" / "45.6K" / "789" using ONLY integer math (LVGL/newlib
 // nano printf has no %lld and no float; everything here fits int32 after the
@@ -299,7 +318,8 @@ void fmt_pct(char *buf, size_t n, bool has, float v)
     if (!has) { snprintf(buf, n, "--"); return; }
     // Always 1 decimal place. LVGL sprintf has no float support (CONFIG_LV_USE_FLOAT
     // unset), so use integer tenths: 45.3 -> tenths=453 -> "45.3%".
-    int tenths = clampi((int)(v * 10.0f + 0.5f), 0, 1000);
+    int tenths = (int)(v * 10.0f + 0.5f);
+    if (tenths < 0) tenths = 0;
     snprintf(buf, n, "%d.%d%%", tenths / 10, tenths % 10);
 }
 

@@ -46,12 +46,27 @@ static void test_bar_fill(void)
     EQ_INT(bar_fill(150), 100, "bar_fill: clamp high");
 }
 
+static void test_bar_should_pulse(void)
+{
+    CHECK(bar_should_pulse(100.0f) == false, "bar_should_pulse: at 100 -> no");
+    CHECK(bar_should_pulse(100.1f) == true,  "bar_should_pulse: over 100 -> yes");
+    CHECK(bar_should_pulse(125.3f) == true,  "bar_should_pulse: overage -> yes");
+    CHECK(bar_should_pulse(90.0f) == false,  "bar_should_pulse: at 90 -> no");
+}
+
+static void test_bar_pulse_uses_color_cycle(void)
+{
+    CHECK(bar_pulse_uses_color_cycle("pi") == true,  "color_cycle: pi");
+    CHECK(bar_pulse_uses_color_cycle("cursor") == false, "color_cycle: cursor");
+    CHECK(bar_pulse_uses_color_cycle(NULL) == false, "color_cycle: null");
+}
+
 static void test_pct_tenths(void)
 {
     EQ_INT(pct_tenths(false, 50.0f), -1, "pct_tenths: no data -> -1");
     EQ_INT(pct_tenths(true, 45.3f), 453, "pct_tenths: 45.3 -> 453");
     EQ_INT(pct_tenths(true, 0.0f), 0,    "pct_tenths: 0 -> 0");
-    EQ_INT(pct_tenths(true, 250.0f), 1000, "pct_tenths: clamps to 1000");
+    EQ_INT(pct_tenths(true, 250.0f), 2500, "pct_tenths: allows >100%");
 }
 
 static void test_extra_pct(void)
@@ -106,6 +121,7 @@ static void test_fmt_pct(void)
     fmt_pct(b, sizeof b, false, 50.0f); EQ_STR(b, "--",     "fmt_pct: no data");
     fmt_pct(b, sizeof b, true, 45.3f);  EQ_STR(b, "45.3%",  "fmt_pct: 45.3");
     fmt_pct(b, sizeof b, true, 100.0f); EQ_STR(b, "100.0%", "fmt_pct: 100");
+    fmt_pct(b, sizeof b, true, 125.3f); EQ_STR(b, "125.3%", "fmt_pct: >100");
     fmt_pct(b, sizeof b, true, 0.0f);   EQ_STR(b, "0.0%",   "fmt_pct: 0");
 }
 
@@ -198,6 +214,8 @@ int main(void)
 {
     test_clampi();
     test_bar_fill();
+    test_bar_should_pulse();
+    test_bar_pulse_uses_color_cycle();
     test_pct_tenths();
     test_extra_pct();
     test_provider_kind();

@@ -21,14 +21,22 @@ static void render_summary_secondary_bar(int slot, const stats_provider_t *p)
         || (rpk == PK_OPENCODEGO && p->secondary.has)) {
         int wv = clampi((int)(p->secondary.pct + 0.5f), 0, 100);
         lv_bar_set_value(row_bar_w[slot], bar_fill(wv), LV_ANIM_OFF);
-        lv_obj_set_style_bg_color(row_bar_w[slot], bar_color(p, p->secondary.pct), LV_PART_INDICATOR);
-        update_bar_pulse(row_bar_w[slot], p->secondary.pct);
+        if (!bar_should_pulse(p->secondary.pct)
+            || !bar_pulse_uses_color_cycle(p->id)) {
+            lv_obj_set_style_bg_color(row_bar_w[slot],
+                bar_color(p, p->secondary.pct), LV_PART_INDICATOR);
+        }
+        update_bar_pulse(row_bar_w[slot], p->secondary.pct, p->id);
         lv_obj_clear_flag(row_bar_w[slot], LV_OBJ_FLAG_HIDDEN);
     } else if (rpk == PK_OPENROUTER && p->has_cost && p->extra_limit_c > 0) {
         int xv = extra_pct(p);
-        lv_bar_set_value(row_bar_w[slot], bar_fill(xv), LV_ANIM_OFF);
-        lv_obj_set_style_bg_color(row_bar_w[slot], bar_color(p, (float)xv), LV_PART_INDICATOR);
-        update_bar_pulse(row_bar_w[slot], (float)xv);
+        int rem = 100 - xv;
+        lv_bar_set_value(row_bar_w[slot], bar_fill(rem), LV_ANIM_OFF);
+        if (!bar_should_pulse((float)rem) || !bar_pulse_uses_color_cycle(p->id)) {
+            lv_obj_set_style_bg_color(row_bar_w[slot],
+                bar_color(p, (float)rem), LV_PART_INDICATOR);
+        }
+        update_bar_pulse(row_bar_w[slot], (float)rem, p->id);
         lv_obj_clear_flag(row_bar_w[slot], LV_OBJ_FLAG_HIDDEN);
     } else {
         lv_obj_add_flag(row_bar_w[slot], LV_OBJ_FLAG_HIDDEN);
@@ -84,7 +92,7 @@ void render_summary_row(int slot, const stats_provider_t *p,
     }
 
     if (!p->ok || !p->primary.has) {
-        update_bar_pulse(row_bar[slot], 0.0f);
+        update_bar_pulse(row_bar[slot], 0.0f, NULL);
         lv_obj_add_flag(row_bar[slot], LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_style_text_color(row_val[slot], lv_color_hex(0x6b7075), 0);
         lv_label_set_text(row_val[slot], "off");
@@ -93,8 +101,12 @@ void render_summary_row(int slot, const stats_provider_t *p,
         int fill = bar_fill(v);
         lv_obj_clear_flag(row_bar[slot], LV_OBJ_FLAG_HIDDEN);
         lv_bar_set_value(row_bar[slot], fill, LV_ANIM_OFF);
-        lv_obj_set_style_bg_color(row_bar[slot], bar_color(p, p->primary.pct), LV_PART_INDICATOR);
-        update_bar_pulse(row_bar[slot], p->primary.pct);
+        if (!bar_should_pulse(p->primary.pct)
+            || !bar_pulse_uses_color_cycle(p->id)) {
+            lv_obj_set_style_bg_color(row_bar[slot],
+                bar_color(p, p->primary.pct), LV_PART_INDICATOR);
+        }
+        update_bar_pulse(row_bar[slot], p->primary.pct, p->id);
         lv_obj_set_style_text_color(row_val[slot], lv_color_hex(0xffffff), 0);
         {
             char pctbuf[12];
@@ -163,7 +175,7 @@ void render_grid_tile(int slot, const stats_provider_t *p,
     }
 
     if (!p->ok || !p->primary.has) {
-        update_bar_pulse(row_bar[slot], 0.0f);
+        update_bar_pulse(row_bar[slot], 0.0f, NULL);
         lv_obj_add_flag(row_bar[slot], LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_style_text_color(row_id[slot], lv_color_hex(0x6b7075), 0);
     } else {
@@ -171,8 +183,12 @@ void render_grid_tile(int slot, const stats_provider_t *p,
         int fill = bar_fill(v);
         lv_obj_clear_flag(row_bar[slot], LV_OBJ_FLAG_HIDDEN);
         lv_bar_set_value(row_bar[slot], fill, LV_ANIM_OFF);
-        lv_obj_set_style_bg_color(row_bar[slot], bar_color(p, p->primary.pct), LV_PART_INDICATOR);
-        update_bar_pulse(row_bar[slot], p->primary.pct);
+        if (!bar_should_pulse(p->primary.pct)
+            || !bar_pulse_uses_color_cycle(p->id)) {
+            lv_obj_set_style_bg_color(row_bar[slot],
+                bar_color(p, p->primary.pct), LV_PART_INDICATOR);
+        }
+        update_bar_pulse(row_bar[slot], p->primary.pct, p->id);
         lv_obj_set_style_text_color(row_id[slot], lv_color_hex(0xffffff), 0);
         render_summary_secondary_bar(slot, p);
     }

@@ -73,6 +73,11 @@ Rendering:
       (green low → red high), independent of fill. "off"/no-data bars stay
       empty. (`ui_set_bar_invert(false)` / flip `UI_BAR_INVERT_DEFAULT`
       restores the classic used-fill direction.)
+- [ ] **Over-100% usage bars pulse.** When a provider's true session % exceeds
+      100 (e.g. Pi or Cursor on a record day), its summary tile bar and
+      Usage-Limits session bar animate: saturated accents (Cursor teal, etc.)
+      fade opacity in the accent color; light accents (Pi) cycle grey↔white;
+      bars at or below 100% stay static.
 - [ ] **Summary rows show the provider's CodexBar logo** in the left margin,
       tinted with that provider's accent (light grey if un-themed), spanning
       the name + bar lines (two-line row). A provider with no bundled icon

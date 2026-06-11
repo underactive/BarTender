@@ -49,7 +49,11 @@ extern const lv_font_t font_lemonmilk_23;
 // Named cadence / animation durations
 #define AGE_TICK_MS              10000LL   // re-render interval for "updated Ns ago"
 #define LED_TICK_INTERVAL_MS     40LL      // LED update granularity (limits blocking RMT writes)
-#define BAR_PULSE_ANIM_MS        700       // bar heartbeat half-period (≥90 % usage)
+#define BAR_PULSE_OVER_PCT       100.0f    // pulse when usage strictly exceeds this
+#define BAR_PULSE_ANIM_MS        700       // bar over-limit pulse half-period
+#define BAR_PULSE_LIGHT_SUM_MIN  600u      // r+g+b: light accents use grey↔white cycle
+#define BAR_PULSE_GREY_HEX       0x6b7075u // off-state for light-accent pulse
+#define BAR_PULSE_WHITE_HEX      0xFFFFFFu // on-state for light-accent pulse
 #define CURSOR_PULSE_ANIM_MS     1200      // cursor-icon amber pulse half-period
 #define HERO_COUNTUP_MS          400       // count-up animation duration
 #define CHART_FADEIN_MS          600       // chart fade-in duration on card entry
@@ -249,6 +253,8 @@ bool is_hidden_provider(const char *id);
 provider_kind_t provider_kind(const char *id);
 lv_color_t bar_color(const stats_provider_t *p, float v);
 int bar_fill(int pct);
+bool bar_should_pulse(float pct);
+bool bar_pulse_uses_color_cycle(const char *provider_id);
 int64_t provider_tok_today(const stats_provider_t *p);
 const char *summary_provider_name(const char *id);
 void fmt_tokens(char *buf, size_t n, int64_t t);
@@ -307,7 +313,7 @@ void set_bar(lv_obj_t *bar, bool has, float v, const stats_provider_t *p);
 void render_page_chrome(lv_obj_t *hdr, lv_obj_t *logo, lv_obj_t *bg_logo,
                         int card_w, const ui_page_chrome_desc_t *desc);
 void ui_update_grid_overlay(const ui_page_grid_t *g);
-void update_bar_pulse(lv_obj_t *bar, float pct);
+void update_bar_pulse(lv_obj_t *bar, float pct, const char *provider_id);
 void update_cursor_sess_pulse(lv_obj_t *icon, bool needs);
 void render_lock_badge(bool locked, int x, int y);
 bool cursor_sess_refresh_needed(const stats_provider_t *p);
