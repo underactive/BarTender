@@ -94,6 +94,25 @@ typedef struct {
     float    lm_week_cp[LM_WEEK_MAX];
     float    lm_week_ch[LM_WEEK_MAX];
 
+    // v2 optional `ol` block: Ollama publishes local inference
+    // metrics — requests, tokens, 7-day table. Dedicated fields (not
+    // cost-slot reuse) mirroring LM Studio without cache metrics.
+    bool     has_ol;
+    int32_t  ol_req_today;          // requests today
+    int64_t  ol_tok_today;          // tokens today
+    int32_t  ol_req_month_max;      // 30-day max daily requests
+    int64_t  ol_tok_month_max;      // 30-day max daily tokens
+    int      ol_hr_n;               // valid entries in ol_hr[]
+    int32_t  ol_hr[STATS_HIST_MAX];  // daily requests, oldest -> newest
+    int      ol_ht_n;               // valid entries in ol_ht[]
+    int64_t  ol_ht[STATS_HIST_MAX];  // daily tokens, oldest -> newest
+
+#define OL_WEEK_MAX  7
+    int      ol_week_n;
+    char     ol_week_d[OL_WEEK_MAX][6]; // "MM-DD"
+    int32_t  ol_week_rq[OL_WEEK_MAX];
+    int64_t  ol_week_tk[OL_WEEK_MAX];
+
     // v2 optional `cu` block: Cursor token rollup (Mac-local daily totals).
     // Token-only — no cost/requests. Dedicated fields (not cost-slot reuse).
     bool     has_cu;

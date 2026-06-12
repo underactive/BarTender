@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://bartender/docs/generated/codexbar-payload.schema.json",
   "title": "CodexBar toy Upstash payload (inner, decoded from the {\"result\":\"...\"} envelope)",
-  "description": "Hand-maintained. Producer: scripts/codexbar-stats.sh --json (usage % + extra-usage $) augmented by scripts/codexbar-publish.sh (Claude/Codex cost rollups from CodexBar's local cost caches plus the reduced Pi Agent provider from scripts/pi-agent-stats.sh and optional per-provider `cu` on `cursor` from scripts/cursor-stats.sh). Consumer: firmware/main/stats_model.{h,c}. v1 = pre-cost {id,ok,p?,pr?,s?,sr?}; v2 is a strict superset adding optional per-provider `cost`, `ph`, `pi`, `lm`, and `cu` objects. Firmware accepts v1 and v2; rejects other versions.",
+  "description": "Hand-maintained. Producer: scripts/codexbar-stats.sh --json (usage % + extra-usage $) augmented by scripts/codexbar-publish.sh (Claude/Codex cost rollups from CodexBar's local cost caches plus the reduced Pi Agent provider from scripts/pi-agent-stats.sh, the LM Studio provider from scripts/lmstudio-stats.sh, the Ollama provider from scripts/ollama-stats.sh, and optional per-provider `cu` on `cursor` from scripts/cursor-stats.sh). Consumer: firmware/main/stats_model.{h,c}. v1 = pre-cost {id,ok,p?,pr?,s?,sr?}; v2 is a strict superset adding optional per-provider `cost`, `ph`, `pi`, `lm`, `ol`, and `cu` objects. Firmware accepts v1 and v2; rejects other versions.",
   "type": "object",
   "required": ["v", "ts", "providers"],
   "properties": {
@@ -141,6 +141,33 @@
                 "items": { "type": "integer" },
                 "maxItems": 31,
                 "description": "Daily token totals, oldest -> newest. Firmware caps at STATS_HIST_MAX."
+              }
+            },
+            "additionalProperties": false
+          },
+          "ol": {
+            "type": "object",
+            "description": "v2 optional, Ollama provider only. Local inference metrics from Ollama server. Present only on provider id `ollama`.",
+            "required": ["rq", "tk", "mxr", "mxt"],
+            "properties": {
+              "rq":  { "type": "integer", "description": "Requests today." },
+              "tk":  { "type": "integer", "description": "Tokens today." },
+              "mxr": { "type": "integer", "description": "30-day max daily requests." },
+              "mxt": { "type": "integer", "description": "30-day max daily tokens." },
+              "hr":  { "type": "array", "items": { "type": "integer" }, "maxItems": 31, "description": "Daily requests history, oldest->newest." },
+              "ht":  { "type": "array", "items": { "type": "integer" }, "maxItems": 31, "description": "Daily tokens history, oldest->newest." },
+              "week": {
+                "type": "array", "maxItems": 7,
+                "items": {
+                  "type": "object", "required": ["d", "rq", "tk"],
+                  "properties": {
+                    "d":  { "type": "string", "description": "Date MM-DD." },
+                    "rq": { "type": "integer", "description": "Requests on this day." },
+                    "tk": { "type": "integer", "description": "Tokens on this day." }
+                  },
+                  "additionalProperties": false
+                },
+                "description": "7-day daily usage table."
               }
             },
             "additionalProperties": false

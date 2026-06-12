@@ -214,6 +214,54 @@ static void parse_lm(const cJSON *e, stats_provider_t *p)
     if (any_lm) p->has_lm = true;
 }
 
+// v2 optional `ol` block: Ollama publishes local inference
+// metrics — requests, tokens, 7-day table. Dedicated fields,
+// not cost-slot reuse.
+static void parse_ol(const cJSON *e, stats_provider_t *p)
+{
+    const cJSON *ol = cJSON_GetObjectItemCaseSensitive(e, "ol");
+    if (strcmp(p->id, "ollama") != 0 || !cJSON_IsObject(ol)) return;
+    bool any_ol = false;
+    if (get_i32(ol, "rq",  &p->ol_req_today))     any_ol = true;
+    if (get_i64(ol, "tk",  &p->ol_tok_today))     any_ol = true;
+    if (get_i32(ol, "mxr", &p->ol_req_month_max)) any_ol = true;
+    if (get_i64(ol, "mxt", &p->ol_tok_month_max)) any_ol = true;
+    const cJSON *hr = cJSON_GetObjectItemCaseSensitive(ol, "hr");
+    if (cJSON_IsArray(hr)) {
+        const cJSON *hv;
+        cJSON_ArrayForEach(hv, hr) {
+            if (p->ol_hr_n >= STATS_HIST_MAX) break;
+            if (cJSON_IsNumber(hv)) { p->ol_hr[p->ol_hr_n++] = i32_clamp(hv->valuedouble); any_ol = true; }
+        }
+    }
+    const cJSON *ht = cJSON_GetObjectItemCaseSensitive(ol, "ht");
+    if (cJSON_IsArray(ht)) {
+        const cJSON *hv;
+        cJSON_ArrayForEach(hv, ht) {
+            if (p->ol_ht_n >= STATS_HIST_MAX) break;
+            if (cJSON_IsNumber(hv)) { p->ol_ht[p->ol_ht_n++] = i64_clamp(hv->valuedouble); any_ol = true; }
+        }
+    }
+    const cJSON *week = cJSON_GetObjectItemCaseSensitive(ol, "week");
+    if (cJSON_IsArray(week)) {
+        const cJSON *wv;
+        cJSON_ArrayForEach(wv, week) {
+            if (p->ol_week_n >= OL_WEEK_MAX) break;
+            if (!cJSON_IsObject(wv)) continue;
+            const cJSON *wd = cJSON_GetObjectItemCaseSensitive(wv, "d");
+            if (cJSON_IsString(wd) && wd->valuestring) {
+                strlcpy(p->ol_week_d[p->ol_week_n], wd->valuestring,
+                        sizeof(p->ol_week_d[p->ol_week_n]));
+                get_i32(wv, "rq", &p->ol_week_rq[p->ol_week_n]);
+                get_i64(wv, "tk", &p->ol_week_tk[p->ol_week_n]);
+                p->ol_week_n++;
+                any_ol = true;
+            }
+        }
+    }
+    if (any_ol) p->has_ol = true;
+}
+
 // v2 optional `cu` block: Cursor publishes Mac-local token rollup
 // from cursor-stats.sh (no cost/requests).
 static void parse_cu(const cJSON *e, stats_provider_t *p)
@@ -351,6 +399,7 @@ stats_parse_t stats_model_parse(const char *body, stats_t *out)
             parse_cost(e, p);
             parse_pi(e, p);
             parse_lm(e, p);
+            parse_ol(e, p);
             parse_cu(e, p);
             parse_oc(e, p);
             parse_ph(e, p);
@@ -377,6 +426,7 @@ static const char *s_display_order[] = {
     "claude",
     "codex",
     "cursor",
+    "ollama",
 };
 
 void stats_model_reorder(stats_t *stats)
