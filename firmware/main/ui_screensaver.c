@@ -36,7 +36,7 @@ void update_provider_activity_locked(const stats_t *s, int64_t now_ms)
     for (int i = 0; i < s->n && i < STATS_MAX_PROVIDERS; i++) {
         const stats_provider_t *p = &s->p[i];
         if (!p->id[0] || is_hidden_provider(p->id) || !p->ok) continue;
-        if (!p->has_cost && !provider_has_limits_card(p) && !p->has_lm && !p->has_cu) continue;
+        if (!p->has_cost && !provider_has_limits_card(p) && !p->has_lm && !p->has_ol && !p->has_cu) continue;
         uint32_t sig = provider_metric_sig(p);
         saver_activity_t *slot = activity_slot(p->id);
         if (!slot->has_sig) { slot->sig = sig; slot->has_sig = true; }
@@ -62,7 +62,7 @@ static bool saver_candidate_at(int64_t now, int start, char *id, size_t id_n, ca
         if (pi < 0) continue;
         const stats_provider_t *p = &st.stats.p[pi];
         if (is_hidden_provider(p->id) || !p->ok) continue;
-        if (p->has_cost || p->has_lm || p->has_cu) *card = CARD_COST;
+        if (p->has_cost || p->has_lm || p->has_ol || p->has_cu) *card = CARD_COST;
         else if (provider_has_limits_card(p)) *card = CARD_LIMITS;
         else continue;
         strlcpy(id, a->id, id_n);
@@ -205,6 +205,26 @@ void saver_advance_locked(int64_t now)
             int next_card = ((int)st.saver_card + 1) % 2;
             if (next_card == 0 && st.saver_card == CARD_LIMITS) {
                 // Wrapped around — check next provider or summary
+                int start = 0;
+                for (int i = 0; i < STATS_MAX_PROVIDERS; i++)
+                    if (st.activity[i].seen && strcmp(st.activity[i].id, st.saver_id) == 0) { start = i + 1; break; }
+                if (!saver_candidate_at(now, start, st.saver_next_id, sizeof st.saver_next_id, &st.saver_next_card)) {
+                    st.saver_next_dim_only = false;
+                    st.saver_next_show_summary = true;
+                } else {
+                    st.saver_next_dim_only = false;
+                    st.saver_next_show_summary = false;
+                }
+                goto advance_done;
+            }
+            strlcpy(st.saver_next_id, st.saver_id, sizeof st.saver_next_id);
+            st.saver_next_card = (card_kind_t)next_card;
+            st.saver_next_dim_only = false;
+            st.saver_next_show_summary = false;
+        } else if (pi >= 0 && provider_kind(st.stats.p[pi].id) == PK_OLLAMA) {
+            // Ollama: 2-card cycle
+            int next_card = ((int)st.saver_card + 1) % 2;
+            if (next_card == 0 && st.saver_card == CARD_LIMITS) {
                 int start = 0;
                 for (int i = 0; i < STATS_MAX_PROVIDERS; i++)
                     if (st.activity[i].seen && strcmp(st.activity[i].id, st.saver_id) == 0) { start = i + 1; break; }

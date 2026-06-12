@@ -18,6 +18,7 @@ static void render_summary_secondary_bar(int slot, const stats_provider_t *p)
     provider_kind_t rpk = provider_kind(p->id);
     if (((rpk == PK_CLAUDE || rpk == PK_CODEX) && p->secondary.has)
         || rpk == PK_LMSTUDIO
+        || rpk == PK_OLLAMA
         || (rpk == PK_OPENCODEGO && p->secondary.has)) {
         int wv = clampi((int)(p->secondary.pct + 0.5f), 0, 100);
         lv_bar_set_value(row_bar_w[slot], bar_fill(wv), LV_ANIM_OFF);
