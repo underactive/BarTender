@@ -377,71 +377,6 @@ static void render_cost_card(const stats_provider_t *p,
 
 // ── render_limits_card helpers ────────────────────────────────────────────────
 
-// Ollama STATS card: tokens% hero + requests% line + bar (same layout as LM Studio Stats).
-static void render_ollama_stats(const stats_provider_t *p,
-                                const ui_page_grid_t *g,
-                                const ui_rect_t *hero,
-                                const ui_rect_t *body,
-                                const ui_rect_t *footer,
-                                bool card_entered)
-{
-    {
-        char up[STATS_ID_MAX];
-        up_id(up, sizeof up, p->id);
-        render_page_chrome(lim.hdr, lim.logo, lim.bg_logo, s_scr_w,
-                           &(ui_page_chrome_desc_t){
-            .title = up,
-            .subtitle = "STATS",
-            .icon_id = p->id,
-        });
-    }
-    lv_obj_set_pos(lim.s_bar, hero->x + 12, hero->y + 84);
-    lv_obj_set_pos(lim.s_rst, hero->x + 12, hero->y + 96);
-    lv_obj_set_size(lim.chart, body->w - 24, body->h - 10);
-    lv_obj_set_pos(lim.chart, body->x + 12, body->y + 4);
-    lv_obj_set_pos(lim.w_rst, footer->x + 12, footer->y + 54);
-    lv_obj_add_flag(lim.w_lbl, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(lim.w_big, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(lim.a_lbl, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(lim.a_big, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(lim.a_bar, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(lim.a_rst, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(lim.chart, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(lim.x_lbl, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(lim.x_val, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(lim.x_bar, LV_OBJ_FLAG_HIDDEN);
-    place_hero_amount(&lim_hero, hero, "TOKENS");
-    if (card_entered && p->has_ol) {
-        anim_count_up(lim_hero.num, (int32_t)(p->primary.pct * 10.0f + 0.5f), count_pct_cb);
-    } else {
-        set_hero_pct(&lim_hero, p->has_ol, p->primary.pct);
-    }
-    set_bar(lim.s_bar, p->has_ol, p->primary.pct, p);
-    lv_obj_add_flag(lim.s_rst, LV_OBJ_FLAG_HIDDEN);
-    cost_tok_set_parent(lim.card);
-    {
-        const ui_rect_t req_r = ui_grid_span(g, 0, 7, 2, 1);
-        lv_obj_set_pos(cost.tok, req_r.x + 12, req_r.y + 2);
-        lv_obj_set_pos(lim.w_bar, req_r.x + 12, req_r.y + req_r.h - 5);
-    }
-    if (p->has_ol) {
-        char pb[12];
-        fmt_pct(pb, sizeof pb, p->has_ol, p->secondary.pct);
-        lv_label_set_text(cost.tok, pb);
-        lv_label_set_text(cost.tok_unit, "requests");
-        lv_obj_align_to(cost.tok_unit, cost.tok, LV_ALIGN_OUT_RIGHT_BOTTOM, 5, 0);
-        lv_obj_clear_flag(cost.tok, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(cost.tok_unit, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(lim.w_bar, LV_OBJ_FLAG_HIDDEN);
-        set_bar(lim.w_bar, true, p->secondary.pct, p);
-    } else {
-        lv_obj_add_flag(cost.tok, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(cost.tok_unit, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(lim.w_bar, LV_OBJ_FLAG_HIDDEN);
-    }
-    lv_obj_add_flag(lim.w_rst, LV_OBJ_FLAG_HIDDEN);
-}
-
 // LM Studio STATS card: tokens% hero + requests% line + bar.
 static void render_lmstudio_stats(const stats_provider_t *p,
                                   const ui_page_grid_t *g,
@@ -665,17 +600,13 @@ static void render_limits_card(const stats_provider_t *p,
     lv_obj_add_flag(cost.tok, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(cost.tok_unit, LV_OBJ_FLAG_HIDDEN);
 
-    // lim_hero is only used by providers migrated to hero_amount (Pi, LM
-    // Studio); hide by default so it can't leak onto the others. Those branches
-    // re-show it.
+    // lim_hero is used by providers that use hero_amount (Pi, LM Studio,
+    // Ollama); hide by default so it can't leak onto the others. Those
+    // branches / the generic path re-show it.
     hide_hero_amount(&lim_hero);
 
     if (pk == PK_LMSTUDIO) {
         render_lmstudio_stats(p, g, hero, body, footer, card_entered);
-        return;
-    }
-    if (pk == PK_OLLAMA) {
-        render_ollama_stats(p, g, hero, body, footer, card_entered);
         return;
     }
 
