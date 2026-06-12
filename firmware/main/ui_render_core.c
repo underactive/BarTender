@@ -11,6 +11,7 @@
 #include "provider_icons.h"
 #include "provider_colors.h"
 #include "boot_splash.h"
+#include "icon_lock.h"
 #include "led.h"
 #include "lvgl.h"
 #include "esp_timer.h"
@@ -214,9 +215,10 @@ static void build_summary_widgets(int W)
     lv_obj_clear_flag(boot_img, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_flag(boot_img, LV_OBJ_FLAG_HIDDEN);
 
-    lock_badge = lv_label_create(scr);
-    lv_obj_set_style_text_color(lock_badge, lv_color_hex(0xffffff), 0);
-    lv_obj_set_style_text_font(lock_badge, &lv_font_montserrat_12, 0);
+    lock_badge = lv_image_create(scr);
+    lv_image_set_src(lock_badge, &icon_lock);
+    lv_obj_set_style_image_recolor(lock_badge, lv_color_hex(0xffffff), 0);
+    lv_obj_set_style_image_recolor_opa(lock_badge, LV_OPA_COVER, 0);
     lv_obj_set_style_pad_all(lock_badge, 0, 0);
     lv_obj_add_flag(lock_badge, LV_OBJ_FLAG_HIDDEN);
 
@@ -528,7 +530,7 @@ void render_lock_badge(bool locked, int x, int y)
         lv_obj_add_flag(lock_badge, LV_OBJ_FLAG_HIDDEN);
         return;
     }
-    lv_label_set_text(lock_badge, LV_SYMBOL_PAUSE);
+    lv_image_set_src(lock_badge, &icon_lock);
     lv_obj_set_pos(lock_badge, x, y);
     lv_obj_clear_flag(lock_badge, LV_OBJ_FLAG_HIDDEN);
     lv_obj_move_foreground(lock_badge);
