@@ -27,6 +27,17 @@ if(rq===null || tk===null || mxr===null || mxt===null){ eprint('helper ol fields
 var dst={id:'ollama', ok:true, ol:{rq:rq, tk:tk, mxr:mxr, mxt:mxt}};
 if(p!==null){ if(p<0)p=0; if(p>100)p=100; dst.p=Math.round(p*10)/10; }
 if(s!==null){ if(s<0)s=0; if(s>100)s=100; dst.s=Math.round(s*10)/10; }
+// SESSION reset: daily at midnight (00:00 of next day)
+var now=new Date();
+var tomorrow=new Date(now.getFullYear(),now.getMonth(),now.getDate()+1);
+var dow=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+dst.pr='tomorrow 00:00';
+// WEEKLY reset: Sunday at midnight
+var today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+var daysUntilSunday=(7-today.getDay())%7;
+if(daysUntilSunday===0) daysUntilSunday=7;
+var nextSunday=new Date(today.getTime()+daysUntilSunday*86400000);
+dst.sr=dow[nextSunday.getDay()]+' 00:00';
 if(Array.isArray(src.ol.hr)){ var hr=[];
   for(var i=0;i<src.ol.hr.length && hr.length<31;i++){ var hv=i32(src.ol.hr[i]); if(hv!==null) hr.push(hv); }
   if(hr.length) dst.ol.hr=hr; }
