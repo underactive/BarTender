@@ -10,6 +10,45 @@
 #include <string.h>
 #include <stdio.h>
 
+// Returns the secondary bar's display percentage (0-100), or -1 if the secondary
+// bar is hidden for this provider. Mirrors the side-bar visibility logic so the
+// value label can show "36% / 28%" when a secondary bar is present.
+static int secondary_pct(const stats_provider_t *p)
+{
+    provider_kind_t rpk = provider_kind(p->id);
+    if (((rpk == PK_CLAUDE || rpk == PK_CODEX) && p->secondary.has)
+        || rpk == PK_LMSTUDIO
+        || rpk == PK_OLLAMA
+        || (rpk == PK_OPENCODEGO && p->secondary.has)) {
+        return clampi((int)(p->secondary.pct + 0.5f), 0, 100);
+    }
+    if (rpk == PK_OPENROUTER && p->has_cost && p->extra_limit_c > 0) {
+        return clampi(100 - extra_pct(p), 0, 100);
+    }
+    return -1;
+}
+
+// Nudge Montserrat-10 suffix down so its baseline lines up with Montserrat-14 primary.
+#define SECONDARY_PCT_Y_OFFSET  3
+
+// Left-align "36%" + "/ 28%" as one tight group (secondary flush after primary).
+static void layout_dual_pct_left(lv_obj_t *primary, lv_obj_t *secondary,
+                                 const char *pri_txt, const char *sec_txt,
+                                 lv_coord_t left_x, lv_coord_t y)
+{
+    lv_label_set_text(primary, pri_txt);
+    lv_label_set_text(secondary, sec_txt);
+    lv_obj_set_width(primary, LV_SIZE_CONTENT);
+    lv_obj_set_width(secondary, LV_SIZE_CONTENT);
+    lv_obj_update_layout(primary);
+    lv_obj_update_layout(secondary);
+
+    lv_obj_set_pos(primary, left_x, y);
+    lv_obj_set_pos(secondary, left_x + lv_obj_get_width(primary),
+                    y + SECONDARY_PCT_Y_OFFSET);
+    lv_obj_clear_flag(secondary, LV_OBJ_FLAG_HIDDEN);
+}
+
 // Summary-row secondary bar (row_bar_w): Claude/Codex weekly %, LM Studio
 // requests %, or OpenRouter budget %; hidden otherwise. Extracted from render()
 // (Fowler audit).
@@ -97,6 +136,7 @@ void render_summary_row(int slot, const stats_provider_t *p,
         lv_obj_add_flag(row_bar[slot], LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_style_text_color(row_val[slot], lv_color_hex(0x6b7075), 0);
         lv_label_set_text(row_val[slot], "off");
+        lv_obj_add_flag(row_val_s[slot], LV_OBJ_FLAG_HIDDEN);
     } else {
         int v = clampi((int)(p->primary.pct + 0.5f), 0, 100);
         int fill = bar_fill(v);
@@ -110,9 +150,21 @@ void render_summary_row(int slot, const stats_provider_t *p,
         update_bar_pulse(row_bar[slot], p->primary.pct, p->id);
         lv_obj_set_style_text_color(row_val[slot], lv_color_hex(0xffffff), 0);
         {
-            char pctbuf[12];
-            fmt_pct(pctbuf, sizeof pctbuf, true, p->primary.pct);
-            lv_label_set_text(row_val[slot], pctbuf);
+            int sv = secondary_pct(p);
+            if (sv >= 0) {
+                char primary_buf[12];
+                char secondary_buf[16];
+                snprintf(primary_buf, sizeof primary_buf, "%d%%", v);
+                snprintf(secondary_buf, sizeof secondary_buf, " / %d%%", sv);
+                layout_dual_pct_left(row_val[slot], row_val_s[slot],
+                    primary_buf, secondary_buf, (lv_coord_t)val_x,
+                    (lv_coord_t)(pixel_y + 15));
+            } else {
+                char pctbuf[12];
+                fmt_pct(pctbuf, sizeof pctbuf, true, p->primary.pct);
+                lv_label_set_text(row_val[slot], pctbuf);
+                lv_obj_add_flag(row_val_s[slot], LV_OBJ_FLAG_HIDDEN);
+            }
         }
         render_summary_secondary_bar(slot, p);
     }
@@ -133,17 +185,33 @@ void render_grid_tile(int slot, const stats_provider_t *p,
     lv_obj_set_pos(row_icon[slot], cell->x + 4,
                    cell->y + (cell->h - 24) / 2);
 
-    // Percentage label where the provider name used to be
-    char pctbuf[12];
-    if (p->ok && p->primary.has) {
-        fmt_pct(pctbuf, sizeof pctbuf, true, p->primary.pct);
-    } else {
-        snprintf(pctbuf, sizeof pctbuf, "--");
-    }
-    lv_label_set_text(row_id[slot], pctbuf);
     lv_obj_set_style_text_color(row_id[slot], lv_color_hex(0xe8eaed), 0);
     lv_obj_set_pos(row_id[slot], cell->x + 32, cell->y + 2);
-    lv_obj_set_width(row_id[slot], cell->w - 36);
+
+    // Percentage label where the provider name used to be
+    if (p->ok && p->primary.has) {
+        int pv = clampi((int)(p->primary.pct + 0.5f), 0, 100);
+        int sv = secondary_pct(p);
+        if (sv >= 0) {
+            char primary_buf[12];
+            char secondary_buf[16];
+            snprintf(primary_buf, sizeof primary_buf, "%d%%", pv);
+            snprintf(secondary_buf, sizeof secondary_buf, " / %d%%", sv);
+            layout_dual_pct_left(row_id[slot], row_val_s[slot],
+                primary_buf, secondary_buf,
+                (lv_coord_t)(cell->x + 32), (lv_coord_t)(cell->y + 2));
+        } else {
+            char pctbuf[12];
+            fmt_pct(pctbuf, sizeof pctbuf, true, p->primary.pct);
+            lv_label_set_text(row_id[slot], pctbuf);
+            lv_obj_set_width(row_id[slot], cell->w - 36);
+            lv_obj_add_flag(row_val_s[slot], LV_OBJ_FLAG_HIDDEN);
+        }
+    } else {
+        lv_label_set_text(row_id[slot], "--");
+        lv_obj_set_width(row_id[slot], cell->w - 36);
+        lv_obj_add_flag(row_val_s[slot], LV_OBJ_FLAG_HIDDEN);
+    }
 
     // Primary bar
     lv_obj_set_pos(row_bar[slot], cell->x + 32, cell->y + 18);

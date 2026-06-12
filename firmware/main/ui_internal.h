@@ -214,6 +214,7 @@ extern struct ui_state {
 extern lv_obj_t *row_id[ROWS];
 extern lv_obj_t *row_bar[ROWS];
 extern lv_obj_t *row_val[ROWS];
+extern lv_obj_t *row_val_s[ROWS];
 extern lv_obj_t *row_icon[ROWS];
 extern lv_obj_t *row_bar_w[ROWS];
 

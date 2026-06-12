@@ -20,7 +20,7 @@
 
 // ── Widget globals (created once, mutated only on ui_task) ───────────────────
 static lv_obj_t *scr, *title, *status, *prov_box, *summary_top, *boot_img, *lock_badge, *footer_bg;
-lv_obj_t *row_id[ROWS], *row_bar[ROWS], *row_val[ROWS], *row_icon[ROWS], *row_bar_w[ROWS];
+lv_obj_t *row_id[ROWS], *row_bar[ROWS], *row_val[ROWS], *row_val_s[ROWS], *row_icon[ROWS], *row_bar_w[ROWS];
 
 // Card widget groups (declared extern in ui_internal.h; defined here).
 cost_card_t cost;
@@ -177,7 +177,14 @@ static void build_summary_widgets(int W)
         row_val[i] = lv_label_create(scr);
         lv_obj_set_style_text_color(row_val[i], lv_color_hex(0xffffff), 0);
         lv_obj_set_style_text_font(row_val[i], &lv_font_montserrat_14, 0);
+        lv_obj_set_style_pad_all(row_val[i], 0, 0);
         lv_obj_set_pos(row_val[i], val_x, y + 15);
+
+        row_val_s[i] = lv_label_create(scr);
+        lv_obj_set_style_text_color(row_val_s[i], lv_color_hex(0xffffff), 0);
+        lv_obj_set_style_text_font(row_val_s[i], &lv_font_montserrat_10, 0);
+        lv_obj_set_style_pad_all(row_val_s[i], 0, 0);
+        lv_obj_add_flag(row_val_s[i], LV_OBJ_FLAG_HIDDEN);
 
         // Weekly bar: 3 px tall, right under the session bar (y+30 + 7 + 2 = y+39).
         row_bar_w[i] = lv_bar_create(scr);
@@ -617,6 +624,7 @@ void hide_summary_chrome(void)  // hide title/status/rows before a card
         lv_obj_add_flag(row_id[i],   LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(row_bar[i],  LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(row_val[i],  LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(row_val_s[i], LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(row_icon[i], LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(row_bar_w[i], LV_OBJ_FLAG_HIDDEN);
     }
@@ -855,6 +863,7 @@ typedef struct {
     const lv_font_t *num_font;
     int              num_pad_top;
     int              num_dy;
+    int              x_pad;
 } hero_style_t;
 
 static void place_hero_styled(hero_amount_t *h, const ui_rect_t *hero,
@@ -863,11 +872,11 @@ static void place_hero_styled(hero_amount_t *h, const ui_rect_t *hero,
     lv_obj_clear_flag(h->caption, LV_OBJ_FLAG_HIDDEN);
     lv_label_set_text(h->caption, caption);
     lv_obj_set_style_text_font(h->caption, s->cap_font, 0);
-    lv_obj_set_pos(h->caption, hero->x + 12, hero->y + s->cap_dy);
+    lv_obj_set_pos(h->caption, hero->x + s->x_pad, hero->y + s->cap_dy);
     lv_obj_clear_flag(h->num, LV_OBJ_FLAG_HIDDEN);
     lv_obj_set_style_text_font(h->num, s->num_font, 0);
     lv_obj_set_style_pad_top(h->num, s->num_pad_top, 0);
-    lv_obj_set_pos(h->num, hero->x + 12, hero->y + s->num_dy);
+    lv_obj_set_pos(h->num, hero->x + s->x_pad, hero->y + s->num_dy);
 }
 
 void place_hero_amount(hero_amount_t *h, const ui_rect_t *hero, const char *caption)
@@ -875,6 +884,7 @@ void place_hero_amount(hero_amount_t *h, const ui_rect_t *hero, const char *capt
     static const hero_style_t s = {
         .cap_font = &lv_font_montserrat_12, .cap_dy = 2,
         .num_font = &font_lemonmilk_48, .num_pad_top = -8, .num_dy = 28,
+        .x_pad = 12,
     };
     place_hero_styled(h, hero, caption, &s);
 }
@@ -885,6 +895,7 @@ void place_summary_hero_amount(hero_amount_t *h, const ui_rect_t *hero,
     static const hero_style_t s = {
         .cap_font = &font_lemonmilk_23, .cap_dy = -8,
         .num_font = &font_lemonmilk_36, .num_pad_top = -6, .num_dy = 22,
+        .x_pad = 8,
     };
     place_hero_styled(h, hero, caption, &s);
 }
@@ -923,6 +934,7 @@ void render(void)   // ui_task only
             lv_obj_add_flag(row_id[i],   LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(row_bar[i],  LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(row_val[i],  LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(row_val_s[i], LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(row_icon[i], LV_OBJ_FLAG_HIDDEN);
         }
         lv_obj_clear_flag(prov_box, LV_OBJ_FLAG_HIDDEN);
@@ -1000,6 +1012,7 @@ void render(void)   // ui_task only
             lv_obj_add_flag(row_id[i],   LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(row_bar[i],  LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(row_val[i],  LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(row_val_s[i], LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(row_icon[i], LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(row_bar_w[i], LV_OBJ_FLAG_HIDDEN);
         }
@@ -1051,6 +1064,7 @@ void render(void)   // ui_task only
         lv_obj_add_flag(row_id[slot],   LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(row_bar[slot],  LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(row_val[slot],  LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(row_val_s[slot], LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(row_icon[slot], LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(row_bar_w[slot], LV_OBJ_FLAG_HIDDEN);
     }
