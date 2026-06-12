@@ -63,6 +63,7 @@ SELF_DIR="${0:A:h}"
 STATS="$SELF_DIR/codexbar-stats.sh"
 PI_STATS="${CBPUB_PI_STATS:-$SELF_DIR/pi-agent-stats.sh}"
 LM_STATS="${CBPUB_LM_STATS:-$SELF_DIR/lmstudio-stats.sh}"
+OL_STATS="${CBPUB_OL_STATS:-$SELF_DIR/ollama-stats.sh}"
 CURSOR_STATS="${CBPUB_CURSOR_STATS:-$SELF_DIR/cursor-stats.sh}"
 OPENCODE_GO_STATS="${CBPUB_OPENCODE_GO_STATS:-$SELF_DIR/opencodego-stats.sh}"
 KC_ACCOUNT_OG="${CBPUB_KC_ACCOUNT_OG:-opencodego-session}"
@@ -258,6 +259,11 @@ cmd_set_opencodego_cookie_clipboard() {
 # the provider array. The helper output is sanitized here to the public payload
 # contract so accidental extra local fields never cross the Upstash boundary.
 
+# Merge the reduced Ollama provider object emitted by ollama-stats.sh into
+# the payload. If the helper exits non-zero or produces a malformed JSON
+# object, skip and log — the caller publishes without Ollama. The helper exits
+# non-zero so the caller publishes without Ollama (never abort, never corrupt).
+#
 # Merge the reduced LM Studio provider object emitted by lmstudio-stats.sh into
 # the provider array. Same fail-safe contract as PI_MERGE_JXA: validates helper
 # shape, extracts lm fields, and prepends/replaces. Any structural problem exits
@@ -375,6 +381,33 @@ cmd_once() {
     fi
   else
     log "note: LM Studio stats skipped (absent/unrecognized) — publishing without LM Studio"
+  fi
+
+  # Append/replace the Ollama provider from local ollama-stats.sh.
+  # Same fail-safe contract as LM Studio: timeout guard, exit-code checking.
+  local ol_json="$work/ol.json"
+  local ol_rc=127
+  if [[ -x "$OL_STATS" ]]; then
+    if command -v timeout >/dev/null 2>&1; then
+      timeout 30 "$OL_STATS" >"$ol_json" 2>>"$LOG"; ol_rc=$?
+    elif command -v gtimeout >/dev/null 2>&1; then
+      gtimeout 30 "$OL_STATS" >"$ol_json" 2>>"$LOG"; ol_rc=$?
+    else
+      "$OL_STATS" >"$ol_json" 2>>"$LOG"; ol_rc=$?
+    fi
+    if [[ $ol_rc -eq 0 ]]; then
+      if CBPUB_JSON="$json" CBPUB_OL_JSON="$ol_json" osascript -l JavaScript "$SELF_DIR/lib/merge-ol.js" 2>>"$LOG"; then
+        bytes=$(wc -c <"$json" | tr -d ' ')
+      else
+        log "note: Ollama merge skipped (malformed helper output) — publishing without Ollama"
+      fi
+    elif [[ $ol_rc -eq 124 ]]; then
+      log "note: Ollama helper timed out after 30s — publishing without Ollama"
+    else
+      log "note: Ollama helper failed (exit code $ol_rc) — publishing without Ollama"
+    fi
+  else
+    log "note: Ollama stats skipped (absent/unrecognized) — publishing without Ollama"
   fi
 
   # Patch `cu` onto the existing cursor limits row from cursor-stats.sh.
