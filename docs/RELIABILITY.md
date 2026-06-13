@@ -33,9 +33,17 @@ are bugs, not edge cases.
 
 ## Testing strategy
 
-- **Unit tests:** Core logic, parsers, and validators are unit-tested with
-  fixture data. One fixture per input format or edge case.
-- **Integration tests:** End-to-end flows against a real (or realistic)
-  environment. These are slower and may run only in CI.
-- **Chaos fixtures:** Deliberately malformed input (truncated data, mixed
-  formats, unexpected types) to verify resilience at system boundaries.
+- **Host-runnable unit tests** under `firmware/test/<module>/` (one Makefile +
+  `./runtests` per suite). Each suite exercises a single module against
+  hand-written fixtures:
+  - `firmware/test/stats_model/` — payload parser, uses
+    `docs/references/*.sample.json` and deliberately-malformed fixtures
+    (truncated bodies, mixed types, unknown `v`) to verify the parser's
+    fail-closed behavior.
+  - `firmware/test/config_store/` — WiFi LRU store, including blob
+    corruption paths.
+  - `firmware/test/ui_format/` — integer-cents / token formatting helpers.
+- **On-device manual QA** — see `docs/testing-checklist.md` for the
+  behavior-level checklist (provisioning, reconnect, page nav, long-press
+  add-network). End-to-end flows against a real Upstash key + real WiFi are
+  exercised by the user during install, not by automated CI.

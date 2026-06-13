@@ -2,7 +2,7 @@
 //
 // Two-step parse of the Upstash response into a flat struct.
 //   body  = {"result":"<escaped-json>"}                       (Upstash envelope)
-//   inner = {v,ts,providers:[{id,ok,p?,pr?,s?,sr?,cost?,pi?}]} (our payload)
+//   inner = {v,ts,providers:[{id,ok,p?,pr?,s?,sr?,cost?}]}     (our payload)
 // Field optionality matches the live contract verified against real bytes:
 // an `ok:false` provider carries ONLY id+ok; `p`/`s` may be int or float.
 //

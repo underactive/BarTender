@@ -6,14 +6,11 @@ code is structured.
 
 ## Core user flow
 
-<!-- Describe your application's core user flow in numbered steps. Example:
-
-1. User provides input (file, URL, command)
-2. System processes and validates input
-3. System performs core operation
-4. Output is structured and enriched
-5. User reviews results
-6. User takes action based on results -->
+1. User configures CodexBar on macOS and runs `./scripts/preflight.sh --install` to wire up the launchd publisher.
+2. `codexbar-stats.sh` reads each enabled provider's usage locally and emits a compact v2 JSON payload.
+3. `codexbar-publish.sh` rolls up cost/tokens from CodexBar's local cost cache, merges optional Pi Agent / Cursor / LM Studio rollups, and POSTs the v2 JSON to the private Upstash key every 5 minutes.
+4. The ESP32-S3 desk toy polls Upstash over HTTPS every 60 s, parses the payload, and renders one row per provider on the summary screen.
+5. The user taps a provider row to see its Cost or Usage Limits page; long-press opens the non-destructive add-network portal when relocating between remembered WiFis.
 
 ## Specs
 

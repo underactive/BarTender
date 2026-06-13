@@ -235,15 +235,8 @@ After producer or consumer changes, confirm samples still parse and schema match
 
 ## Common commands (quick reference)
 
-| Command | What it does |
-|---------|----------------|
-| `./scripts/codexbar-stats.sh` | Local usage report |
-| `./scripts/codexbar-stats.sh --json` | Compact payload for publisher |
-| `./scripts/codexbar-publish.sh --once` | One publish cycle |
-| `./scripts/codexbar-publish.sh --install` | Install launchd schedule |
-| `cd firmware && idf.py build` | Compile firmware |
-| `python3 scripts/build/gen-provider-icons.py` | Regenerate provider icon C sources |
-| `python3 scripts/build/screenshot.py` | Capture device screenshot over serial |
+See `README.md` §Quick start for the full command reference. The same
+commands are also listed in each script's `--help` output.
 
 ---
 

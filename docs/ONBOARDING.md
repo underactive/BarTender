@@ -97,7 +97,7 @@ codexbar-stats.sh
   ├─ watchdog kills anything > CBAR_TIMEOUT (default 45s)
   │
   ├─ --json → v2 JSON:
-  │     { v: 2, ts: "2026-05-27T...", providers: [
+  │     { v: 2, ts: "<publisher-iso8601>", providers: [
   │         { id: "claude", ok: true, p: 45.3, pr: "resets in 2h",
   │           s: 72.1, sr: "resets in 1d",
   │           cost: { xu: 1250, xl: 5000 } }  // extra-usage overage
@@ -249,7 +249,7 @@ GET {upstash_url}/get/{key}
 ```json
 {
   "v": 2,
-  "ts": "2026-05-27T12:00:00Z",
+  "ts": "<publisher-iso8601>",
   "providers": [
     {
       "id": "claude",

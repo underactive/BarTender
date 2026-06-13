@@ -10,8 +10,12 @@ read it over WiFi without ever talking to my Mac directly.
 
 - [ ] `codexbar-stats.sh --json` emits a compact object
       `{v,ts,providers:[{id,ok,p?,pr?,s?,sr?}]}` for enabled providers only.
-- [ ] The JSON contains **no** account email, `loginMethod`, `identity`, org
-      name, or `$` cost — ever (whitelist projection, asserted in tests).
+- [ ] The JSON contains **no** account email, `loginMethod`, `identity`, or
+      org name — ever (whitelisted projection, asserted in tests). At payload
+      **v2**, `$` cost is projected as rolled-up Claude/Codex spend + tokens +
+      30-day per-day history (cents), merged from CodexBar's local cost cache
+      by the publisher — see `docs/SECURITY.md` for the v2 privacy model and
+      the raw cache `files` map that is still never projected.
 - [ ] `codexbar-publish.sh --set-token` stores the Upstash write token in the
       macOS Keychain; the token never appears in argv, logs, or the plist.
 - [ ] `codexbar-publish.sh --once` publishes via `POST <url>/set/<key>` with

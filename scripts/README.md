@@ -1,6 +1,13 @@
 # Host scripts
 
-macOS tooling for the BarTender pipeline. Layout:
+macOS tooling for the **macOS half** of the BarTender pipeline (Prompt 1 + 2).
+These scripts read CodexBar + Pi Agent state locally and publish a reduced
+v2 JSON payload to a private Upstash key; the ESP32 firmware in
+`firmware/main/` is the read-only consumer. See `../README.md` for the
+end-to-end flow and `../docs/SECURITY.md` for the privacy model that governs
+what may cross Upstash.
+
+Layout:
 
 | Path | Role |
 |------|------|

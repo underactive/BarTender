@@ -1,5 +1,13 @@
 # BarTender Architecture
 
+> **Stage glossary** — docs in this repo refer to the three pipeline stages as
+> "Prompt 1/2/3". They map to:
+> - **Prompt 1** = `codexbar-stats.sh` (local stats reader)
+> - **Prompt 2** = `codexbar-publish.sh` (Upstash publisher)
+> - **Prompt 3** = `firmware/` (ESP32-S3 device firmware)
+>
+> The names are historical project-artifact handles; just use the file paths.
+
 ## System overview
 
 A 3-stage pipeline that puts CodexBar AI-usage **and cost** stats on a
