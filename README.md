@@ -171,4 +171,4 @@ See [docs/REPO_CONVENTIONS.md](docs/REPO_CONVENTIONS.md) for repo conventions, w
 
 ## License
 
-Not yet specified.
+MIT — see [LICENSE](LICENSE) for the full text.
