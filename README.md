@@ -3,6 +3,17 @@
 Pipe [CodexBar](https://github.com/steipete/CodexBar) AI-provider usage stats
 and local Pi Agent usage rollups to an ESP32 desktop toy.
 
+![ESP32 desk toy summary screen](docs/hero.png)
+
+> **Stage glossary** — this repo was built in three stages, often referred to
+> in the docs as "Prompt 1/2/3":
+> - **Prompt 1** (`codexbar-stats.sh`) — local stats reader
+> - **Prompt 2** (`codexbar-publish.sh`) — Upstash publisher
+> - **Prompt 3** (`firmware/`) — ESP32-S3 device firmware
+>
+> The names come from the project's planning artifacts; you can ignore them
+> and just use the file paths.
+
 ## Why
 
 CodexBar shows your AI coding-plan usage in the macOS menu bar. This project
