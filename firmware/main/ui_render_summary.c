@@ -148,8 +148,12 @@ void render_summary_row(int slot, const stats_provider_t *p,
     // the smaller bottom bar.
     provider_kind_t rpk_oc = provider_kind(p->id);
     bool oc_swap = (rpk_oc == PK_OPENCODEGO);
-    bool top_has = oc_swap ? p->secondary.has : p->primary.has;
-    float top_pct = oc_swap ? p->secondary.pct : p->primary.pct;
+    bool mo_swap = (rpk_oc == PK_MIMO && p->has_mo && p->mo_tok_month_max > 0);
+    bool top_has = oc_swap ? p->secondary.has
+                           : (mo_swap ? true : p->primary.has);
+    float top_pct = oc_swap ? p->secondary.pct
+                            : (mo_swap ? ((float)p->mo_tok_today / (float)p->mo_tok_month_max * 100.0f)
+                                       : p->primary.pct);
 
     if (!p->ok || !top_has) {
         update_bar_pulse(row_bar[slot], 0.0f, NULL);
@@ -214,8 +218,12 @@ void render_grid_tile(int slot, const stats_provider_t *p,
     // the smaller bottom bar.
     provider_kind_t rpk_oc = provider_kind(p->id);
     bool oc_swap = (rpk_oc == PK_OPENCODEGO);
-    bool top_has = oc_swap ? p->secondary.has : p->primary.has;
-    float top_pct = oc_swap ? p->secondary.pct : p->primary.pct;
+    bool mo_swap = (rpk_oc == PK_MIMO && p->has_mo && p->mo_tok_month_max > 0);
+    bool top_has = oc_swap ? p->secondary.has
+                           : (mo_swap ? true : p->primary.has);
+    float top_pct = oc_swap ? p->secondary.pct
+                            : (mo_swap ? ((float)p->mo_tok_today / (float)p->mo_tok_month_max * 100.0f)
+                                       : p->primary.pct);
 
     // Percentage label where the provider name used to be
     if (p->ok && top_has) {

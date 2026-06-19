@@ -143,7 +143,7 @@ uint32_t provider_metric_sig(const stats_provider_t *p)
 bool provider_card_available(const stats_provider_t *p, card_kind_t card)
 {
     switch (card) {
-        case CARD_COST:         return p->has_cost || p->has_lm || p->has_ol || p->has_cu || p->has_oc;
+        case CARD_COST:         return p->has_cost || p->has_lm || p->has_ol || p->has_cu || p->has_oc || p->has_mo;
         case CARD_LIMITS:       return provider_has_limits_card(p) || p->has_lm || p->has_ol;
     }
     return false;
@@ -201,6 +201,7 @@ provider_kind_t provider_kind(const char *id)
     if (strcmp(id, "opencodego") == 0) return PK_OPENCODEGO;
     if (strcmp(id, "openrouter") == 0) return PK_OPENROUTER;
     if (strcmp(id, "ollama")     == 0) return PK_OLLAMA;
+    if (strcmp(id, "mimo")       == 0) return PK_MIMO;
     return PK_UNKNOWN;
 }
 
@@ -257,6 +258,7 @@ int64_t provider_tok_today(const stats_provider_t *p)
     case PK_OLLAMA:   return p->has_ol ? p->ol_tok_today : 0;
     case PK_CURSOR:   return p->has_cu ? p->cu_tok_today : 0;
     case PK_OPENCODEGO: return p->has_oc ? p->oc_tok_today : 0;
+    case PK_MIMO:    return p->has_mo ? p->mo_tok_today : 0;
     default:          return p->has_cost ? p->tok_today : 0;
     }
 }
@@ -272,6 +274,7 @@ const char *summary_provider_name(const char *id)
     case PK_CURSOR:     return "Cursor";
     case PK_OPENCODEGO: return "OpenCode Go";
     case PK_OLLAMA:     return "Ollama";
+    case PK_MIMO:       return "MiMo";
     default:            return id ? id : "";
     }
 }

@@ -313,6 +313,32 @@ static void parse_oc(const cJSON *e, stats_provider_t *p)
     if (any_oc) p->has_oc = true;
 }
 
+// v2 optional `mo` block: Xiaomi MiMo token/cost rollup from platform.xiaomimimo.com API.
+// Dedicated fields (not cost-slot reuse) — token-focused hero, cost is secondary text.
+static void parse_mo(const cJSON *e, stats_provider_t *p)
+{
+    const cJSON *mo = cJSON_GetObjectItemCaseSensitive(e, "mo");
+    if (strcmp(p->id, "mimo") != 0 || !cJSON_IsObject(mo)) return;
+    bool any_mo = false;
+    if (get_i64(mo, "tk",  &p->mo_tok_today))    any_mo = true;
+    if (get_i32(mo, "ct",  &p->mo_cost_today_c)) any_mo = true;
+    if (get_i64(mo, "mxt", &p->mo_tok_month_max)) any_mo = true;
+    if (get_i32(mo, "bl",  &p->mo_balance_c))      any_mo = true;
+    if (get_i32(mo, "gbl", &p->mo_gift_balance_c))  any_mo = true;
+    const cJSON *ht = cJSON_GetObjectItemCaseSensitive(mo, "ht");
+    if (cJSON_IsArray(ht)) {
+        const cJSON *hv;
+        cJSON_ArrayForEach(hv, ht) {
+            if (p->mo_ht_n >= STATS_HIST_MAX) break;
+            if (cJSON_IsNumber(hv)) {
+                p->mo_ht[p->mo_ht_n++] = i64_clamp(hv->valuedouble);
+                any_mo = true;
+            }
+        }
+    }
+    if (any_mo) p->has_mo = true;
+}
+
 // v2 optional `ph`: 24h usage-% history (provider-level, sibling of `cost`).
 // Absent => pct_hist_n stays 0 (memset). For Pi provider: represents Current
 // vs Max (today vs peak usage).
@@ -402,6 +428,7 @@ stats_parse_t stats_model_parse(const char *body, stats_t *out)
             parse_ol(e, p);
             parse_cu(e, p);
             parse_oc(e, p);
+            parse_mo(e, p);
             parse_ph(e, p);
 
             if (p->id[0]) out->n++;

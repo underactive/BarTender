@@ -130,6 +130,17 @@ typedef struct {
     int64_t  oc_tok_month_max;          // 30-day max daily tokens
     int      oc_ht_n;                   // valid entries in oc_ht[]
     int64_t  oc_ht[STATS_HIST_MAX];     // daily token totals, oldest -> newest
+
+    // v2 optional `mo` block: Xiaomi MiMo token/cost data from API.
+    // Token-focused hero with cost secondary line, 30-day bar chart.
+    bool     has_mo;
+    int64_t  mo_tok_today;              // tokens today
+    int32_t  mo_cost_today_c;           // cost today in cents
+    int64_t  mo_tok_month_max;          // 30-day max daily tokens
+    int      mo_ht_n;                   // valid entries in mo_ht[]
+    int64_t  mo_ht[STATS_HIST_MAX];     // daily token totals, oldest -> newest
+    int32_t  mo_balance_c;              // cash balance in cents
+    int32_t  mo_gift_balance_c;         // gift balance in cents
 } stats_provider_t;
 
 typedef struct {

@@ -185,6 +185,137 @@ static void render_opencodego_today(const stats_provider_t *p,
     if (card_entered) anim_chart_fadein(cost.chart);
 }
 
+// MiMo TODAY card: tokens hero + cost line + 30-day token bar chart.
+// Same layout as OpenCode Go TODAY — token-focused with cost as secondary.
+// Cost is in cents (USD × 100).
+static void render_mimo_today(const stats_provider_t *p,
+                              const ui_page_grid_t *g,
+                              const ui_rect_t *hero,
+                              bool card_entered)
+{
+    lv_obj_t *hide[] = { cost.or_lbl, cost.or_row1, cost.or_row2,
+                         cost.bar, cost.bar_lbl };
+    for (unsigned i = 0; i < sizeof hide / sizeof *hide; i++)
+        lv_obj_add_flag(hide[i], LV_OBJ_FLAG_HIDDEN);
+    cost_tok_set_parent(cost.card);
+    lv_obj_clear_flag(cost.tok, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(cost.tok_unit, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(cost.cost_30, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(cost.chart, LV_OBJ_FLAG_HIDDEN);
+
+    // Hero: rows 0-1, 2 cols — tokens count with "TOKENS" caption
+    place_hero_amount(&cost_hero, hero, "TOKENS");
+    char tk[16];
+    fmt_tokens(tk, sizeof tk, p->mo_tok_today);
+    set_hero_amount(&cost_hero, NULL, tk, NULL);
+
+    // Row 2 — cost line (cents)
+    const ui_rect_t cost_r = ui_grid_span(g, 0, 2, 2, 1);
+    lv_obj_set_pos(cost.tok, cost_r.x + 12, cost_r.y + 2);
+    char ct[16];
+    fmt_money(ct, sizeof ct, p->mo_cost_today_c);
+    lv_label_set_text(cost.tok, ct);
+    lv_label_set_text(cost.tok_unit, "spend");
+    lv_obj_align_to(cost.tok_unit, cost.tok, LV_ALIGN_OUT_RIGHT_BOTTOM, 5, 0);
+
+    // Chart: rows 3-8 — 30-day token bar chart
+    const ui_rect_t chart_r = ui_grid_span(g, 0, 3, 2, 5);
+    lv_obj_set_size(cost.chart, chart_r.w - 24, chart_r.h - 8);
+    lv_obj_set_pos(cost.chart, chart_r.x + 12, chart_r.y + 4);
+
+    // Footer: row 8 — max tokens . max spend
+    const ui_rect_t footer_r = ui_grid_span(g, 0, 8, 2, 1);
+    lv_obj_set_pos(cost.cost_30, footer_r.x + 12, footer_r.y + 2);
+    char tk30[16], ct_today[16];
+    fmt_tokens(tk30, sizeof tk30, p->mo_tok_month_max);
+    fmt_money(ct_today, sizeof ct_today, p->mo_cost_today_c);
+    lv_label_set_text_fmt(cost.cost_30, "30 DAY MAX: %s Toks  " LV_SYMBOL_BULLET "  %s", tk30, ct_today);
+
+    // Row 8b — resets time from primary usage tier
+    lv_obj_clear_flag(cost.cap, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_pos(cost.cap, footer_r.x + 12, footer_r.y + 26);
+    if (p->primary.has && p->primary.reset[0]) {
+        lv_label_set_text_fmt(cost.cap, "Resets %s", p->primary.reset);
+    } else {
+        lv_obj_add_flag(cost.cap, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    // Render bar chart with token history
+    int n = p->mo_ht_n;
+    if (n > NAV_HIST_PTS) n = NAV_HIST_PTS;
+    lv_color_t cc;
+    int32_t ht32[STATS_HIST_MAX];
+    i64_hist_to_i32(ht32, p->mo_ht, n);
+    (void)render_cost_bar_chart(cost.chart, cost.ser, ht32, n,
+        prov_accent(p->id, &cc) ? cc : lv_color_hex(UI_DEFAULT_CHART_COLOR));
+    if (card_entered) anim_chart_fadein(cost.chart);
+}
+
+// MiMo LIMITS card: BALANCE hero + gift balance secondary.
+// Replaces the default SESSION widget — same layout as OpenRouter TODAY balance footer.
+static void render_mimo_limits(const stats_provider_t *p,
+                               const ui_page_grid_t *g,
+                               const ui_rect_t *hero,
+                               const ui_rect_t *footer,
+                               bool card_entered)
+{
+    // Page chrome: icon + "MIMO" title + "LIMITS" subtitle
+    {
+        char up[STATS_ID_MAX];
+        up_id(up, sizeof up, p->id);
+        render_page_chrome(lim.hdr, lim.logo, lim.bg_logo, s_scr_w,
+                           &(ui_page_chrome_desc_t){
+            .title = up,
+            .subtitle = "LIMITS",
+            .icon_id = p->id,
+        });
+    }
+
+    // Hide all default LIMITS tier widgets we don't need
+    hide_hero_amount(&lim_hero);
+    lv_obj_add_flag(lim.s_bar, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim.s_rst, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim.a_lbl, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim.a_big, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim.a_bar, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim.a_rst, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim.w_lbl, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim.w_big, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim.w_bar, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim.w_rst, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim.x_lbl, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim.x_val, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim.x_bar, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim.chart, LV_OBJ_FLAG_HIDDEN);
+
+    // BALANCE hero in the lim card's hero area
+    place_hero_amount(&lim_hero, hero, "BALANCE");
+    if (card_entered) {
+        anim_count_up(lim_hero.num, p->mo_balance_c, count_cents_cb);
+    } else {
+        set_hero_money(&lim_hero, p->mo_balance_c);
+    }
+
+    // Gift balance secondary line using the lim card's secondary tier widgets
+    const ui_rect_t gift_r = ui_grid_span(g, 0, 7, 2, 1);
+    lv_obj_set_style_text_font(lim.a_big, &font_lemonmilk_24, 0);
+    lv_obj_set_style_text_color(lim.a_big, lv_color_hex(0x9aa0a6), 0);
+    lv_obj_clear_flag(lim.a_big, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_pos(lim.a_big, gift_r.x + 12, gift_r.y + 2);
+    char gb[16];
+    fmt_money(gb, sizeof gb, p->mo_gift_balance_c);
+    lv_label_set_text(lim.a_big, gb);
+    // "bonus balance" label
+    lv_obj_set_style_text_font(lim.a_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(lim.a_lbl, lv_color_hex(0x9aa0a6), 0);
+    lv_obj_clear_flag(lim.a_lbl, LV_OBJ_FLAG_HIDDEN);
+    lv_label_set_text(lim.a_lbl, "bonus balance");
+    lv_obj_align_to(lim.a_lbl, lim.a_big, LV_ALIGN_OUT_RIGHT_BOTTOM, 5, 0);
+    // Hide the rest of the secondary tier (bar + reset)
+    lv_obj_add_flag(lim.a_bar, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim.a_rst, LV_OBJ_FLAG_HIDDEN);
+}
+
 // OpenRouter TODAY card: spend hero + this-week secondary + balance footer.
 static void render_cost_openrouter(const stats_provider_t *p,
                                    const ui_page_grid_t *g,
@@ -320,7 +451,7 @@ static void render_cost_card(const stats_provider_t *p,
         });
     }
 
-    if (!p->has_cost && !p->has_lm && !p->has_ol && !p->has_cu && !p->has_oc) {
+    if (!p->has_cost && !p->has_lm && !p->has_ol && !p->has_cu && !p->has_oc && !p->has_mo) {
         lv_obj_clear_flag(cost.na, LV_OBJ_FLAG_HIDDEN);
         hide_hero_amount(&cost_hero);
         lv_obj_t *all[] = { cost.tok, cost.tok_unit, cost.cost_30, cost.cap,
@@ -361,6 +492,12 @@ static void render_cost_card(const stats_provider_t *p,
     case PK_OPENCODEGO:
         if (p->has_oc) {
             render_opencodego_today(p, g, hero, card_entered);
+            return;
+        }
+        break;
+    case PK_MIMO:
+        if (p->has_mo) {
+            render_mimo_today(p, g, hero, card_entered);
             return;
         }
         break;
@@ -607,6 +744,11 @@ static void render_limits_card(const stats_provider_t *p,
 
     if (pk == PK_LMSTUDIO) {
         render_lmstudio_stats(p, g, hero, body, footer, card_entered);
+        return;
+    }
+
+    if (pk == PK_MIMO && p->has_mo) {
+        render_mimo_limits(p, g, hero, footer, card_entered);
         return;
     }
 

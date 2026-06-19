@@ -103,6 +103,7 @@ typedef enum {
     PK_OPENCODEGO,
     PK_OPENROUTER,
     PK_OLLAMA,
+    PK_MIMO,
 } provider_kind_t;
 
 typedef struct {
