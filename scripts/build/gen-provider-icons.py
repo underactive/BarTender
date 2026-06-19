@@ -30,7 +30,9 @@ OUT_H = os.path.join(HERE, "..", "..", "firmware", "main", "provider_icons.h")
 
 # SVG basenames whose native colors should be preserved (ARGB8888).
 # Everything else is rendered as A8 (silhouette, tinted by firmware).
-FULL_COLOR_SVGS = {"claude", "lmstudio", "ollama"}
+# mimo is the official Xiaomi app icon (orange tile + white "MI"); rendered
+# full-color so the lettering survives — A8 would flatten the opaque tile.
+FULL_COLOR_SVGS = {"claude", "lmstudio", "ollama", "mimo"}
 
 # Wide logos with heavy transparent padding: crop to opaque bounds, then
 # scale to fill ICON_PX. Optional boost >1.0 nudges wide marks to match
@@ -41,7 +43,7 @@ CONTENT_FIT_SVGS = {
     "alibaba", "amp", "antigravity", "augment", "elevenlabs",
     "factory", "jetbrains", "kilo", "kimi", "kimik2", "kiro",
     "minimax", "mistral", "perplexity", "vertexai", "synthetic",
-    "warp", "codebuff",
+    "warp", "codebuff", "mimo",
 }
 CONTENT_FIT_BOOST = {
     "lmstudio": 0.95,
@@ -68,6 +70,7 @@ ID_TO_SVG = {
     "vertexai": "vertex-ai", "abacus": "abacus-ai-dark", "zai": "zai-dark",
     "synthetic": "synthetic", "warp": "warp", "codebuff": "codebuff",
     "lmstudio": "lmstudio",
+    "mimo": "mimo",
 }
 
 
