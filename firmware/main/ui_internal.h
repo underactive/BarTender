@@ -266,6 +266,7 @@ void fmt_money(char *buf, size_t n, int32_t cents);
 void fmt_pct(char *buf, size_t n, bool has, float v);
 void up_id(char *dst, size_t n, const char *src);
 int extra_pct(const stats_provider_t *p);
+bool provider_avg_bar(const stats_provider_t *p, float *out_pct);
 void i64_hist_to_i32(int32_t *dst, const int64_t *src, int n);
 
 // ui.c — nav/summary geometry helpers (read st + cached size; grid-cell arithmetic).

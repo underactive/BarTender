@@ -195,6 +195,65 @@ static void test_provider_tok_today(void)
     EQ_INT(provider_tok_today(&p), 42, "tok_today: default cost path");
 }
 
+static void test_provider_avg_bar(void)
+{
+    stats_provider_t p;
+    float pct = -1.0f;
+    bool r;
+
+    // MiMo: today=200, history [100,0,200] -> nonzero avg=150 -> 133.3%
+    memset(&p, 0, sizeof p); strcpy(p.id, "mimo"); p.has_mo = true;
+    p.mo_tok_today = 200; p.mo_ht[0]=100; p.mo_ht[1]=0; p.mo_ht[2]=200; p.mo_ht_n=3;
+    r = provider_avg_bar(&p, &pct);
+    CHECK(r == true, "avg_bar: mimo -> true");
+    EQ_INT((int)(pct*10.0f + 0.5f), 1333, "avg_bar: mimo 200/150 -> 133.3%%");
+
+    // LM Studio: today=50, history [50,50,50] -> avg=50 -> 100.0%
+    memset(&p, 0, sizeof p); strcpy(p.id, "lmstudio"); p.has_lm = true;
+    p.lm_tok_today = 50; p.lm_ht[0]=50; p.lm_ht[1]=50; p.lm_ht[2]=50; p.lm_ht_n=3;
+    r = provider_avg_bar(&p, &pct);
+    CHECK(r == true, "avg_bar: lmstudio -> true");
+    EQ_INT((int)(pct*10.0f + 0.5f), 1000, "avg_bar: lmstudio 50/50 -> 100.0%%");
+
+    // Pi: today=200 (tok_today), history [0,100,200] -> nonzero avg=150 -> 133.3%
+    memset(&p, 0, sizeof p); strcpy(p.id, "pi");
+    p.tok_today = 200; p.pi_ht[0]=0; p.pi_ht[1]=100; p.pi_ht[2]=200; p.pi_ht_n=3;
+    r = provider_avg_bar(&p, &pct);
+    CHECK(r == true, "avg_bar: pi -> true");
+    EQ_INT((int)(pct*10.0f + 0.5f), 1333, "avg_bar: pi 200/150 -> 133.3%%");
+
+    // All-zero history -> no baseline -> false
+    memset(&p, 0, sizeof p); strcpy(p.id, "mimo"); p.has_mo = true;
+    p.mo_tok_today = 200; p.mo_ht[0]=0; p.mo_ht[1]=0; p.mo_ht_n=2;
+    r = provider_avg_bar(&p, &pct);
+    CHECK(r == false, "avg_bar: all-zero history -> false");
+
+    // Empty history (n=0) -> false
+    memset(&p, 0, sizeof p); strcpy(p.id, "mimo"); p.has_mo = true; p.mo_tok_today = 200;
+    r = provider_avg_bar(&p, &pct);
+    CHECK(r == false, "avg_bar: empty history -> false");
+
+    // today=0 with nonzero history -> 0.0% (still has data)
+    memset(&p, 0, sizeof p); strcpy(p.id, "mimo"); p.has_mo = true;
+    p.mo_tok_today = 0; p.mo_ht[0]=100; p.mo_ht[1]=200; p.mo_ht_n=2;
+    r = provider_avg_bar(&p, &pct);
+    CHECK(r == true, "avg_bar: idle today -> true");
+    EQ_INT((int)(pct*10.0f + 0.5f), 0, "avg_bar: idle today -> 0.0%%");
+
+    // Missing block flag (has_mo/has_lm false) -> false
+    memset(&p, 0, sizeof p); strcpy(p.id, "mimo"); p.mo_tok_today = 200; p.mo_ht_n=1; p.mo_ht[0]=100;
+    r = provider_avg_bar(&p, &pct);
+    CHECK(r == false, "avg_bar: mimo no has_mo -> false");
+    memset(&p, 0, sizeof p); strcpy(p.id, "lmstudio"); p.lm_tok_today = 200; p.lm_ht_n=1; p.lm_ht[0]=100;
+    r = provider_avg_bar(&p, &pct);
+    CHECK(r == false, "avg_bar: lmstudio no has_lm -> false");
+
+    // Unknown provider -> false (falls back to windowed primary.pct)
+    memset(&p, 0, sizeof p); strcpy(p.id, "claude"); p.has_cost = true; p.tok_today = 200;
+    r = provider_avg_bar(&p, &pct);
+    CHECK(r == false, "avg_bar: claude -> false");
+}
+
 static void test_colors(void)
 {
     CHECK(color_eq(pct_color(95.0f), 0xe5484d), "pct_color: >=90 red");
@@ -229,6 +288,7 @@ int main(void)
     test_provider_has_limits_card();
     test_i64_hist_to_i32();
     test_provider_tok_today();
+    test_provider_avg_bar();
     test_colors();
 
     printf("\n=== RESULTS: %d passed, %d failed ===\n", g_pass, g_fail);

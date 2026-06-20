@@ -11,16 +11,20 @@
 #
 # Output is privacy-reduced and contains no prompts, cwd/project paths, model
 # names, provider credentials, response IDs, or raw session rows:
-#   {"id":"pi","ok":true,"p":41.2,"pi":{"ts":512,"tt":123456,"ps":1245,"pt":893421,"h":[...]}}
+#   {"id":"pi","ok":true,"p":41.2,"pi":{"ts":512,"tt":123456,"ps":1245,"pt":893421,"h":[...],"ht":[...]}}
 #
 # Field units:
 #   p      today's usage as % of the prior 29-day peak (or peak tokens if
-#          spend=0); exceeds 100 when today beats that prior peak
+#          spend=0); exceeds 100 when today beats that prior peak. Note: the
+#          firmware summary bar ignores `p` for Pi and uses ht/tt instead
+#          (today vs 30-day daily average, excluding 0-use days).
 #   pi.ts  today's spend, integer cents
 #   pi.tt  today's tokens
 #   pi.ps  max daily spend over the last 30 calendar days, integer cents
 #   pi.pt  max daily tokens over the last 30 calendar days
 #   pi.h   daily spend history, integer cents, oldest -> newest, 30 points
+#   pi.ht  daily token history, oldest -> newest, 30 points (sibling of h);
+#          drives the summary bar's today-vs-average comparison
 #
 # Note: 'p' is today vs the busiest prior day (excluding today), so a new
 #       record can exceed 100%. ps/pt are the overall 30-day peaks.
@@ -210,6 +214,7 @@ if files == 0:
     sys.exit(3)
 
 hist = []
+tok_hist = []
 max_spend = 0
 max_tokens = 0
 prior_max_spend = 0
@@ -222,6 +227,7 @@ for i, day in enumerate(dates):
     cents = int(round(vals["dollars"] * 100))
     tokens = int(round(vals["tokens"]))
     hist.append(cents)
+    tok_hist.append(tokens)
     max_spend = max(max_spend, cents)
     max_tokens = max(max_tokens, tokens)
     if i < len(dates) - 1:
@@ -252,7 +258,7 @@ provider = {
     "id": "pi",
     "ok": True,
     "p": pct,
-    "pi": {"ts": latest_spend, "tt": latest_tokens, "ps": max_spend, "pt": max_tokens, "h": hist},
+    "pi": {"ts": latest_spend, "tt": latest_tokens, "ps": max_spend, "pt": max_tokens, "h": hist, "ht": tok_hist},
 }
 print(json.dumps(provider, separators=(",", ":")))
 eprint(

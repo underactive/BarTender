@@ -64,6 +64,12 @@
                 "items": { "type": "integer" },
                 "maxItems": 30,
                 "description": "Pi Agent daily spend history, integer cents, oldest -> newest, one point per calendar day. Firmware caps at STATS_HIST_MAX."
+              },
+              "ht": {
+                "type": "array",
+                "items": { "type": "integer" },
+                "maxItems": 30,
+                "description": "Pi Agent daily TOKEN history, oldest -> newest, one point per calendar day. Sibling of `h` (daily spend cents); drives the summary bar's today-vs-30-day-daily-average comparison (excluding 0-use days). Firmware caps at STATS_HIST_MAX."
               }
             },
             "additionalProperties": false

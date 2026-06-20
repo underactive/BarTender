@@ -142,18 +142,21 @@ void render_summary_row(int slot, const stats_provider_t *p,
         update_cursor_sess_pulse(row_icon[slot], false);
     }
 
-    // For OpenCode Go the top bar shows secondary tier (s) instead of primary (p),
-    // because OpenCode Go has 3 tiers and the publisher marks secondary as the
-    // most useful hero metric on the summary page. The tertiary tier (t) fills
-    // the smaller bottom bar.
+    // Top-bar source depends on provider:
+    //  - OpenCode Go: secondary tier (s) — 3 tiers, publisher marks secondary
+    //    as the hero metric; tertiary (t) fills the smaller bottom bar.
+    //  - MiMo / Pi / LM Studio: today's tokens vs the 30-day daily average
+    //    (excluding zero-use days) via provider_avg_bar() — a "today vs your
+    //    typical active day" reading that can exceed 100% on a heavy day.
+    //  - everyone else: the windowed primary tier (p).
     provider_kind_t rpk_oc = provider_kind(p->id);
     bool oc_swap = (rpk_oc == PK_OPENCODEGO);
-    bool mo_swap = (rpk_oc == PK_MIMO && p->has_mo && p->mo_tok_month_max > 0);
+    float avg_pct = 0.0f;
+    bool avg_swap = provider_avg_bar(p, &avg_pct);
     bool top_has = oc_swap ? p->secondary.has
-                           : (mo_swap ? true : p->primary.has);
+                           : (avg_swap ? true : p->primary.has);
     float top_pct = oc_swap ? p->secondary.pct
-                            : (mo_swap ? ((float)p->mo_tok_today / (float)p->mo_tok_month_max * 100.0f)
-                                       : p->primary.pct);
+                            : (avg_swap ? avg_pct : p->primary.pct);
 
     if (!p->ok || !top_has) {
         update_bar_pulse(row_bar[slot], 0.0f, NULL);
@@ -212,18 +215,21 @@ void render_grid_tile(int slot, const stats_provider_t *p,
     lv_obj_set_style_text_color(row_id[slot], lv_color_hex(0xe8eaed), 0);
     lv_obj_set_pos(row_id[slot], cell->x + 32, cell->y + 2);
 
-    // For OpenCode Go the top bar shows secondary tier (s) instead of primary (p),
-    // because OpenCode Go has 3 tiers and the publisher marks secondary as the
-    // most useful hero metric on the summary page. The tertiary tier (t) fills
-    // the smaller bottom bar.
+    // Top-bar source depends on provider:
+    //  - OpenCode Go: secondary tier (s) — 3 tiers, publisher marks secondary
+    //    as the hero metric; tertiary (t) fills the smaller bottom bar.
+    //  - MiMo / Pi / LM Studio: today's tokens vs the 30-day daily average
+    //    (excluding zero-use days) via provider_avg_bar() — a "today vs your
+    //    typical active day" reading that can exceed 100% on a heavy day.
+    //  - everyone else: the windowed primary tier (p).
     provider_kind_t rpk_oc = provider_kind(p->id);
     bool oc_swap = (rpk_oc == PK_OPENCODEGO);
-    bool mo_swap = (rpk_oc == PK_MIMO && p->has_mo && p->mo_tok_month_max > 0);
+    float avg_pct = 0.0f;
+    bool avg_swap = provider_avg_bar(p, &avg_pct);
     bool top_has = oc_swap ? p->secondary.has
-                           : (mo_swap ? true : p->primary.has);
+                           : (avg_swap ? true : p->primary.has);
     float top_pct = oc_swap ? p->secondary.pct
-                            : (mo_swap ? ((float)p->mo_tok_today / (float)p->mo_tok_month_max * 100.0f)
-                                       : p->primary.pct);
+                            : (avg_swap ? avg_pct : p->primary.pct);
 
     // Percentage label where the provider name used to be
     if (p->ok && top_has) {

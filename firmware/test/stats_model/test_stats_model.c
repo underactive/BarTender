@@ -534,7 +534,7 @@ static void test_pi_provider_parsed(void)
         "\"providers\":["
         "{\"id\":\"pi\",\"ok\":true,\"p\":30.0,"
         "\"pi\":{\"ts\":88,\"tt\":12345,\"ps\":999,\"pt\":67890,"
-        "\"h\":[5,10,15]}}"
+        "\"h\":[5,10,15],\"ht\":[100,0,200,300]}}"
         "]}";
 
     char *env = make_envelope(inner);
@@ -551,6 +551,12 @@ static void test_pi_provider_parsed(void)
     CHECK_EQ_INT((long long)st.p[0].tok_month, 67890LL);
     CHECK_EQ_INT(st.p[0].hist_n, 3);
     CHECK_EQ_INT(st.p[0].hist[0], 5);
+    // pi.ht -> dedicated token history (sibling of spend hist[]).
+    CHECK_EQ_INT(st.p[0].pi_ht_n, 4);
+    CHECK_EQ_INT((long long)st.p[0].pi_ht[0], 100LL);
+    CHECK_EQ_INT((long long)st.p[0].pi_ht[1], 0LL);
+    CHECK_EQ_INT((long long)st.p[0].pi_ht[2], 200LL);
+    CHECK_EQ_INT((long long)st.p[0].pi_ht[3], 300LL);
 }
 
 static void test_cursor_provider_parsed(void)

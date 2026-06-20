@@ -118,9 +118,10 @@ static void parse_cost(const cJSON *e, stats_provider_t *p)
 }
 
 // v2 optional `pi` block: Pi Agent publishes today's spend/tokens,
-// 30-day max daily spend/tokens, and a 30-day daily-spend history.
-// Reuse the shared cost-shaped fields so the UI can branch on
-// provider id without forking the transport/model contract.
+// 30-day max daily spend/tokens, a 30-day daily-spend history (h), and a
+// 30-day daily-token history (ht) for the summary avg bar. Reuse the shared
+// cost-shaped fields so the UI can branch on provider id without forking the
+// transport/model contract.
 static void parse_pi(const cJSON *e, stats_provider_t *p)
 {
     const cJSON *pi = cJSON_GetObjectItemCaseSensitive(e, "pi");
@@ -138,6 +139,17 @@ static void parse_pi(const cJSON *e, stats_provider_t *p)
             if (p->hist_n >= STATS_HIST_MAX) break;
             if (cJSON_IsNumber(hv)) {
                 p->hist[p->hist_n++] = i32_clamp(hv->valuedouble);
+                any_pi = true;
+            }
+        }
+    }
+    const cJSON *pht = cJSON_GetObjectItemCaseSensitive(pi, "ht");
+    if (cJSON_IsArray(pht)) {
+        const cJSON *hv;
+        cJSON_ArrayForEach(hv, pht) {
+            if (p->pi_ht_n >= STATS_HIST_MAX) break;
+            if (cJSON_IsNumber(hv)) {
+                p->pi_ht[p->pi_ht_n++] = i64_clamp(hv->valuedouble);
                 any_pi = true;
             }
         }

@@ -362,6 +362,55 @@ int extra_pct(const stats_provider_t *p)
     return clampi(xp, 0, 100);
 }
 
+// Summary top-bar % for providers whose bar compares today's tokens to the
+// 30-day daily AVERAGE, excluding zero-use days (MiMo, Pi, LM Studio). This
+// replaces the per-provider CodexBar windowed `p` (a rolling cap / peak) with
+// a "today vs your typical active day" reading that can exceed 100% on a
+// heavy day.
+//
+// Denominator = mean of the nonzero entries in the trailing daily token
+// history; numerator = the provider's dedicated today-tokens field. The daily
+// history's last element is today when today had activity, but this function
+// does not rely on that: it averages ALL nonzero history entries and compares
+// to the dedicated today field, so it stays correct on idle-today runs where
+// the last array element is yesterday.
+//
+// Returns true and sets *out_pct when the provider uses this avg-based bar AND
+// has at least one nonzero history day to average against; returns false
+// otherwise (caller falls back to the windowed primary.pct).
+bool provider_avg_bar(const stats_provider_t *p, float *out_pct)
+{
+    const int64_t *ht;
+    int n;
+    int64_t today;
+    switch (provider_kind(p->id)) {
+    case PK_MIMO:
+        if (!p->has_mo) return false;
+        ht = p->mo_ht;  n = p->mo_ht_n;  today = p->mo_tok_today;
+        break;
+    case PK_LMSTUDIO:
+        if (!p->has_lm) return false;
+        ht = p->lm_ht;  n = p->lm_ht_n;  today = p->lm_tok_today;
+        break;
+    case PK_PI:
+        ht = p->pi_ht;  n = p->pi_ht_n;  today = p->tok_today;
+        break;
+    default:
+        return false;
+    }
+    if (n <= 0) return false;
+    int64_t sum = 0;
+    int cnt = 0;
+    for (int i = 0; i < n; i++) {
+        if (ht[i] > 0) { sum += ht[i]; cnt++; }
+    }
+    if (cnt == 0) return false;          // no nonzero days -> no baseline
+    double avg = (double)sum / (double)cnt;
+    if (avg <= 0.0) return false;
+    *out_pct = (float)((double)today * 100.0 / avg);
+    return true;
+}
+
 // ── i64 → i32 history conversion ─────────────────────────────────────────────
 // Converts int64_t token-history arrays to int32_t for the bar-chart renderer.
 // Values exceeding INT32_MAX are clamped. Used by both lmstudio and cursor paths.

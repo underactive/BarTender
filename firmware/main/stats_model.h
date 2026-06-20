@@ -64,6 +64,14 @@ typedef struct {
     int      pct_hist_n;
     uint8_t  pct_hist[STATS_PCT_HIST_MAX];
 
+    // v2 optional `pi.ht`: Pi Agent daily TOKEN history (sibling of `hist[]`
+    // which holds daily spend cents). Pi reuses the shared cost-shaped fields
+    // above (tok_today/tok_month/hist) but also carries a token history so the
+    // summary bar can compare today to the 30-day daily average. Absent on
+    // older publishers => pi_ht_n stays 0 (firmware falls back to primary.pct).
+    int      pi_ht_n;                   // valid entries in pi_ht[]
+    int64_t  pi_ht[STATS_HIST_MAX];     // daily tokens, oldest -> newest
+
     // v2 optional `lm` block: LM Studio publishes local inference metrics
     // (requests, tokens, cache %, model breakdown, 7-day table) without any
     // cost/spend data. Dedicated fields (not cost-shaped slot reuse) because
