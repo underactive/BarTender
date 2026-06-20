@@ -457,12 +457,20 @@ stats_parse_t stats_model_parse(const char *body, stats_t *out)
 // in their original relative order at the bottom of the list.
 // Reminder: hidden providers (ollama, opencode) are filtered
 // in ui.c by is_hidden_provider() — they affect neither order nor slots.
+// Grid is row-major over 2 columns, so this flat list reads as the on-screen
+// layout (left,right per row):
+//   Pi          OpenCode Go
+//   Claude      LM Studio
+//   OpenRouter  MiMo
+//   Codex       Cursor
+// (codex is the "OpenAI" provider). Anything unlisted follows below.
 static const char *s_display_order[] = {
     "pi",
-    "lmstudio",
     "opencodego",
-    "openrouter",
     "claude",
+    "lmstudio",
+    "openrouter",
+    "mimo",
     "codex",
     "cursor",
     "ollama",

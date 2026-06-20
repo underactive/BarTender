@@ -712,8 +712,8 @@ static void test_reorder_known_providers_sorted(void)
 {
     TEST("reorder_known_providers_sorted");
 
-    // Input order: openrouter, pi, cursor, claude -> display order: pi, claude, cursor, openrouter
-    // Canonical: pi=0, lmstudio=1, openrouter=2, claude=3, codex=4, cursor=5
+    // Input order: openrouter, pi, cursor, claude -> display order: pi, claude, openrouter, cursor
+    // Canonical: pi=0, opencodego=1, claude=2, lmstudio=3, openrouter=4, mimo=5, codex=6, cursor=7
     const char *inner =
         "{\"v\":1,\"ts\":\"2024-01-01T00:00:00Z\","
         "\"providers\":["
@@ -731,12 +731,10 @@ static void test_reorder_known_providers_sorted(void)
     stats_model_reorder(&st);
 
     CHECK_EQ_INT(st.n, 4);
-    // Expected: pi(0) < claude(3) < openrouter(2) -> wait, canonical order is:
-    // pi=0, lmstudio=1, openrouter=2, claude=3, codex=4, cursor=5
-    // So sorted: pi, openrouter, claude, cursor
+    // Sorted by canonical priority: pi(0) < claude(2) < openrouter(4) < cursor(7)
     CHECK_STR(st.p[0].id, "pi");
-    CHECK_STR(st.p[1].id, "openrouter");
-    CHECK_STR(st.p[2].id, "claude");
+    CHECK_STR(st.p[1].id, "claude");
+    CHECK_STR(st.p[2].id, "openrouter");
     CHECK_STR(st.p[3].id, "cursor");
 }
 
@@ -744,14 +742,15 @@ static void test_reorder_opencodego_insertion(void)
 {
     TEST("reorder_opencodego_insertion");
 
-    // opencodego inserts between lmstudio (1) and openrouter (2) in canonical order.
-    // Canonical: pi=0, lmstudio=1, opencodego=2, openrouter=3, claude=4, codex=5, cursor=6
+    // opencodego sorts above lmstudio; mimo sits between openrouter and cursor.
+    // Canonical: pi=0, opencodego=1, claude=2, lmstudio=3, openrouter=4, mimo=5, codex=6, cursor=7
     const char *inner =
         "{\"v\":1,\"ts\":\"2024-01-01T00:00:00Z\","
         "\"providers\":["
         "{\"id\":\"openrouter\",\"ok\":true},"
         "{\"id\":\"lmstudio\",\"ok\":true},"
         "{\"id\":\"opencodego\",\"ok\":true},"
+        "{\"id\":\"mimo\",\"ok\":true},"
         "{\"id\":\"pi\",\"ok\":true},"
         "{\"id\":\"cursor\",\"ok\":true}"
         "]}";
@@ -763,13 +762,14 @@ static void test_reorder_opencodego_insertion(void)
 
     stats_model_reorder(&st);
 
-    CHECK_EQ_INT(st.n, 5);
-    // Expected: pi(0), lmstudio(1), opencodego(2), openrouter(3), cursor(6)
+    CHECK_EQ_INT(st.n, 6);
+    // Expected: pi(0), opencodego(1), lmstudio(3), openrouter(4), mimo(5), cursor(7)
     CHECK_STR(st.p[0].id, "pi");
-    CHECK_STR(st.p[1].id, "lmstudio");
-    CHECK_STR(st.p[2].id, "opencodego");
+    CHECK_STR(st.p[1].id, "opencodego");
+    CHECK_STR(st.p[2].id, "lmstudio");
     CHECK_STR(st.p[3].id, "openrouter");
-    CHECK_STR(st.p[4].id, "cursor");
+    CHECK_STR(st.p[4].id, "mimo");
+    CHECK_STR(st.p[5].id, "cursor");
 }
 
 static void test_reorder_unknown_sinks_to_end(void)
