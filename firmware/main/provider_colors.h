@@ -5,6 +5,10 @@
 // CodexBar's WidgetColors.color(for:) in CodexBarWidgetViews.swift. The `id`
 // keys are the UsageProvider enum raw values (= the `provider` field in the
 // Upstash payload).
+//
+// Local divergence: "opencode" uses the brand off-white #F1ECEC (not
+// CodexBar's 0x3B82F6 blue) to match the two-tone "O" logo; "opencodego"
+// intentionally keeps the blue. Do not "re-sync" these from upstream.
 #pragma once
 #include <stdint.h>
 #include <string.h>
@@ -15,7 +19,7 @@ static const prov_color_t PROV_COLORS[] = {
     { "codex",       0x49A3B0 }, { "openai",      0x0F826E },
     { "claude",      0xCC7C5E }, { "cursor",      0x00BFA5 },
     { "pi",          0xF2F2EE },
-    { "opencode",    0x3B82F6 }, { "opencodego",  0x3B82F6 },
+    { "opencode",    0xF1ECEC }, { "opencodego",  0x3B82F6 },
     { "alibaba",     0xFF6A00 }, { "factory",     0xFF6B35 },
     { "gemini",      0xAB87EA }, { "antigravity", 0x60BA7E },
     { "copilot",     0xA855F7 }, { "zai",         0xE85A6A },

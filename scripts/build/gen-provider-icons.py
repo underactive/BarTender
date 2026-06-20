@@ -30,9 +30,13 @@ OUT_H = os.path.join(HERE, "..", "..", "firmware", "main", "provider_icons.h")
 
 # SVG basenames whose native colors should be preserved (ARGB8888).
 # Everything else is rendered as A8 (silhouette, tinted by firmware).
-# mimo is the official Xiaomi app icon (orange tile + white "MI"); rendered
-# full-color so the lettering survives — A8 would flatten the opaque tile.
-FULL_COLOR_SVGS = {"claude", "lmstudio", "ollama", "mimo"}
+# mimo is the Xiaomi "MI" mark: white lettering with an orange stroke (the
+# orange tile was dropped in favor of an outline). Rendered full-color so the
+# white fill + orange stroke survive — A8 would flatten both to a silhouette.
+# opencode (shared by opencode + opencodego) is the two-tone "O" mark
+# (off-white #F1ECEC frame, charcoal #4B4646 fill); full-color so the two
+# tones survive — A8 would flatten it to one tinted silhouette.
+FULL_COLOR_SVGS = {"claude", "lmstudio", "ollama", "mimo", "opencode"}
 
 # Wide logos with heavy transparent padding: crop to opaque bounds, then
 # scale to fill ICON_PX. Optional boost >1.0 nudges wide marks to match
@@ -50,9 +54,18 @@ CONTENT_FIT_BOOST = {
     "pi": 0.80,
     "claude": 0.94,
     "codex": 0.80,
-    "openrouter": 0.92,
+    # openrouter's chevrons are wide; 0.80 keeps side margin in the 24px grid
+    # cell (0.92 predated the grid and clipped the arrow tips on the edges).
+    "openrouter": 0.80,
     "gemini": 0.90,
     "cursor": 0.80,
+    # mimo's "MI" mark is wider than tall; 0.80 keeps the orange stroke off the
+    # outer edges so it doesn't clip in the 24px grid cell.
+    "mimo": 0.80,
+    # opencode's "O" frame fills the 32px canvas (esp. vertically); at 1.0 it
+    # renders edge-to-edge in the 24px grid cell and looks cropped/asymmetric.
+    # Shrink it so the outline keeps margin on all sides.
+    "opencode": 0.80,
 }
 
 # provider id (UsageProvider raw value == payload `id`) -> svg basename.
