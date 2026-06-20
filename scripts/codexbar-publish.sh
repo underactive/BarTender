@@ -31,6 +31,9 @@
 #     line (no secret in `ps`).
 #   - If there is no fresh data, the publish is SKIPPED (the store keeps its
 #     last good value — a transient local failure must not blank the toy).
+#   - If a SINGLE provider fails while others succeed (e.g. a Codex API
+#     timeout), its last healthy snapshot is carried forward from a local
+#     cache so just that tile never blanks to "--" (see lib/merge-lkg.js).
 #   - A single-flight lock prevents overlapping cycles.
 #
 # Non-secret config: ~/.config/codexbar-toy/config  (KEY=VALUE lines)
@@ -49,6 +52,10 @@
 #   CBPUB_PI_STATS       Pi Agent reducer helper (default: sibling pi-agent-stats.sh)
 #   PI_AGENT_HOME / PI_AGENT_SESSIONS_DIR / PI_AGENT_MODELS_FILE
 #                         forwarded to pi-agent-stats.sh for hermetic tests
+#   CBPUB_LKG            last-known-good cache file (default:
+#                         ~/Library/Caches/codexbar-toy/last-good.json)
+#   CBPUB_LKG_MAX_AGE_S  max snapshot age to carry forward, seconds
+#                         (default 86400; <=0 disables the age limit)
 #
 # Zero third-party deps: codexbar-stats.sh + base-macOS security/curl/launchctl/
 # osascript/awk/date/mktemp + zsh builtins.
@@ -71,6 +78,8 @@ OPENCODE_GO_STATS="${CBPUB_OPENCODE_GO_STATS:-$SELF_DIR/opencodego-stats.sh}"
 KC_ACCOUNT_OG="${CBPUB_KC_ACCOUNT_OG:-opencodego-session}"
 MIMO_STATS="${CBPUB_MIMO_STATS:-$SELF_DIR/mimo-stats.sh}"
 KC_ACCOUNT_MO="${CBPUB_KC_ACCOUNT_MO:-mimo-session}"
+# Per-provider last-known-good cache (carry-forward across publish cycles).
+LKG="${CBPUB_LKG:-$HOME/Library/Caches/codexbar-toy/last-good.json}"
 work=""   # temp dir for cmd_once; referenced by its global EXIT trap
 TPL="$SELF_DIR/../launchd/$LABEL.plist.template"
 
@@ -556,6 +565,20 @@ cmd_once() {
     log "note: MiMo stats skipped (absent/unrecognized) — publishing limits-only mimo"
   fi
 
+  # Per-provider last-known-good carry-forward — MUST run last, after every
+  # provider merge, so it sees the final assembled payload. A single provider
+  # can time out fetching its upstream (e.g. Codex via the `codex` CLI) while
+  # others succeed; codexbar-stats.sh then marks just that provider ok:false and
+  # the toy shows "--". This restores each such provider's last healthy snapshot
+  # from a small local cache and refreshes the cache from this cycle's healthy
+  # providers. Fail-safe: any structural problem leaves the payload untouched.
+  mkdir -p "${LKG:h}"
+  if CBPUB_JSON="$json" CBPUB_LKG="$LKG" osascript -l JavaScript "$SELF_DIR/lib/merge-lkg.js" 2>>"$LOG"; then
+    bytes=$(wc -c <"$json" | tr -d ' ')
+  else
+    log "note: last-known-good carry-forward skipped (payload left unchanged)"
+  fi
+
   local tok; tok="$(get_token)"
   [[ -n "$tok" ]] || die "no Upstash token in Keychain — run: codexbar-publish.sh --set-token" 5
 
@@ -642,6 +665,7 @@ cmd_status() {
   print -r -- "og stats:     $([[ -x "$OPENCODE_GO_STATS" ]] && echo "$OPENCODE_GO_STATS" || echo "MISSING/not executable — $OPENCODE_GO_STATS")"
   print -r -- "mimo sess:    $([[ -n "$(get_mimo_session)" ]] && echo 'in Keychain' || echo 'MISSING — run --set-mimo-cookie')"
   print -r -- "mimo stats:   $([[ -x "$MIMO_STATS" ]] && echo "$MIMO_STATS" || echo "MISSING/not executable — $MIMO_STATS")"
+  print -r -- "lkg cache:    $([[ -r "$LKG" ]] && echo "$LKG ($(grep -o '"id"' "$LKG" 2>/dev/null | wc -l | tr -d ' ') providers)" || echo "none yet — $LKG")"
   print -r -- "--- last log lines ---"
   [[ -f "$LOG" ]] && tail -n 8 "$LOG" || print -r -- "(no log yet)"
 }
