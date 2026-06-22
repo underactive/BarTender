@@ -7,6 +7,9 @@
 __pycache__/
 *.py[cod]
 
+# ---- Node.js ----
+node_modules/
+
 # ---- ESP-IDF firmware (generated / fetched — reproducible from source) ----
 # build output
 firmware/build/

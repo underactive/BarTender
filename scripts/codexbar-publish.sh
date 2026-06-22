@@ -12,6 +12,10 @@
 #   codexbar-publish.sh --set-opencodego-cookie-clipboard  # read from pbpaste
 #   codexbar-publish.sh --set-mimo-cookie  # paste Xiaomi MiMo Cookie header
 #   codexbar-publish.sh --set-mimo-cookie-clipboard  # read from pbpaste
+#   codexbar-publish.sh --set-mimo-cookie-login  # one-time Playwright login (headed)
+#
+# MiMo cookie is auto-refreshed via Playwright headless before each publish
+# cycle if expired. First run: --set-mimo-cookie-login. After that, automatic.
 #   codexbar-publish.sh --install       # install + start the launchd schedule
 #   codexbar-publish.sh --uninstall     # stop + remove the launchd schedule
 #   codexbar-publish.sh --status        # job state + recent log + readiness
@@ -304,6 +308,15 @@ cmd_set_mimo_cookie_clipboard() {
   store_mimo_session "$session"
 }
 
+cmd_set_mimo_cookie_login() {
+  local mimo_refresh="$SELF_DIR/build/mimo-refresh-cookie.mjs"
+  [[ -x "$mimo_refresh" ]] || die "refresh script not found: $mimo_refresh"
+  command -v node >/dev/null 2>&1 || die "node not found on PATH"
+  print -r -- "Opening Chromium for MiMo login..."
+  print -r -- "Log in, then close the window."
+  node "$mimo_refresh" --login || die "Playwright login failed"
+}
+
 # Roll up Claude total spend / tokens / 30-day history from CodexBar's LOCAL
 # cost cache and merge into the v2 payload. Reads ONLY the aggregate `days`
 # map (date -> model -> [input,cacheRead,cacheCreate,output,costNanos,n,n],
@@ -538,6 +551,34 @@ cmd_once() {
     log "note: OpenCode Go stats skipped (absent/unrecognized) — publishing limits-only opencodego"
   fi
 
+  # ── MiMo cookie auto-refresh (Playwright headless) ──────────────────────
+  # Before calling mimo-stats.sh, check if the stored cookie is still valid.
+  # If expired, try a headless Chromium refresh. Fail-safe: on any failure,
+  # continue with whatever cookie is already in Keychain (mimo-stats.sh will
+  # fall back to cached history if the cookie is dead).
+  local mimo_refresh="$SELF_DIR/build/mimo-refresh-cookie.mjs"
+  if [[ -x "$MIMO_STATS" ]] && [[ -x "$mimo_refresh" ]] && command -v node >/dev/null 2>&1; then
+    # Quick probe: does the stored cookie still work?
+    local check_out check_rc
+    check_out=$("$MIMO_STATS" --check 2>/dev/null); check_rc=$?
+    if [[ $check_rc -ne 0 ]]; then
+      log "MiMo cookie expired — attempting Playwright refresh"
+      local refresh_rc=1
+      if command -v timeout >/dev/null 2>&1; then
+        timeout 45 node "$mimo_refresh" 2>>"$LOG"; refresh_rc=$?
+      elif command -v gtimeout >/dev/null 2>&1; then
+        gtimeout 45 node "$mimo_refresh" 2>>"$LOG"; refresh_rc=$?
+      else
+        node "$mimo_refresh" 2>>"$LOG"; refresh_rc=$?
+      fi
+      if [[ $refresh_rc -eq 0 ]]; then
+        log "MiMo cookie refreshed successfully"
+      else
+        log "note: MiMo cookie refresh failed (exit $refresh_rc) — using stale cookie"
+      fi
+    fi
+  fi
+
   # Patch `mo` onto the existing CodexBar `mimo` provider from mimo-stats.sh.
   # Fail-safe: helper failure -> publish limits-only mimo (never abort).
   local mo_json="$work/mimo.json"
@@ -679,6 +720,7 @@ case "${1:---once}" in
   --set-opencodego-cookie-clipboard) cmd_set_opencodego_cookie_clipboard ;;
   --set-mimo-cookie) cmd_set_mimo_cookie ;;
   --set-mimo-cookie-clipboard) cmd_set_mimo_cookie_clipboard ;;
+  --set-mimo-cookie-login) cmd_set_mimo_cookie_login ;;
   --install)   cmd_install ;;
   --uninstall) cmd_uninstall ;;
   --status)    cmd_status ;;
