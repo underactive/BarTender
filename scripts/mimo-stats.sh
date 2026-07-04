@@ -321,15 +321,19 @@ has_data = any(v.get("tk", 0) > 0 for v in history.values())
 provider_ok = has_data or (bool(cookie) and api_succeeded)
 
 if os.environ.get("MIMO_CHECK_ONLY"):
+    # Auth probe for codexbar-publish auto-refresh: fail when the live API
+    # is unreachable so Playwright can refresh Keychain cookies. Do not treat
+    # cached history as "ok" here — stale cache was blocking refresh.
+    check_ok = api_succeeded
     print(json.dumps({
         "keychain": bool(cookie),
         "api": api_succeeded,
         "history_days": len(history),
         "today_tk": today_tk,
         "today_ct": today_ct,
-        "ok": provider_ok,
+        "ok": check_ok,
     }, separators=(",", ":")))
-    sys.exit(0 if provider_ok else 3)
+    sys.exit(0 if check_ok else 3)
 
 if not provider_ok:
     eprint("no usable MiMo data")
