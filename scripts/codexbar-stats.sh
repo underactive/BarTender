@@ -195,7 +195,8 @@ if (env('CBAR_MODE')==='json'){
     var o={id:e.provider||"?"};
     if (e.error){ o.ok=false; return o; }
     var u=e.usage||{}, pr=u.primary, se=u.secondary, te=u.tertiary;
-    if (!pr && !se && !te){ o.ok=false; return o; }
+    var oru=u.openRouterUsage;
+    if (!pr && !se && !te && !(oru && oru.keyDataFetched)){ o.ok=false; return o; }
     o.ok=true;
     if (pr){ var pp=num(pr.usedPercent); if (pp!=null) o.p=pp;
       if (pr.resetDescription) o.pr=String(pr.resetDescription);
