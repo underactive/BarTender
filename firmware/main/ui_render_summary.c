@@ -230,11 +230,13 @@ void render_grid_tile(int slot, const stats_provider_t *p,
                            : (avg_swap ? true : p->primary.has);
     float top_pct = oc_swap ? p->secondary.pct
                             : (avg_swap ? avg_pct : p->primary.pct);
+    // Independent of top_has: e.g. Codex's weekly (secondary) window can be
+    // known even when the 5h primary/session window has no recent data.
+    int sv = secondary_pct(p);
 
     // Percentage label where the provider name used to be
     if (p->ok && top_has) {
         int pv = clampi((int)(top_pct + 0.5f), 0, 100);
-        int sv = secondary_pct(p);
         if (sv >= 0) {
             char primary_buf[12];
             char secondary_buf[16];
@@ -250,6 +252,14 @@ void render_grid_tile(int slot, const stats_provider_t *p,
             lv_obj_set_width(row_id[slot], cell->w - 36);
             lv_obj_add_flag(row_val_s[slot], LV_OBJ_FLAG_HIDDEN);
         }
+    } else if (p->ok && sv >= 0) {
+        // No primary/session data, but the secondary (e.g. weekly) tier is
+        // known — show its percentage instead of a bare "--".
+        char pctbuf[12];
+        fmt_pct(pctbuf, sizeof pctbuf, true, (float)sv);
+        lv_label_set_text(row_id[slot], pctbuf);
+        lv_obj_set_width(row_id[slot], cell->w - 36);
+        lv_obj_add_flag(row_val_s[slot], LV_OBJ_FLAG_HIDDEN);
     } else {
         lv_label_set_text(row_id[slot], "--");
         lv_obj_set_width(row_id[slot], cell->w - 36);
@@ -287,9 +297,14 @@ void render_grid_tile(int slot, const stats_provider_t *p,
     }
 
     if (!p->ok || !top_has) {
+        // Primary/session tier has no data — hide only its own bar. The
+        // secondary bar (e.g. Codex's weekly %) is independent and must
+        // still render below when the provider fetch itself succeeded.
         update_bar_pulse(row_bar[slot], 0.0f, NULL);
         lv_obj_add_flag(row_bar[slot], LV_OBJ_FLAG_HIDDEN);
-        lv_obj_set_style_text_color(row_id[slot], lv_color_hex(0x6b7075), 0);
+        lv_obj_set_style_text_color(row_id[slot],
+            (p->ok && sv >= 0) ? lv_color_hex(0xffffff) : lv_color_hex(0x6b7075), 0);
+        if (p->ok) render_summary_secondary_bar(slot, p);
     } else {
         int v = clampi((int)(top_pct + 0.5f), 0, 100);
         int fill = bar_fill(v);
