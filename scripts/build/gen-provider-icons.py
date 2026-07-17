@@ -66,6 +66,10 @@ CONTENT_FIT_BOOST = {
     # renders edge-to-edge in the 24px grid cell and looks cropped/asymmetric.
     # Shrink it so the outline keeps margin on all sides.
     "opencode": 0.80,
+    # deepseek's whale is wider than tall; at 1.0 content-fit scales it to fill
+    # the full 32px width, so the silhouette touches the left/right edges and
+    # reads as cropped. Shrink it to keep margin on all sides.
+    "deepseek": 0.80,
 }
 
 # provider id (UsageProvider raw value == payload `id`) -> svg basename.
