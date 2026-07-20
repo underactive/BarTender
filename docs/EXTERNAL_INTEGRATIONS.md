@@ -22,7 +22,11 @@ process.
   `CBAR_CLI_PROVIDERS` (default `codex`), `CBAR_TIMEOUT`; `--json`, `--all`.
 - **Gotchas:** exit code is non-zero if *any* provider fails but JSON is still
   valid (JSON is authoritative); `--provider all` returns ~40 providers;
-  `codexbar serve` does **not** cache (rejected). See memory `codexbar-cli-behavior`.
+  `codexbar serve` does **not** cache (rejected). The reduced projection maps
+  generic `credits.remaining` to `cost.cr` (integer cents) when available; it
+  also reduces Moonshot's `Balance: $…` display string and DeepSeek's leading
+  `$…` balance/reset string to `cost.cr`, while OpenRouter retains its dedicated
+  balance source. See memory `codexbar-cli-behavior`.
 
 ## Upstash Redis (REST)
 

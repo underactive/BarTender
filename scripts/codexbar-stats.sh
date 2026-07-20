@@ -191,12 +191,24 @@ if (env('CBAR_MODE')==='json'){
   };
   var cents=function(n){ if (n==null||isNaN(n)) return null;
     return Math.round(Number(n)*100); };
+  var dollarInText=function(s, re){
+    if (typeof s!=="string") return null;
+    var m=s.match(re); return m ? cents(m[1]) : null;
+  };
   var project=function(e){
     var o={id:e.provider||"?"};
     if (e.error){ o.ok=false; return o; }
     var u=e.usage||{}, pr=u.primary, se=u.secondary, te=u.tertiary;
     var oru=u.openRouterUsage;
-    if (!pr && !se && !te && !(oru && oru.keyDataFetched)){ o.ok=false; return o; }
+    var hasCredits=(e.credits && e.credits.remaining!=null && !isNaN(e.credits.remaining));
+    // CodexBar currently surfaces these providers' API balances as display
+    // strings rather than e.credits.remaining. Read only the dollar amount;
+    // the source identity/login text itself is never projected.
+    var moonshotBalance=(e.provider==="moonshot")
+      ? dollarInText(u.loginMethod || (u.identity&&u.identity.loginMethod), /Balance:\s*\$([0-9]+(?:\.[0-9]+)?)/i) : null;
+    var deepseekBalance=(e.provider==="deepseek" && pr)
+      ? dollarInText(pr.resetDescription, /^\s*\$([0-9]+(?:\.[0-9]+)?)/) : null;
+    if (!pr && !se && !te && !(oru && oru.keyDataFetched) && !hasCredits && moonshotBalance==null){ o.ok=false; return o; }
     o.ok=true;
     if (pr){ var pp=num(pr.usedPercent); if (pp!=null) o.p=pp;
       if (pr.resetDescription) o.pr=String(pr.resetDescription);
@@ -223,6 +235,9 @@ if (env('CBAR_MODE')==='json'){
       if (cl!=null) cobj.cl=cl;
       if (xu2!=null) cobj.xu=xu2;
       if (xl2!=null) cobj.xl=xl2; }
+    if (cobj.cr==null && hasCredits) cobj.cr=cents(e.credits.remaining);
+    if (cobj.cr==null && moonshotBalance!=null) cobj.cr=moonshotBalance;
+    if (cobj.cr==null && deepseekBalance!=null) cobj.cr=deepseekBalance;
     if (Object.keys(cobj).length>0) o.cost=cobj;
     return o;
   };

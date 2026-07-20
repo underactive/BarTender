@@ -461,18 +461,21 @@ stats_parse_t stats_model_parse(const char *body, stats_t *out)
 // layout (left,right per row):
 //   Pi          OpenCode Go
 //   Claude      LM Studio
-//   OpenRouter  MiMo
 //   Codex       Cursor
+//   OpenRouter  MiMo
+//   Moonshot    DeepSeek
 // (codex is the "OpenAI" provider). Anything unlisted follows below.
 static const char *s_display_order[] = {
     "pi",
     "opencodego",
     "claude",
     "lmstudio",
-    "openrouter",
-    "mimo",
     "codex",
     "cursor",
+    "openrouter",
+    "mimo",
+    "moonshot",
+    "deepseek",
     "ollama",
 };
 

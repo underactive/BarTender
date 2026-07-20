@@ -33,7 +33,7 @@
               "tt": { "type": "integer", "description": "Tokens today (Claude: input+cacheRead+cacheCreate+output summed over models)." },
               "tm": { "type": "integer", "description": "Tokens trailing 30 days (Claude cost cache only)." },
               "cw": { "type": "integer", "description": "Spend this week, cents (OpenRouter: keyUsageWeekly)." },
-              "cr": { "type": "integer", "description": "Account balance remaining, cents (OpenRouter: balance). Firmware credits_remaining_c." },
+              "cr": { "type": "integer", "description": "Account balance remaining, cents (OpenRouter dedicated balance; generic credits.remaining where provided; Moonshot/DeepSeek balance display strings). Firmware credits_remaining_c." },
               "cl": { "type": "integer", "description": "Total account credits, cents (OpenRouter: totalCredits). Firmware credits_limit_c." },
               "h":  {
                 "type": "array",

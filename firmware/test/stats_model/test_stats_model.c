@@ -161,6 +161,23 @@ static void test_valid_v2_with_cost(void)
     CHECK_EQ_INT(st.p[0].hist[2], 30);
 }
 
+static void test_moonshot_credit_balance_parsed(void)
+{
+    TEST("moonshot_credit_balance_parsed");
+    const char *inner =
+        "{\"v\":2,\"ts\":\"2024-02-01T08:00:00Z\","
+        "\"providers\":[{\"id\":\"moonshot\",\"ok\":true,\"cost\":{\"cr\":2213}}]}";
+
+    char *env = make_envelope(inner);
+    stats_t st;
+    stats_parse_t r = stats_model_parse(env, &st);
+    free(env);
+
+    CHECK_EQ_INT(r, STATS_PARSE_OK);
+    CHECK(st.p[0].has_cost == true);
+    CHECK_EQ_INT(st.p[0].credits_remaining_c, 2213);
+}
+
 static void test_result_null_gives_no_data(void)
 {
     TEST("result_null_gives_no_data");
@@ -712,15 +729,19 @@ static void test_reorder_known_providers_sorted(void)
 {
     TEST("reorder_known_providers_sorted");
 
-    // Input order: openrouter, pi, cursor, claude -> display order: pi, claude, openrouter, cursor
-    // Canonical: pi=0, opencodego=1, claude=2, lmstudio=3, openrouter=4, mimo=5, codex=6, cursor=7
+    // Input order is scrambled; Codex/Cursor must follow LM Studio and
+    // precede OpenRouter in the canonical summary sequence.
+    // Canonical: pi=0, opencodego=1, claude=2, lmstudio=3, codex=4, cursor=5,
+    // openrouter=6, mimo=7, moonshot=8, deepseek=9
     const char *inner =
         "{\"v\":1,\"ts\":\"2024-01-01T00:00:00Z\","
         "\"providers\":["
         "{\"id\":\"openrouter\",\"ok\":true},"
         "{\"id\":\"pi\",\"ok\":true},"
         "{\"id\":\"cursor\",\"ok\":true},"
-        "{\"id\":\"claude\",\"ok\":true}"
+        "{\"id\":\"codex\",\"ok\":true},"
+        "{\"id\":\"claude\",\"ok\":true},"
+        "{\"id\":\"lmstudio\",\"ok\":true}"
         "]}";
 
     char *env = make_envelope(inner);
@@ -730,20 +751,23 @@ static void test_reorder_known_providers_sorted(void)
 
     stats_model_reorder(&st);
 
-    CHECK_EQ_INT(st.n, 4);
-    // Sorted by canonical priority: pi(0) < claude(2) < openrouter(4) < cursor(7)
+    CHECK_EQ_INT(st.n, 6);
+    // Codex/Cursor fall directly after LM Studio and before OpenRouter.
     CHECK_STR(st.p[0].id, "pi");
     CHECK_STR(st.p[1].id, "claude");
-    CHECK_STR(st.p[2].id, "openrouter");
-    CHECK_STR(st.p[3].id, "cursor");
+    CHECK_STR(st.p[2].id, "lmstudio");
+    CHECK_STR(st.p[3].id, "codex");
+    CHECK_STR(st.p[4].id, "cursor");
+    CHECK_STR(st.p[5].id, "openrouter");
 }
 
 static void test_reorder_opencodego_insertion(void)
 {
     TEST("reorder_opencodego_insertion");
 
-    // opencodego sorts above lmstudio; mimo sits between openrouter and cursor.
-    // Canonical: pi=0, opencodego=1, claude=2, lmstudio=3, openrouter=4, mimo=5, codex=6, cursor=7
+    // opencodego sorts above lmstudio; cursor sits before openrouter and mimo.
+    // Canonical: pi=0, opencodego=1, claude=2, lmstudio=3, codex=4, cursor=5,
+    // openrouter=6, mimo=7, moonshot=8, deepseek=9
     const char *inner =
         "{\"v\":1,\"ts\":\"2024-01-01T00:00:00Z\","
         "\"providers\":["
@@ -763,13 +787,13 @@ static void test_reorder_opencodego_insertion(void)
     stats_model_reorder(&st);
 
     CHECK_EQ_INT(st.n, 6);
-    // Expected: pi(0), opencodego(1), lmstudio(3), openrouter(4), mimo(5), cursor(7)
+    // Expected: pi(0), opencodego(1), lmstudio(3), cursor(5), openrouter(6), mimo(7)
     CHECK_STR(st.p[0].id, "pi");
     CHECK_STR(st.p[1].id, "opencodego");
     CHECK_STR(st.p[2].id, "lmstudio");
-    CHECK_STR(st.p[3].id, "openrouter");
-    CHECK_STR(st.p[4].id, "mimo");
-    CHECK_STR(st.p[5].id, "cursor");
+    CHECK_STR(st.p[3].id, "cursor");
+    CHECK_STR(st.p[4].id, "openrouter");
+    CHECK_STR(st.p[5].id, "mimo");
 }
 
 static void test_reorder_unknown_sinks_to_end(void)
@@ -1011,6 +1035,7 @@ int main(void)
 
     test_valid_v1_payload();
     test_valid_v2_with_cost();
+    test_moonshot_credit_balance_parsed();
     test_result_null_gives_no_data();
     test_result_absent_gives_no_data();
     test_result_non_string_gives_bad();

@@ -160,7 +160,8 @@ A captive-portal handles setup so nothing secret is ever compiled in. It
 remembers up to **5 WiFi networks** and autoconnects to whichever is in range
 (home / work / café — no re-setup when you move); Upstash is stored
 separately so changing WiFi never re-prompts for the token. On the summary
-screen: **swipe up/down** to scroll the provider list, **tap a provider** to
+screen: **swipe up/down** to scroll the provider list (OpenRouter, MiMo,
+Moonshot, and DeepSeek show prepaid-balance tiles when available), **tap a provider** to
 open its **Cost** page, **tap again** to flip to **Usage Limits** (tapping
 cycles the two; Claude/Codex show spend, tokens, and history; Pi shows today's
 spend, today's tokens, 30-day maxes, and its 30-day graph), **swipe right→left** to go back. A

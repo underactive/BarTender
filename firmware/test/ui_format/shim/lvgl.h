@@ -25,4 +25,5 @@ typedef uint8_t lv_opa_t;
 typedef struct _lv_obj_t          lv_obj_t;
 typedef struct _lv_font_t         lv_font_t;
 typedef struct _lv_chart_series_t lv_chart_series_t;
+typedef struct _lv_event_t        lv_event_t;
 typedef void (*lv_anim_exec_xcb_t)(void *, int32_t);

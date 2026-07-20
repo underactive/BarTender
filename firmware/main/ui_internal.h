@@ -76,6 +76,8 @@ extern const lv_font_t font_lemonmilk_23;
 #define SUMMARY_GRID_SLOTS ((UI_GRID_ROWS - UI_SUMMARY_TOP_ROWS) * UI_GRID_COLS)
 #define UI_GRID_COLOR    0x8da4c0
 #define UI_GRID_OPA      LV_OPA_90
+#define BALANCE_SEG_MAX  10
+#define BALANCE_SEG_VALUE_C 1000  // $10 per segment, in cents
 
 // Bar fill direction. true => 0% draws FULL, 100% draws EMPTY (bars read as
 // "headroom remaining"). Flip this compile-time default to change it globally.
@@ -104,6 +106,8 @@ typedef enum {
     PK_OPENROUTER,
     PK_OLLAMA,
     PK_MIMO,
+    PK_MOONSHOT,
+    PK_DEEPSEEK,
 } provider_kind_t;
 
 typedef struct {
@@ -254,6 +258,9 @@ lv_color_t pct_color(float p);
 bool prov_accent(const char *id, lv_color_t *out);
 bool is_hidden_provider(const char *id);
 provider_kind_t provider_kind(const char *id);
+bool provider_balance_c(const stats_provider_t *p, int32_t *out_c);
+int balance_seg_count(int32_t balance_c);
+int balance_bar_units(int32_t balance_c, int segs);
 lv_color_t bar_color(const stats_provider_t *p, float v);
 int bar_fill(int pct);
 bool bar_should_pulse(float pct);
@@ -328,3 +335,4 @@ void render_card(void);
 // ui_render_summary.c — summary row rendering (ui_task only).
 void render_summary_row(int slot, const stats_provider_t *p, int pixel_y, int W);
 void render_grid_tile(int slot, const stats_provider_t *p, const ui_rect_t *cell);
+void balance_bar_draw_cb(lv_event_t *e);

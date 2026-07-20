@@ -10,6 +10,30 @@
 #include <string.h>
 #include <stdio.h>
 
+void balance_bar_draw_cb(lv_event_t *e)
+{
+    lv_obj_t *bar = lv_event_get_target(e);
+    int segs = (int)(intptr_t)lv_obj_get_user_data(bar);
+    if (segs <= 1) return;
+
+    lv_layer_t *layer = lv_event_get_layer(e);
+    lv_area_t area;
+    lv_obj_get_coords(bar, &area);
+    int width = lv_area_get_width(&area);
+    lv_draw_line_dsc_t dsc;
+    lv_draw_line_dsc_init(&dsc);
+    dsc.color = lv_color_hex(0x0b0b0b);
+    dsc.width = 2;
+    dsc.p1.y = area.y1;
+    dsc.p2.y = area.y2;
+    for (int k = 1; k < segs; k++) {
+        int x = area.x1 + (int)((int64_t)width * k / segs);
+        dsc.p1.x = x;
+        dsc.p2.x = x;
+        lv_draw_line(layer, &dsc);
+    }
+}
+
 // Returns the secondary bar's display percentage (0-100), or -1 if the secondary
 // bar is hidden for this provider. Mirrors the side-bar visibility logic so the
 // value label can show "36% / 28%" when a secondary bar is present.
@@ -233,9 +257,22 @@ void render_grid_tile(int slot, const stats_provider_t *p,
     // Independent of top_has: e.g. Codex's weekly (secondary) window can be
     // known even when the 5h primary/session window has no recent data.
     int sv = secondary_pct(p);
+    int32_t bal_c = 0;
+    const bool bal_mode = p->ok && provider_balance_c(p, &bal_c);
+
+    // A slot can switch between a balance and a percentage tile on rerender.
+    lv_obj_set_user_data(row_bar[slot], NULL);
+    lv_bar_set_range(row_bar[slot], 0, 100);
 
     // Percentage label where the provider name used to be
-    if (p->ok && top_has) {
+    if (bal_mode) {
+        char money[16];
+        fmt_money(money, sizeof money, bal_c);
+        lv_label_set_text(row_id[slot], money);
+        lv_obj_set_width(row_id[slot], cell->w - 36);
+        lv_obj_add_flag(row_val_s[slot], LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_text_color(row_id[slot], lv_color_hex(0xffffff), 0);
+    } else if (p->ok && top_has) {
         int pv = clampi((int)(top_pct + 0.5f), 0, 100);
         if (sv >= 0) {
             char primary_buf[12];
@@ -287,7 +324,8 @@ void render_grid_tile(int slot, const stats_provider_t *p,
             lv_obj_set_style_image_recolor_opa(
                 row_icon[slot], LV_OPA_COVER, 0);
             lv_obj_set_style_image_recolor(row_icon[slot],
-                prov_accent(p->id, &tc) ? tc : lv_color_hex(0xe8eaed), 0);
+                provider_kind(p->id) == PK_MOONSHOT ? lv_color_hex(0xffffff)
+                : (prov_accent(p->id, &tc) ? tc : lv_color_hex(0xe8eaed)), 0);
         }
         lv_obj_clear_flag(row_icon[slot], LV_OBJ_FLAG_HIDDEN);
         update_cursor_sess_pulse(row_icon[slot], cursor_sess_refresh_needed(p));
@@ -296,7 +334,16 @@ void render_grid_tile(int slot, const stats_provider_t *p,
         update_cursor_sess_pulse(row_icon[slot], false);
     }
 
-    if (!p->ok || !top_has) {
+    if (bal_mode) {
+        int segs = balance_seg_count(bal_c);
+        lv_bar_set_range(row_bar[slot], 0, segs * 100);
+        lv_bar_set_value(row_bar[slot], balance_bar_units(bal_c, segs), LV_ANIM_OFF);
+        lv_obj_set_style_bg_color(row_bar[slot], bar_color(p, 0.0f), LV_PART_INDICATOR);
+        lv_obj_set_user_data(row_bar[slot], (void *)(intptr_t)segs);
+        update_bar_pulse(row_bar[slot], 0.0f, NULL);
+        lv_obj_clear_flag(row_bar[slot], LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(row_bar_w[slot], LV_OBJ_FLAG_HIDDEN);
+    } else if (!p->ok || !top_has) {
         // Primary/session tier has no data — hide only its own bar. The
         // secondary bar (e.g. Codex's weekly %) is independent and must
         // still render below when the provider fetch itself succeeded.

@@ -78,6 +78,12 @@ Rendering:
       Usage-Limits session bar animate: saturated accents (Cursor teal, etc.)
       fade opacity in the accent color; light accents (Pi) cycle grey↔white;
       bars at or below 100% stay static.
+- [ ] **Prepaid balance tiles**: OpenRouter, MiMo, Moonshot, and DeepSeek show
+      `$X.XX` plus a segmented $10 bar when a balance is available: `$0` is one
+      empty segment, `$18` is one full + 80% of a second, `$40` is four full,
+      and `$92` is nine full + 20% of a tenth (10 segments total). Other
+      providers retain their percentage label and solid bar. Reuse a tile slot
+      between balance and percentage providers without stale dividers/ranges.
 - [ ] **Summary rows show the provider's CodexBar logo** in the left margin,
       tinted with that provider's accent (light grey if un-themed), spanning
       the name + bar lines (two-line row). A provider with no bundled icon

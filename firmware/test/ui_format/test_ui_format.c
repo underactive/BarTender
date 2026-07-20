@@ -90,6 +90,8 @@ static void test_provider_kind(void)
     EQ_INT(provider_kind("lmstudio"), PK_LMSTUDIO,     "provider_kind: lmstudio");
     EQ_INT(provider_kind("cursor"), PK_CURSOR,         "provider_kind: cursor");
     EQ_INT(provider_kind("openrouter"), PK_OPENROUTER, "provider_kind: openrouter");
+    EQ_INT(provider_kind("moonshot"), PK_MOONSHOT,     "provider_kind: moonshot");
+    EQ_INT(provider_kind("deepseek"), PK_DEEPSEEK,     "provider_kind: deepseek");
     EQ_INT(provider_kind("nope"), PK_UNKNOWN,          "provider_kind: unknown");
     EQ_INT(provider_kind(NULL), PK_UNKNOWN,            "provider_kind: NULL");
     EQ_INT(provider_kind(""), PK_UNKNOWN,              "provider_kind: empty");
@@ -103,7 +105,43 @@ static void test_summary_provider_name(void)
     EQ_STR(summary_provider_name("claude"), "Claude",         "name: claude");
     EQ_STR(summary_provider_name("codex"), "Codex",           "name: codex");
     EQ_STR(summary_provider_name("cursor"), "Cursor",         "name: cursor");
+    EQ_STR(summary_provider_name("moonshot"), "Moonshot",     "name: moonshot");
+    EQ_STR(summary_provider_name("deepseek"), "DeepSeek",     "name: deepseek");
     EQ_STR(summary_provider_name("xyz"), "xyz",               "name: unknown -> id");
+}
+
+static void test_balance_helpers(void)
+{
+    EQ_INT(balance_seg_count(0), 1, "balance segments: $0 -> 1");
+    EQ_INT(balance_seg_count(500), 1, "balance segments: $5 -> 1");
+    EQ_INT(balance_seg_count(1800), 2, "balance segments: $18 -> 2");
+    EQ_INT(balance_seg_count(4000), 4, "balance segments: $40 -> 4");
+    EQ_INT(balance_seg_count(9200), 10, "balance segments: $92 -> 10");
+    EQ_INT(balance_seg_count(10000), 10, "balance segments: $100 -> 10");
+    EQ_INT(balance_seg_count(10500), 10, "balance segments: cap");
+    EQ_INT(balance_seg_count(-100), 1, "balance segments: negative -> 1");
+    EQ_INT(balance_bar_units(0, 1), 0, "balance units: $0");
+    EQ_INT(balance_bar_units(1800, 2), 180, "balance units: $18");
+    EQ_INT(balance_bar_units(4000, 4), 400, "balance units: $40");
+    EQ_INT(balance_bar_units(9200, 10), 920, "balance units: $92");
+    EQ_INT(balance_bar_units(20000, 10), 1000, "balance units: cap");
+
+    stats_provider_t p;
+    int32_t balance = 0;
+    memset(&p, 0, sizeof p); strcpy(p.id, "openrouter");
+    p.has_cost = true; p.credits_remaining_c = 2213;
+    CHECK(provider_balance_c(&p, &balance) && balance == 2213, "balance provider: OpenRouter");
+    memset(&p, 0, sizeof p); strcpy(p.id, "mimo");
+    p.has_mo = true; p.mo_balance_c = 1800;
+    CHECK(provider_balance_c(&p, &balance) && balance == 1800, "balance provider: MiMo");
+    memset(&p, 0, sizeof p); strcpy(p.id, "moonshot");
+    p.has_cost = true; p.credits_remaining_c = 9200;
+    CHECK(provider_balance_c(&p, &balance) && balance == 9200, "balance provider: Moonshot");
+    memset(&p, 0, sizeof p); strcpy(p.id, "claude");
+    p.has_cost = true; p.credits_remaining_c = 500;
+    CHECK(!provider_balance_c(&p, &balance), "balance provider: Claude excluded");
+    memset(&p, 0, sizeof p); strcpy(p.id, "openrouter");
+    CHECK(!provider_balance_c(&p, &balance), "balance provider: no cost");
 }
 
 static void test_fmt_money(void)
@@ -279,6 +317,7 @@ int main(void)
     test_extra_pct();
     test_provider_kind();
     test_summary_provider_name();
+    test_balance_helpers();
     test_fmt_money();
     test_fmt_pct();
     test_fmt_tokens();

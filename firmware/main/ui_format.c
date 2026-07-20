@@ -202,7 +202,43 @@ provider_kind_t provider_kind(const char *id)
     if (strcmp(id, "openrouter") == 0) return PK_OPENROUTER;
     if (strcmp(id, "ollama")     == 0) return PK_OLLAMA;
     if (strcmp(id, "mimo")       == 0) return PK_MIMO;
+    if (strcmp(id, "moonshot")   == 0) return PK_MOONSHOT;
+    if (strcmp(id, "deepseek")   == 0) return PK_DEEPSEEK;
     return PK_UNKNOWN;
+}
+
+bool provider_balance_c(const stats_provider_t *p, int32_t *out_c)
+{
+    if (!p || !out_c) return false;
+    switch (provider_kind(p->id)) {
+    case PK_OPENROUTER:
+    case PK_MOONSHOT:
+    case PK_DEEPSEEK:
+        if (!p->has_cost) return false;
+        *out_c = p->credits_remaining_c;
+        return true;
+    case PK_MIMO:
+        if (!p->has_mo) return false;
+        *out_c = p->mo_balance_c;
+        return true;
+    default:
+        return false;
+    }
+}
+
+int balance_seg_count(int32_t balance_c)
+{
+    if (balance_c < 0) balance_c = 0;
+    int n = balance_c / BALANCE_SEG_VALUE_C
+          + ((balance_c % BALANCE_SEG_VALUE_C) ? 1 : 0);
+    return clampi(n, 1, BALANCE_SEG_MAX);
+}
+
+int balance_bar_units(int32_t balance_c, int segs)
+{
+    if (balance_c < 0) balance_c = 0;
+    return clampi((int)(balance_c / (BALANCE_SEG_VALUE_C / 100)),
+                  0, segs * 100);
 }
 
 // Progress-bar indicator color: the provider's theme accent if it has one,
@@ -275,6 +311,8 @@ const char *summary_provider_name(const char *id)
     case PK_OPENCODEGO: return "OpenCode Go";
     case PK_OLLAMA:     return "Ollama";
     case PK_MIMO:       return "MiMo";
+    case PK_MOONSHOT:   return "Moonshot";
+    case PK_DEEPSEEK:   return "DeepSeek";
     default:            return id ? id : "";
     }
 }

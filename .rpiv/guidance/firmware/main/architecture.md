@@ -104,6 +104,15 @@ static void wifi_mgr_task(void *arg) {
 }
 ```
 
+## Summary balance tiles
+
+`render_grid_tile()` shows OpenRouter, MiMo, Moonshot, and DeepSeek balances as
+`$X.XX` when their reduced payload balance is available. It reuses the existing
+`row_bar[]` widget: `balance_bar_draw_cb()` handles `LV_EVENT_DRAW_POST` and
+cuts $10 segments with screen-background divider lines. Every render resets the
+shared bar's range and user data first, so a slot switching back to a percentage
+tile cannot retain divider state.
+
 ## Architectural Boundaries
 - **NO off-task LVGL calls**: other modules use `ui_set_*()` and `ui_handle_input()` only
 - **NO raw NVS access outside `config_store`**: persistence schema and migrations live there

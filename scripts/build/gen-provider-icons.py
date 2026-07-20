@@ -45,7 +45,7 @@ CONTENT_FIT_SVGS = {
     "lmstudio", "claude", "codex", "openrouter", "gemini", "cursor",
     "pi", "copilot", "ollama", "opencode", "opencodego", "deepseek",
     "alibaba", "amp", "antigravity", "augment", "elevenlabs",
-    "factory", "jetbrains", "kilo", "kimi", "kimik2", "kiro",
+    "factory", "jetbrains", "kilo", "kimi", "kimi-k2", "kiro",
     "minimax", "mistral", "perplexity", "vertexai", "synthetic",
     "warp", "codebuff", "mimo",
 }
@@ -70,6 +70,11 @@ CONTENT_FIT_BOOST = {
     # the full 32px width, so the silhouette touches the left/right edges and
     # reads as cropped. Shrink it to keep margin on all sides.
     "deepseek": 0.80,
+    # Kimi's flame mark fills the source width at 1.0, leaving no horizontal
+    # margin in the 24px grid cell. Moonshot shares this SVG; Kimi K2 uses its
+    # corresponding source asset.
+    "kimi": 0.80,
+    "kimi-k2": 0.80,
 }
 
 # provider id (UsageProvider raw value == payload `id`) -> svg basename.
@@ -82,7 +87,7 @@ ID_TO_SVG = {
     "alibaba": "alibaba", "amp": "amp", "antigravity": "antigravity",
     "augment": "augment", "deepseek": "deepseek", "elevenlabs": "elevenlabs",
     "factory": "droid", "jetbrains": "jetbrains-ai", "kilo": "kilo",
-    "kimi": "kimi", "kimik2": "kimi-k2", "kiro": "kiro",
+    "kimi": "kimi", "kimik2": "kimi-k2", "moonshot": "kimi", "kiro": "kiro",
     "minimax": "minimax", "mistral": "mistral", "perplexity": "perplexity",
     "vertexai": "vertex-ai", "abacus": "abacus-ai-dark", "zai": "zai-dark",
     "synthetic": "synthetic", "warp": "warp", "codebuff": "codebuff",

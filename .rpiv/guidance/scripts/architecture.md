@@ -101,6 +101,17 @@ scan_for_magic(ser, b"SCAP")               # recover from serial log noise
 w, h, data_len = struct.unpack("<HHI", ser.read(8))
 ```
 
+## Credit-balance projection
+
+The JXA projection in `codexbar-stats.sh --json` accepts a provider with only
+CodexBar generic `credits.remaining` as usable data, then emits that dollar
+balance as integer-cent `cost.cr`. Moonshot currently exposes `Balance: $…` in
+its login-method display string and DeepSeek exposes `$…` at the beginning of
+its reset display string; the projection extracts only those dollar amounts
+into `cost.cr`. OpenRouter's dedicated balance remains the preferred source.
+This preserves the reduced, firmware-owned payload rather than exposing
+upstream provider objects.
+
 ## Architectural Boundaries
 - **NO secrets in committed config or argv**: write tokens live in Keychain, not files or plist args
 - **NO raw upstream payload publishing**: scripts project/merge a reduced contract before Upstash

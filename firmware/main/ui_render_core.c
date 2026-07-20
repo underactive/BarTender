@@ -173,6 +173,7 @@ static void build_summary_widgets(int W)
         lv_obj_set_style_bg_color(row_bar[i], lv_color_hex(0x3a3a3a), 0);
         lv_obj_set_style_bg_opa(row_bar[i], LV_OPA_COVER, 0);
         lv_obj_set_style_bg_color(row_bar[i], lv_color_hex(0x30c14e), LV_PART_INDICATOR);
+        lv_obj_add_event_cb(row_bar[i], balance_bar_draw_cb, LV_EVENT_DRAW_POST, NULL);
 
         row_val[i] = lv_label_create(scr);
         lv_obj_set_style_text_color(row_val[i], lv_color_hex(0xffffff), 0);
@@ -566,7 +567,8 @@ void render_page_chrome(lv_obj_t *hdr, lv_obj_t *logo, lv_obj_t *bg_logo,
             lv_color_t tc;
             lv_obj_set_style_image_recolor_opa(logo, LV_OPA_COVER, 0);
             lv_obj_set_style_image_recolor(logo,
-                prov_accent(desc->icon_id, &tc) ? tc : lv_color_hex(0xe8eaed), 0);
+                provider_kind(desc->icon_id) == PK_MOONSHOT ? lv_color_hex(0xffffff)
+                : (prov_accent(desc->icon_id, &tc) ? tc : lv_color_hex(0xe8eaed)), 0);
         }
         lv_obj_clear_flag(logo, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_pos(hdr, 22, 2);
@@ -588,7 +590,8 @@ void render_page_chrome(lv_obj_t *hdr, lv_obj_t *logo, lv_obj_t *bg_logo,
         lv_color_t tc;
         lv_obj_set_style_image_recolor_opa(bg_logo, LV_OPA_40, 0);
         lv_obj_set_style_image_recolor(bg_logo,
-            prov_accent(desc->icon_id, &tc) ? tc : lv_color_hex(0xe8eaed), 0);
+            provider_kind(desc->icon_id) == PK_MOONSHOT ? lv_color_hex(0xffffff)
+            : (prov_accent(desc->icon_id, &tc) ? tc : lv_color_hex(0xe8eaed)), 0);
     }
     lv_obj_set_pos(bg_logo, card_w - (int)(bg->header.w * 0.78f) - 75, 35);
     lv_image_set_scale(bg_logo, 512);

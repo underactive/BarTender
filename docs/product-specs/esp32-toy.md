@@ -45,6 +45,10 @@ opening anything.
       ever associated** (e.g. relocated where no remembered SSID is in
       range), not only once connected. Nothing on-device wipes credentials.
 - [ ] Rendered percentages match a `curl GET` of the same Upstash key.
+- [ ] OpenRouter, MiMo, Moonshot, and DeepSeek show a `$X.XX` prepaid-balance
+      headline when a balance is published, with a segmented $10 bar: segment
+      count is `ceil(balance/$10)` capped at 10, the final segment is partial,
+      and missing balance falls back to the normal usage-% tile.
 - [ ] No secret is compiled into the firmware or committed to the repo.
 
 ## Edge cases
