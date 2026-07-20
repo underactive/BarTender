@@ -95,6 +95,7 @@ int64_t summary_tok_today_total(void)
     for (int i = 0; i < st.stats.n; i++) {
         const stats_provider_t *p = &st.stats.p[i];
         if (is_hidden_provider(p->id)) continue;
+        if (provider_kind(p->id) == PK_PI) continue;
         sum += provider_tok_today(p);
     }
     return sum;
