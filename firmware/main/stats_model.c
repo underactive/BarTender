@@ -460,18 +460,18 @@ stats_parse_t stats_model_parse(const char *body, stats_t *out)
 // Grid is row-major over 2 columns, so this flat list reads as the on-screen
 // layout (left,right per row):
 //   Pi          LM Studio
-//   Codex       Claude
-//   OpenCode Go Cursor
+//   Claude      Codex
+//   Cursor      OpenCode Go
 //   OpenRouter  MiMo
 //   Moonshot    DeepSeek
 // (codex is the "OpenAI" provider). Anything unlisted follows below.
 static const char *s_display_order[] = {
     "pi",
     "lmstudio",
-    "codex",
     "claude",
-    "opencodego",
+    "codex",
     "cursor",
+    "opencodego",
     "openrouter",
     "mimo",
     "moonshot",
