@@ -89,6 +89,11 @@ RE_CACHE_MISS   = re.compile(r'selected slot by LRU')
 RE_CACHE_WRAPPER = re.compile(
     r'\[cache_wrapper\]\s+Prompt cache:\s+using\s+(\d+)\s*/\s*(\d+)\s+tokens from cache'
 )
+# New LM Studio engine ("ornith", mid-2026+) no longer logs slot release lines.
+# Fall back to Prompt cache restore lines which report cached+uncached tokens.
+RE_CACHE_RESTORE = re.compile(
+    r'Prompt cache restore:\s+cached_tokens=(\d+)\s+uncached_tokens=(\d+)'
+)
 
 
 def parse_log(path: str, today: dt.date) -> dict:
@@ -103,6 +108,7 @@ def parse_log(path: str, today: dt.date) -> dict:
     model_counts = {}
     total_slot_tokens = 0
     slot_release_count = 0
+    total_prompt_tokens = 0
     latest_cache_pct = 0.0
     latest_cache_prompts = 0
     cache_hits = 0
@@ -144,6 +150,15 @@ def parse_log(path: str, today: dt.date) -> dict:
             total_c = int(m.group(2))
             total_cached_tokens += cached
             total_cache_prompt_tokens += total_c
+
+        m = RE_CACHE_RESTORE.search(line)
+        if m:
+            total_prompt_tokens += int(m.group(1)) + int(m.group(2))
+
+    # Fallback: when the new engine (ornith+) doesn't log slot release lines,
+    # use the sum of cached+uncached prompt tokens from Prompt cache restore.
+    if total_slot_tokens == 0 and total_prompt_tokens > 0:
+        total_slot_tokens = total_prompt_tokens
 
     # Compute cache hit % from cache_wrapper lines if available
     cache_hit_pct = 0.0
