@@ -1,9 +1,9 @@
 // firmware/main/upstash.c
 #include "upstash.h"
+#include "upstash_roots.h"
 #include "config_store.h"      // CFG_*_MAX — keep request buffers in sync
 #include "esp_http_client.h"
-#include "esp_crt_bundle.h"
-#include "esp_tls.h"           // ESP_ERR_ESP_TLS_BASE for error classification
+#include "esp_tls.h"
 #include "esp_log.h"
 #include <string.h>
 #include <stdio.h>
@@ -13,13 +13,33 @@ static const char *TAG = "upstash";
 
 // Accumulate the response body into the caller's buffer via the HTTP event
 // callback (handles chunked transfer too).
-typedef struct { char *buf; size_t cap; size_t len; bool overflow; } sink_t;
+typedef struct {
+    char *buf;
+    size_t cap;
+    size_t len;
+    bool overflow;
+    bool tls_failed;
+} sink_t;
+
+static bool event_has_tls_failure(const esp_http_client_event_t *e)
+{
+    if (!e || !e->data) return false;
+    const esp_tls_last_error_t *tls = (const esp_tls_last_error_t *)e->data;
+    return tls->last_error >= ESP_ERR_MBEDTLS_CERT_PARTLY_OK &&
+           tls->last_error <= ESP_ERR_MBEDTLS_SSL_TICKET_SETUP_FAILED;
+}
 
 static esp_err_t on_evt(esp_http_client_event_t *e)
 {
-    if (e->event_id == HTTP_EVENT_ON_DATA) {
-        sink_t *s = (sink_t *)e->user_data;
-        if (!s) return ESP_OK;
+    sink_t *s = (sink_t *)e->user_data;
+    if (!s) return ESP_OK;
+
+    if (e->event_id == HTTP_EVENT_ERROR) {
+        // esp_http_client_perform() reduces a failed TLS handshake to the
+        // generic ESP_ERR_HTTP_CONNECT. Its event still holds the esp-tls
+        // reason, so retain that distinction for the user-facing status.
+        s->tls_failed |= event_has_tls_failure(e);
+    } else if (e->event_id == HTTP_EVENT_ON_DATA) {
         if (s->len + e->data_len >= s->cap) { s->overflow = true; return ESP_OK; }
         memcpy(s->buf + s->len, e->data, e->data_len);
         s->len += e->data_len;
@@ -70,7 +90,13 @@ upstash_status_t upstash_get(const char *url, const char *key,
     int an = snprintf(auth, sizeof auth, "Bearer %s", token);
     if (an < 0 || an >= (int)sizeof auth) return UPSTASH_ERR_AUTH;
 
-    sink_t sink = { .buf = out, .cap = out_sz, .len = 0, .overflow = false };
+    sink_t sink = {
+        .buf = out,
+        .cap = out_sz,
+        .len = 0,
+        .overflow = false,
+        .tls_failed = false,
+    };
     out[0] = '\0';
 
     esp_http_client_config_t cfg = {
@@ -78,7 +104,11 @@ upstash_status_t upstash_get(const char *url, const char *key,
         .method = HTTP_METHOD_GET,
         .event_handler = on_evt,
         .user_data = &sink,
-        .crt_bundle_attach = esp_crt_bundle_attach,   // Mozilla CA bundle
+        // ESP-IDF v5.3.2's compact CA-bundle callback rejects Upstash's
+        // valid 2026 Let's Encrypt hierarchy. Supplying the trusted root here
+        // uses mbedTLS's full chain validator — hostname/cert checks remain
+        // enforced; this is deliberately not a no-verify workaround.
+        .cert_pem = s_upstash_trusted_root_pem,
         .timeout_ms = 12000,
         // Audit Security§HIGH: Upstash /get never legitimately 30x's; with
         // redirects on, a poisoned hop could replay the bearer token to any
@@ -92,9 +122,11 @@ upstash_status_t upstash_get(const char *url, const char *key,
     esp_err_t err = esp_http_client_perform(c);
     upstash_status_t rc;
     if (err != ESP_OK) {
-        // Audit Contract§MED: classify accurately — only the esp-tls error
-        // range is a real TLS/cert problem; DNS/connect/timeout are network.
-        bool is_tls = (err >= ESP_ERR_ESP_TLS_BASE &&
+        // HTTP client collapses an SSL handshake failure to HTTP_CONNECT;
+        // on_evt() preserved the underlying esp-tls signal. DNS/connect/
+        // timeout failures still remain network errors.
+        bool is_tls = sink.tls_failed ||
+                      (err >= ESP_ERR_ESP_TLS_BASE &&
                        err <  ESP_ERR_ESP_TLS_BASE + 0x100);
         rc = is_tls ? UPSTASH_ERR_TLS : UPSTASH_ERR_NET;
         ESP_LOGE(TAG, "perform failed: %s", esp_err_to_name(err));

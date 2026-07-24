@@ -3,8 +3,8 @@
 // One HTTPS GET against the Upstash REST API:
 //   GET {url}/get/{key}   Authorization: Bearer <read-only token>
 // Returns the raw response body, e.g. {"result":"<escaped-json>"} — the
-// caller (stats_model) does the two-step parse. TLS trust via the bundled
-// Mozilla CA store (esp_crt_bundle); no cert pinning, survives rotation.
+// caller (stats_model) does the two-step parse. TLS trust uses the ISRG Root X2
+// anchor with mbedTLS's normal chain validation; no leaf-certificate pinning.
 #pragma once
 
 #include <stddef.h>

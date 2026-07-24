@@ -30,6 +30,11 @@ Freenove ESP32-S3 (FNK0104); host items are off-device where a seam exists.
 - [ ] **No secrets on the wire/log.** UART log during provisioning shows the
       SoftAP SSID but NOT its password; the Upstash token never appears in
       any log line.
+- [ ] **TLS failures are explicit and fail closed.** A rejected HTTPS
+      certificate shows `fetch error: tls`, never `network`, and the client
+      does not send an authenticated request after the failed handshake.
+- [ ] **Current Upstash TLS chain fetches.** The live `*.upstash.io` endpoint
+      accepts its ISRG/Let's Encrypt chain and renders the stored payload.
 
 ## Firmware — scrollable summary + tap-cycle pages (2026-05-18, nav redesign)
 

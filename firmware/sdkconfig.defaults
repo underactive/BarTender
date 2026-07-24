@@ -20,10 +20,17 @@ CONFIG_LV_FONT_MONTSERRAT_18=y
 # FreeRTOS
 CONFIG_FREERTOS_HZ=1000
 
-# HTTPS: trust the bundled Mozilla CA store (no cert pinning — survives
-# Upstash certificate rotation). esp_crt_bundle_attach() relies on this.
-CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
-CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
+# HTTPS: upstash_roots.h supplies ISRG Root X2 to mbedTLS's normal chain
+# validator. Leave ESP-IDF's compact bundle off: v5.3.2 rejects Upstash's
+# valid 2026 Let's Encrypt hierarchy in its bundle callback.
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=n
+
+# The board has 8 MB PSRAM. Keep scarce internal RAM available for the SHA DMA
+# driver during TLS handshakes; large mbedTLS buffers may use the general heap,
+# and are allocated only while actively sending or receiving.
+CONFIG_MBEDTLS_INTERNAL_MEM_ALLOC=n
+CONFIG_MBEDTLS_DEFAULT_MEM_ALLOC=y
+CONFIG_MBEDTLS_DYNAMIC_BUFFER=y
 
 # Default board (overlay re-affirms this for the esp32s3 target)
 CONFIG_BOARD_FREENOVE_S3_28=y

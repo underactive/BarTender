@@ -134,8 +134,15 @@ account identifiers) MUST update this section and re-justify again.
   and the device reboots out of AP mode immediately on form submit. The
   captive HTTP form is plaintext but reachable only by a station that already
   has the WPA2 PSK, on local RF.
-- **TLS trust** uses the bundled Mozilla CA store (`esp_crt_bundle`), not a
-  pinned certificate — robust to Upstash cert rotation without a reflash.
+- **TLS trust** uses the ISRG Root X2 public CA anchor in
+  `firmware/main/upstash_roots.h` with mbedTLS's normal hostname and chain
+  validation. This is **not** a leaf-cert pin and never disables verification.
+  It is a compatibility fallback for ESP-IDF 5.3.2's compact bundle callback:
+  it forces the valid EC X2 path instead of the X1 cross-sign path that the
+  device cannot verify. Trust is narrower than the prior Mozilla bundle: an
+  Upstash switch away from ISRG requires a firmware update. Remove this
+  fallback after upgrading ESP-IDF to a bundle implementation that validates
+  that hierarchy correctly.
 
 ## Sensitive files
 
