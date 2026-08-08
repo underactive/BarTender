@@ -204,6 +204,7 @@ provider_kind_t provider_kind(const char *id)
     if (strcmp(id, "mimo")       == 0) return PK_MIMO;
     if (strcmp(id, "moonshot")   == 0) return PK_MOONSHOT;
     if (strcmp(id, "deepseek")   == 0) return PK_DEEPSEEK;
+    if (strcmp(id, "qwencloud")  == 0) return PK_QWENCLOUD;
     return PK_UNKNOWN;
 }
 
@@ -313,6 +314,7 @@ const char *summary_provider_name(const char *id)
     case PK_MIMO:       return "MiMo";
     case PK_MOONSHOT:   return "Moonshot";
     case PK_DEEPSEEK:   return "DeepSeek";
+    case PK_QWENCLOUD:  return "Qwen";
     default:            return id ? id : "";
     }
 }

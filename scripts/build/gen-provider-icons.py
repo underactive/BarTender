@@ -36,7 +36,9 @@ OUT_H = os.path.join(HERE, "..", "..", "firmware", "main", "provider_icons.h")
 # opencode (shared by opencode + opencodego) is the two-tone "O" mark
 # (off-white #F1ECEC frame, charcoal #4B4646 fill); full-color so the two
 # tones survive — A8 would flatten it to one tinted silhouette.
-FULL_COLOR_SVGS = {"claude", "lmstudio", "ollama", "mimo", "opencode"}
+# qwen's mark is a purple gradient hexagon whose white slashes are painted on
+# top rather than cut out — A8 would flatten both tones into one solid blob.
+FULL_COLOR_SVGS = {"claude", "lmstudio", "ollama", "mimo", "opencode", "qwen"}
 
 # Wide logos with heavy transparent padding: crop to opaque bounds, then
 # scale to fill ICON_PX. Optional boost >1.0 nudges wide marks to match
@@ -47,7 +49,7 @@ CONTENT_FIT_SVGS = {
     "alibaba", "amp", "antigravity", "augment", "elevenlabs",
     "factory", "jetbrains", "kilo", "kimi", "kimi-k2", "kiro",
     "minimax", "mistral", "perplexity", "vertexai", "synthetic",
-    "warp", "codebuff", "mimo",
+    "warp", "codebuff", "mimo", "qwen",
 }
 CONTENT_FIT_BOOST = {
     "lmstudio": 0.95,
@@ -75,6 +77,7 @@ CONTENT_FIT_BOOST = {
     # corresponding source asset.
     "kimi": 0.80,
     "kimi-k2": 0.80,
+    "qwen": 0.85,
 }
 
 # provider id (UsageProvider raw value == payload `id`) -> svg basename.
@@ -93,6 +96,7 @@ ID_TO_SVG = {
     "synthetic": "synthetic", "warp": "warp", "codebuff": "codebuff",
     "lmstudio": "lmstudio",
     "mimo": "mimo",
+    "qwencloud": "qwen",
 }
 
 

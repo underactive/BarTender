@@ -34,6 +34,15 @@ void balance_bar_draw_cb(lv_event_t *e)
     }
 }
 
+// Providers whose hero metric is the secondary tier (s) rather than the primary
+// session window (p). OpenCode Go has 3 tiers and the publisher marks secondary
+// as the hero. Qwen publishes a weekly tier only, so without this its absent
+// primary drops the tile through to a grey "--".
+static bool secondary_is_hero(provider_kind_t k)
+{
+    return k == PK_OPENCODEGO || k == PK_QWENCLOUD;
+}
+
 // Returns the secondary bar's display percentage (0-100), or -1 if the secondary
 // bar is hidden for this provider. Mirrors the side-bar visibility logic so the
 // value label can show "36% / 28%" when a secondary bar is present.
@@ -41,7 +50,8 @@ void balance_bar_draw_cb(lv_event_t *e)
 // For OpenCode Go the secondary bar shows the tertiary tier (t/tr) instead of
 // the secondary tier (s/sr), because the summary page swaps primary/secondary
 // display for this provider (secondary replaces the top bar, tertiary becomes
-// the smaller bottom bar).
+// the smaller bottom bar). Qwen has no tertiary tier, so it returns -1 and the
+// small bar stays hidden.
 static int secondary_pct(const stats_provider_t *p)
 {
     provider_kind_t rpk = provider_kind(p->id);
@@ -167,14 +177,14 @@ void render_summary_row(int slot, const stats_provider_t *p,
     }
 
     // Top-bar source depends on provider:
-    //  - OpenCode Go: secondary tier (s) — 3 tiers, publisher marks secondary
-    //    as the hero metric; tertiary (t) fills the smaller bottom bar.
+    //  - OpenCode Go / Qwen: secondary tier (s) — see secondary_is_hero();
+    //    for OpenCode Go tertiary (t) fills the smaller bottom bar.
     //  - MiMo / Pi / LM Studio: today's tokens vs the 30-day daily average
     //    (excluding zero-use days) via provider_avg_bar() — a "today vs your
     //    typical active day" reading that can exceed 100% on a heavy day.
     //  - everyone else: the windowed primary tier (p).
     provider_kind_t rpk_oc = provider_kind(p->id);
-    bool oc_swap = (rpk_oc == PK_OPENCODEGO);
+    bool oc_swap = secondary_is_hero(rpk_oc);
     float avg_pct = 0.0f;
     bool avg_swap = provider_avg_bar(p, &avg_pct);
     bool top_has = oc_swap ? p->secondary.has
@@ -240,14 +250,14 @@ void render_grid_tile(int slot, const stats_provider_t *p,
     lv_obj_set_pos(row_id[slot], cell->x + 32, cell->y + 2);
 
     // Top-bar source depends on provider:
-    //  - OpenCode Go: secondary tier (s) — 3 tiers, publisher marks secondary
-    //    as the hero metric; tertiary (t) fills the smaller bottom bar.
+    //  - OpenCode Go / Qwen: secondary tier (s) — see secondary_is_hero();
+    //    for OpenCode Go tertiary (t) fills the smaller bottom bar.
     //  - MiMo / Pi / LM Studio: today's tokens vs the 30-day daily average
     //    (excluding zero-use days) via provider_avg_bar() — a "today vs your
     //    typical active day" reading that can exceed 100% on a heavy day.
     //  - everyone else: the windowed primary tier (p).
     provider_kind_t rpk_oc = provider_kind(p->id);
-    bool oc_swap = (rpk_oc == PK_OPENCODEGO);
+    bool oc_swap = secondary_is_hero(rpk_oc);
     float avg_pct = 0.0f;
     bool avg_swap = provider_avg_bar(p, &avg_pct);
     bool top_has = oc_swap ? p->secondary.has

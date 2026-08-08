@@ -732,7 +732,7 @@ static void test_reorder_known_providers_sorted(void)
     // Input order is scrambled; Codex/Cursor must follow LM Studio and
     // precede OpenRouter in the canonical summary sequence.
     // Canonical: pi=0, lmstudio=1, claude=2, codex=3, cursor=4, opencodego=5,
-    // openrouter=6, mimo=7, moonshot=8, deepseek=9
+    // qwencloud=6, openrouter=7, mimo=8, moonshot=9, deepseek=10
     const char *inner =
         "{\"v\":1,\"ts\":\"2024-01-01T00:00:00Z\","
         "\"providers\":["
@@ -765,9 +765,10 @@ static void test_reorder_opencodego_insertion(void)
 {
     TEST("reorder_opencodego_insertion");
 
-    // opencodego sorts below cursor and ahead of openrouter and mimo.
+    // opencodego sorts below cursor; qwencloud sits between opencodego and
+    // openrouter, ahead of mimo.
     // Canonical: pi=0, lmstudio=1, claude=2, codex=3, cursor=4, opencodego=5,
-    // openrouter=6, mimo=7, moonshot=8, deepseek=9
+    // qwencloud=6, openrouter=7, mimo=8, moonshot=9, deepseek=10
     const char *inner =
         "{\"v\":1,\"ts\":\"2024-01-01T00:00:00Z\","
         "\"providers\":["
@@ -775,6 +776,7 @@ static void test_reorder_opencodego_insertion(void)
         "{\"id\":\"lmstudio\",\"ok\":true},"
         "{\"id\":\"opencodego\",\"ok\":true},"
         "{\"id\":\"mimo\",\"ok\":true},"
+        "{\"id\":\"qwencloud\",\"ok\":true},"
         "{\"id\":\"pi\",\"ok\":true},"
         "{\"id\":\"cursor\",\"ok\":true}"
         "]}";
@@ -786,13 +788,14 @@ static void test_reorder_opencodego_insertion(void)
 
     stats_model_reorder(&st);
 
-    CHECK_EQ_INT(st.n, 6);
+    CHECK_EQ_INT(st.n, 7);
     CHECK_STR(st.p[0].id, "pi");
     CHECK_STR(st.p[1].id, "lmstudio");
     CHECK_STR(st.p[2].id, "cursor");
     CHECK_STR(st.p[3].id, "opencodego");
-    CHECK_STR(st.p[4].id, "openrouter");
-    CHECK_STR(st.p[5].id, "mimo");
+    CHECK_STR(st.p[4].id, "qwencloud");
+    CHECK_STR(st.p[5].id, "openrouter");
+    CHECK_STR(st.p[6].id, "mimo");
 }
 
 static void test_reorder_unknown_sinks_to_end(void)
