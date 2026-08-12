@@ -316,6 +316,66 @@ static void render_mimo_limits(const stats_provider_t *p,
     lv_obj_add_flag(lim.a_rst, LV_OBJ_FLAG_HIDDEN);
 }
 
+// Ramp LIMITS card: BALANCE hero + total-credits secondary. Same layout as
+// MiMo but sourced from the generic cost block (credits_remaining_c/limit_c)
+// — Ramp has no usage tiers, so the default SESSION hero would read "--".
+static void render_ramp_limits(const stats_provider_t *p,
+                               const ui_page_grid_t *g,
+                               const ui_rect_t *hero,
+                               bool card_entered)
+{
+    {
+        char up[STATS_ID_MAX];
+        up_id(up, sizeof up, p->id);
+        render_page_chrome(lim.hdr, lim.logo, lim.bg_logo, s_scr_w,
+                           &(ui_page_chrome_desc_t){
+            .title = up,
+            .subtitle = "LIMITS",
+            .icon_id = p->id,
+        });
+    }
+
+    // Hide all default LIMITS tier widgets we don't need
+    hide_hero_amount(&lim_hero);
+    lv_obj_add_flag(lim.s_bar, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim.s_rst, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim.a_lbl, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim.a_big, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim.a_bar, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim.a_rst, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim.w_lbl, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim.w_big, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim.w_bar, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim.w_rst, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim.x_lbl, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim.x_val, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim.x_bar, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim.chart, LV_OBJ_FLAG_HIDDEN);
+
+    place_hero_amount(&lim_hero, hero, "BALANCE");
+    if (card_entered) {
+        anim_count_up(lim_hero.num, p->credits_remaining_c, count_cents_cb);
+    } else {
+        set_hero_money(&lim_hero, p->credits_remaining_c);
+    }
+
+    const ui_rect_t total_r = ui_grid_span(g, 0, 7, 2, 1);
+    lv_obj_set_style_text_font(lim.a_big, &font_lemonmilk_24, 0);
+    lv_obj_set_style_text_color(lim.a_big, lv_color_hex(0x9aa0a6), 0);
+    lv_obj_clear_flag(lim.a_big, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_pos(lim.a_big, total_r.x + 12, total_r.y + 2);
+    char tc[16];
+    fmt_money(tc, sizeof tc, p->credits_limit_c);
+    lv_label_set_text(lim.a_big, tc);
+    lv_obj_set_style_text_font(lim.a_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(lim.a_lbl, lv_color_hex(0x9aa0a6), 0);
+    lv_obj_clear_flag(lim.a_lbl, LV_OBJ_FLAG_HIDDEN);
+    lv_label_set_text(lim.a_lbl, "total credits");
+    lv_obj_align_to(lim.a_lbl, lim.a_big, LV_ALIGN_OUT_RIGHT_BOTTOM, 5, 0);
+    lv_obj_add_flag(lim.a_bar, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim.a_rst, LV_OBJ_FLAG_HIDDEN);
+}
+
 // OpenRouter TODAY card: spend hero + this-week secondary + balance footer.
 static void render_cost_openrouter(const stats_provider_t *p,
                                    const ui_page_grid_t *g,
@@ -505,7 +565,10 @@ static void render_cost_card(const stats_provider_t *p,
         break;
     }
 
-    if (has_balance) {
+    // Ramp keeps the standard TODAY card (tokens line + daily spend chart):
+    // its balance already headlines the summary tile and the LIMITS card, so
+    // the OpenRouter balance-footer layout would repeat it and hide tokens.
+    if (has_balance && pk != PK_RAMP) {
         render_cost_openrouter(p, g, hero, card_entered);
     } else {
         render_cost_standard(p, g, hero, body, footer, pk, card_entered);
@@ -749,6 +812,11 @@ static void render_limits_card(const stats_provider_t *p,
 
     if (pk == PK_MIMO && p->has_mo) {
         render_mimo_limits(p, g, hero, footer, card_entered);
+        return;
+    }
+
+    if (pk == PK_RAMP && has_balance) {
+        render_ramp_limits(p, g, hero, card_entered);
         return;
     }
 

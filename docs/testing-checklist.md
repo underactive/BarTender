@@ -83,7 +83,7 @@ Rendering:
       Usage-Limits session bar animate: saturated accents (Cursor teal, etc.)
       fade opacity in the accent color; light accents (Pi) cycle grey↔white;
       bars at or below 100% stay static.
-- [ ] **Prepaid balance tiles**: OpenRouter, MiMo, Moonshot, and DeepSeek show
+- [ ] **Prepaid balance tiles**: OpenRouter, MiMo, Moonshot, DeepSeek, and Ramp show
       `$X.XX` plus a segmented $10 bar when a balance is available: `$0` is one
       empty segment, `$18` is one full + 80% of a second, `$40` is four full,
       and `$92` is nine full + 20% of a tenth (10 segments total). Other

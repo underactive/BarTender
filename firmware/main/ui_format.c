@@ -205,6 +205,7 @@ provider_kind_t provider_kind(const char *id)
     if (strcmp(id, "moonshot")   == 0) return PK_MOONSHOT;
     if (strcmp(id, "deepseek")   == 0) return PK_DEEPSEEK;
     if (strcmp(id, "qwencloud")  == 0) return PK_QWENCLOUD;
+    if (strcmp(id, "ramp")       == 0) return PK_RAMP;
     return PK_UNKNOWN;
 }
 
@@ -215,6 +216,7 @@ bool provider_balance_c(const stats_provider_t *p, int32_t *out_c)
     case PK_OPENROUTER:
     case PK_MOONSHOT:
     case PK_DEEPSEEK:
+    case PK_RAMP:
         if (!p->has_cost) return false;
         *out_c = p->credits_remaining_c;
         return true;
@@ -315,6 +317,7 @@ const char *summary_provider_name(const char *id)
     case PK_MOONSHOT:   return "Moonshot";
     case PK_DEEPSEEK:   return "DeepSeek";
     case PK_QWENCLOUD:  return "Qwen";
+    case PK_RAMP:       return "Ramp";
     default:            return id ? id : "";
     }
 }

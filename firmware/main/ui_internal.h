@@ -109,6 +109,7 @@ typedef enum {
     PK_MOONSHOT,
     PK_DEEPSEEK,
     PK_QWENCLOUD,
+    PK_RAMP,
 } provider_kind_t;
 
 typedef struct {

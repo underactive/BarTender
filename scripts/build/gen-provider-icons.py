@@ -49,7 +49,7 @@ CONTENT_FIT_SVGS = {
     "alibaba", "amp", "antigravity", "augment", "elevenlabs",
     "factory", "jetbrains", "kilo", "kimi", "kimi-k2", "kiro",
     "minimax", "mistral", "perplexity", "vertexai", "synthetic",
-    "warp", "codebuff", "mimo", "qwen",
+    "warp", "codebuff", "mimo", "qwen", "ramp",
 }
 CONTENT_FIT_BOOST = {
     "lmstudio": 0.95,
@@ -78,6 +78,9 @@ CONTENT_FIT_BOOST = {
     "kimi": 0.80,
     "kimi-k2": 0.80,
     "qwen": 0.85,
+    # ramp's swoosh mark is wider than tall; keep margin in the 24px grid cell
+    # like the other wide marks (deepseek, kimi).
+    "ramp": 0.85,
 }
 
 # provider id (UsageProvider raw value == payload `id`) -> svg basename.
@@ -97,6 +100,7 @@ ID_TO_SVG = {
     "lmstudio": "lmstudio",
     "mimo": "mimo",
     "qwencloud": "qwen",
+    "ramp": "ramp",
 }
 
 

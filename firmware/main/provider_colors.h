@@ -43,6 +43,7 @@ static const prov_color_t PROV_COLORS[] = {
     { "lmstudio",   0x7C3AED },
     { "deepgram",    0x0A121B },
     { "qwencloud",   0x665CEE },
+    { "ramp",        0xE4F221 },
 };
 #define PROV_COLORS_N  (sizeof(PROV_COLORS) / sizeof(*PROV_COLORS))
 

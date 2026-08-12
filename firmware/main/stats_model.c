@@ -464,7 +464,7 @@ stats_parse_t stats_model_parse(const char *body, stats_t *out)
 //   Cursor      OpenCode Go
 //   Qwen        OpenRouter
 //   MiMo        Moonshot
-//   DeepSeek
+//   DeepSeek    Ramp
 // (codex is the "OpenAI" provider). Anything unlisted follows below.
 static const char *s_display_order[] = {
     "pi",
@@ -478,6 +478,7 @@ static const char *s_display_order[] = {
     "mimo",
     "moonshot",
     "deepseek",
+    "ramp",
     "ollama",
 };
 

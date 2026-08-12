@@ -798,6 +798,35 @@ static void test_reorder_opencodego_insertion(void)
     CHECK_STR(st.p[6].id, "mimo");
 }
 
+static void test_reorder_ramp_after_deepseek(void)
+{
+    TEST("reorder_ramp_after_deepseek");
+
+    // ramp slots directly after deepseek, before unlisted providers.
+    // Canonical: ... moonshot=9, deepseek=10, ramp=11, ollama=12
+    const char *inner =
+        "{\"v\":1,\"ts\":\"2024-01-01T00:00:00Z\","
+        "\"providers\":["
+        "{\"id\":\"ramp\",\"ok\":true},"
+        "{\"id\":\"deepseek\",\"ok\":true},"
+        "{\"id\":\"moonshot\",\"ok\":true},"
+        "{\"id\":\"pi\",\"ok\":true}"
+        "]}";
+
+    char *env = make_envelope(inner);
+    stats_t st;
+    stats_model_parse(env, &st);
+    free(env);
+
+    stats_model_reorder(&st);
+
+    CHECK_EQ_INT(st.n, 4);
+    CHECK_STR(st.p[0].id, "pi");
+    CHECK_STR(st.p[1].id, "moonshot");
+    CHECK_STR(st.p[2].id, "deepseek");
+    CHECK_STR(st.p[3].id, "ramp");
+}
+
 static void test_reorder_unknown_sinks_to_end(void)
 {
     TEST("reorder_unknown_sinks_to_end");
@@ -1066,6 +1095,7 @@ int main(void)
     test_multiple_providers();
     test_reorder_known_providers_sorted();
     test_reorder_opencodego_insertion();
+    test_reorder_ramp_after_deepseek();
     test_reorder_unknown_sinks_to_end();
     test_reorder_single_provider_safe();
     test_reorder_empty_safe();

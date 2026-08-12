@@ -106,7 +106,7 @@ static void wifi_mgr_task(void *arg) {
 
 ## Summary balance tiles
 
-`render_grid_tile()` shows OpenRouter, MiMo, Moonshot, and DeepSeek balances as
+`render_grid_tile()` shows OpenRouter, MiMo, Moonshot, DeepSeek, and Ramp balances as
 `$X.XX` when their reduced payload balance is available. It reuses the existing
 `row_bar[]` widget: `balance_bar_draw_cb()` handles `LV_EVENT_DRAW_POST` and
 cuts $10 segments with screen-background divider lines. Every render resets the
