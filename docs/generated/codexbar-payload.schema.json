@@ -24,7 +24,7 @@
           "tr": { "type": "string", "description": "Tertiary reset hint." },
           "cost": {
             "type": "object",
-            "description": "v2 optional. Present for providers with a generic cost payload (Claude/Codex cost-cache rollups; OpenRouter live keyDataFetched fields). Money is integer CENTS (LVGL has no float printf). Pi uses the sibling `pi` block instead; firmware still maps it into cost-card-capable fields.",
+            "description": "v2 optional. Present for providers with a generic cost payload (Claude/Codex cost-cache rollups; OpenRouter live keyDataFetched fields; Ramp Router dashboard-API rollups via ramp-stats.sh). Money is integer CENTS (LVGL has no float printf). Pi uses the sibling `pi` block instead; firmware still maps it into cost-card-capable fields.",
             "properties": {
               "xu": { "type": "integer", "description": "Extra-usage overage used, cents (providerCost.used for Claude; keyUsage for OpenRouter). NOT total spend." },
               "xl": { "type": "integer", "description": "Extra-usage overage limit, cents (providerCost.limit for Claude; keyLimit for OpenRouter)." },
@@ -33,13 +33,13 @@
               "tt": { "type": "integer", "description": "Tokens today (Claude: input+cacheRead+cacheCreate+output summed over models)." },
               "tm": { "type": "integer", "description": "Tokens trailing 30 days (Claude cost cache only)." },
               "cw": { "type": "integer", "description": "Spend this week, cents (OpenRouter: keyUsageWeekly)." },
-              "cr": { "type": "integer", "description": "Account balance remaining, cents (OpenRouter dedicated balance; generic credits.remaining where provided; Moonshot/DeepSeek balance display strings). Firmware credits_remaining_c." },
-              "cl": { "type": "integer", "description": "Total account credits, cents (OpenRouter: totalCredits). Firmware credits_limit_c." },
+              "cr": { "type": "integer", "description": "Account balance remaining, cents (OpenRouter dedicated balance; generic credits.remaining where provided; Moonshot/DeepSeek balance display strings; Ramp remaining_credit_usd). Firmware credits_remaining_c." },
+              "cl": { "type": "integer", "description": "Total account credits, cents (OpenRouter: totalCredits; Ramp total_credits_usd). Firmware credits_limit_c." },
               "h":  {
                 "type": "array",
                 "items": { "type": "integer" },
                 "maxItems": 31,
-                "description": "Per-day total spend, cents, oldest -> newest (Claude only; firmware caps at STATS_HIST_MAX=31)."
+                "description": "Per-day total spend, cents, oldest -> newest (Claude and Ramp; firmware caps at STATS_HIST_MAX=31)."
               }
             },
             "additionalProperties": false

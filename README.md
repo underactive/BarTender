@@ -79,6 +79,12 @@ chmod +x scripts/cursor-stats.sh
 ./scripts/codexbar-publish.sh --set-cursor-session-clipboard   # after copying Cookie (see "Cursor session" note below)
 ./scripts/cursor-stats.sh                            # should print ok:true with cu:{...}
 ./scripts/codexbar-publish.sh --once                 # merges cu onto cursor limits row
+
+# 4. (optional) Ramp Router balance + token usage on the device (RAMP tile)
+chmod +x scripts/ramp-stats.sh
+./scripts/codexbar-publish.sh --set-ramp-cookie-clipboard   # after copying Cookie from router.ramp.com DevTools
+./scripts/ramp-stats.sh                              # should print ok:true with cost:{...}
+./scripts/codexbar-publish.sh --once                 # appends the ramp provider
 ```
 
 **Cursor session (if `cursor-stats.sh` prints HTTP 403 or `no usable Cursor token data`):** log in at [cursor.com](https://cursor.com), open DevTools → **Network**, reload the usage dashboard, click any `cursor.com/api/…` request, and copy the full **`Cookie`** request header (not just `WorkosCursorSessionToken`). Then either:
@@ -112,7 +118,10 @@ Diagnose without publishing secrets:
 | `codexbar-publish.sh --set-token` | Store the Upstash write token in the macOS Keychain |
 | `codexbar-publish.sh --set-cursor-session` | Store Cursor Cookie header (visible terminal paste) |
 | `codexbar-publish.sh --set-cursor-session-clipboard` | Store Cursor Cookie from clipboard (`pbpaste`) |
+| `codexbar-publish.sh --set-ramp-cookie` | Store Ramp Router Cookie header (visible terminal paste) |
+| `codexbar-publish.sh --set-ramp-cookie-clipboard` | Store Ramp Router Cookie from clipboard (`pbpaste`) |
 | `cursor-stats.sh` | Emit `cu` token rollup JSON (merged by the publisher onto `cursor`) |
+| `ramp-stats.sh` | Emit the `ramp` provider (balance + tokens via generic `cost`; appended by the publisher) |
 | `codexbar-publish.sh --install` / `--uninstall` | Add/remove the launchd schedule |
 | `codexbar-publish.sh --status` | Job state, target, token readiness, recent log |
 | `codexbar-publish.sh --print-plist` | Preview the launchd plist that `--install` would write |

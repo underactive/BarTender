@@ -55,8 +55,11 @@ read token are private to one user."** This was an informed decision for a
 personal desk object, recorded here as the mandated re-justification.
 
 **What now crosses the boundary (v2 payload):** usage `%` + reset hints,
-extra-usage `$` (cents), prepaid account balances for OpenRouter/MiMo and
-Moonshot/DeepSeek (reduced to cents from CodexBar's provider display data),
+extra-usage `$` (cents), prepaid account balances for OpenRouter/MiMo,
+Moonshot/DeepSeek (reduced to cents from CodexBar's provider display data) and
+Ramp Router (cents + aggregate spend/token rollups from the router.ramp.com
+dashboard API via `ramp-stats.sh`; no model names, request contents, or
+account identifiers),
 Claude/Codex total spend and token rollups, a 30-day per-day spend history where
 available, and — for Pi Agent — max daily spend,
 max daily tokens, and a 30-day daily spend history reduced from local Pi Agent

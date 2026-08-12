@@ -64,6 +64,30 @@ process.
 | Upstash **read-only** token | ESP32 read auth (Prompt 3) | Upstash DB tokens (read-only) |
 | `~/.codexbar/config.json` | enabled-provider list (read-only) | CodexBar app |
 
+## Ramp Router dashboard API
+
+- **What:** router.ramp.com account balance and usage rollups for the `ramp`
+  provider tile (CodexBar has no Ramp Router hook). Reverse-engineered from
+  the dashboard frontend (verified 2026-08-11).
+- **Loaded via:** `scripts/ramp-stats.sh` — the Keychain session cookie
+  (service `codexbar-toy`, account `ramp-session`; stored with
+  `codexbar-publish.sh --set-ramp-cookie[-clipboard]`) mints a ~15-minute JWT
+  from `GET /api/auth/token`, which Bearer-authorizes
+  `GET /client/billing` (balance snapshot: `remaining_credit_usd`,
+  `total_credits_usd`) and `GET /client/usage/dashboard` (30-day
+  `summary.spend_usd` / `summary.total_tokens` + per-day `series`).
+  `merge-ramp.js` appends the sanitized generic `cost` block and drops the
+  device-hidden `opencode` row to stay within the firmware's 12-provider cap.
+- **Lifecycle:** invoked per publish cycle with a 30 s timeout. Fail-soft:
+  a dead cookie re-emits the last good snapshot from
+  `~/.config/codexbar-toy/ramp-cache.json`; no credential and no cache exits 3
+  and the publisher publishes without Ramp.
+- **Privacy:** only aggregate cents/tokens cross Upstash — no model names,
+  request contents, API keys, or account identifiers (`docs/SECURITY.md`).
+- **Gotchas:** the session cookie is httpOnly (must be copied from DevTools,
+  not `document.cookie`); the JWT expires in ~15 min so it is minted fresh
+  every run; `ramp-stats.sh --check` probes auth without publishing.
+
 ## Pi Agent local state
 
 - **What:** Pi Agent CLI harness local session history and custom provider/model

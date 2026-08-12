@@ -57,6 +57,7 @@ See [`scripts/README.md`](scripts/README.md) for layout. User-facing CLIs live a
 | `cursor-stats.sh` | Optional Cursor session stats for publish merge |
 | `pi-agent-stats.sh` | Pi Agent usage rollups for publish merge |
 | `lmstudio-stats.sh` | LM Studio stats integration |
+| `ramp-stats.sh` | Ramp Router balance + token usage for publish merge |
 | `preflight.sh` | Dependency check, guided setup, optional `--install` / `--flash` |
 | `uninstall.sh` | Remove launchd job and local install artifacts |
 

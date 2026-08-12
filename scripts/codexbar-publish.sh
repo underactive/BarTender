@@ -13,6 +13,8 @@
 #   codexbar-publish.sh --set-mimo-cookie  # paste Xiaomi MiMo Cookie header
 #   codexbar-publish.sh --set-mimo-cookie-clipboard  # read from pbpaste
 #   codexbar-publish.sh --set-mimo-cookie-login  # one-time Playwright login (headed)
+#   codexbar-publish.sh --set-ramp-cookie  # paste Ramp Router Cookie header
+#   codexbar-publish.sh --set-ramp-cookie-clipboard  # read from pbpaste
 #
 # MiMo cookie is auto-refreshed via Playwright headless before each publish
 # cycle if expired. First run: --set-mimo-cookie-login. After that, automatic.
@@ -82,6 +84,8 @@ OPENCODE_GO_STATS="${CBPUB_OPENCODE_GO_STATS:-$SELF_DIR/opencodego-stats.sh}"
 KC_ACCOUNT_OG="${CBPUB_KC_ACCOUNT_OG:-opencodego-session}"
 MIMO_STATS="${CBPUB_MIMO_STATS:-$SELF_DIR/mimo-stats.sh}"
 KC_ACCOUNT_MO="${CBPUB_KC_ACCOUNT_MO:-mimo-session}"
+RAMP_STATS="${CBPUB_RAMP_STATS:-$SELF_DIR/ramp-stats.sh}"
+KC_ACCOUNT_RAMP="${CBPUB_KC_ACCOUNT_RAMP:-ramp-session}"
 # Per-provider last-known-good cache (carry-forward across publish cycles).
 LKG="${CBPUB_LKG:-$HOME/Library/Caches/codexbar-toy/last-good.json}"
 work=""   # temp dir for cmd_once; referenced by its global EXIT trap
@@ -315,6 +319,65 @@ cmd_set_mimo_cookie_login() {
   print -r -- "Opening Chromium for MiMo login..."
   print -r -- "Log in, then close the window."
   node "$mimo_refresh" --login || die "Playwright login failed"
+}
+
+# ── Ramp Router session helpers (mirrors MiMo keychain pattern) ────────
+get_ramp_session() {
+  security find-generic-password -s "$KC_SERVICE" -a "$KC_ACCOUNT_RAMP" -w 2>/dev/null
+}
+
+store_ramp_session() {
+  local session="$1"
+  session="${session//$'\r'/}"
+  if [[ "$session" == *$'\n'* ]] || [[ "$session" != *"="* ]]; then
+    local extracted
+    extracted=$(print -r -- "$session" | awk '
+      BEGIN { IGNORECASE=1 }
+      /^cookie:[[:space:]]*/ {
+        sub(/^[^:]*:[[:space:]]*/, "")
+        print
+        exit
+      }
+    ')
+    [[ -n "$extracted" ]] && session="$extracted"
+  fi
+  session="${session%%$'\n'*}"
+  session="${session## }"; session="${session%% }"
+  [[ -n "$session" ]] || die "empty session — nothing stored" 5
+  if ! security add-generic-password -U -s "$KC_SERVICE" -a "$KC_ACCOUNT_RAMP" \
+        -l "CodexBar toy Ramp Router session" -w "$session"; then
+    die "security add-generic-password failed (session NOT stored)"
+  fi
+  local n; n=$(get_ramp_session | wc -c | tr -d ' ')
+  [[ "${n:-0}" -ge 2 ]] || die "no session captured (empty) — re-run --set-ramp-cookie" 5
+  log "Ramp Router session stored in Keychain (${n} bytes incl. trailing newline)"
+}
+
+cmd_set_ramp_cookie() {
+  print -r -- "Storing Ramp Router session cookie in Keychain"
+  print -r -- "(service=$KC_SERVICE account=$KC_ACCOUNT_RAMP)."
+  print -r -- ""
+  print -r -- "Copy from DevTools → Network → any router.ramp.com request →"
+  print -r -- "Request Headers → Cookie (full string), then paste below."
+  print -r -- ""
+  print -r -- "Or: copy first, then run: $0 --set-ramp-cookie-clipboard"
+  print -r -- ""
+  local session
+  if [[ ! -t 0 ]]; then
+    session=$(cat)
+    print -r -- "(read from stdin)"
+  else
+    print -r -- "Paste Cookie header, then Enter (visible; Cmd+V works):"
+    read -r session
+  fi
+  store_ramp_session "$session"
+}
+
+cmd_set_ramp_cookie_clipboard() {
+  command -v pbpaste >/dev/null 2>&1 || die "pbpaste not found (macOS only)"
+  local session; session=$(pbpaste)
+  [[ -n "${session//[$'\r\n\t ']}" ]] || die "clipboard empty — copy Cookie header first" 5
+  store_ramp_session "$session"
 }
 
 # Roll up Claude total spend / tokens / 30-day history from CodexBar's LOCAL
@@ -606,6 +669,35 @@ cmd_once() {
     log "note: MiMo stats skipped (absent/unrecognized) — publishing limits-only mimo"
   fi
 
+  # Append/replace the Ramp Router provider from ramp-stats.sh. Uses the
+  # generic `cost` block (balance + tokens + spend). merge-ramp.js also drops
+  # the device-hidden `opencode` row to stay within the firmware's 12-provider
+  # cap. Fail-safe: helper failure -> publish without Ramp (never abort).
+  local ramp_json="$work/ramp.json"
+  local ramp_rc=127
+  if [[ -x "$RAMP_STATS" ]]; then
+    if command -v timeout >/dev/null 2>&1; then
+      timeout 30 "$RAMP_STATS" >"$ramp_json" 2>>"$LOG"; ramp_rc=$?
+    elif command -v gtimeout >/dev/null 2>&1; then
+      gtimeout 30 "$RAMP_STATS" >"$ramp_json" 2>>"$LOG"; ramp_rc=$?
+    else
+      "$RAMP_STATS" >"$ramp_json" 2>>"$LOG"; ramp_rc=$?
+    fi
+    if [[ $ramp_rc -eq 0 ]]; then
+      if CBPUB_JSON="$json" CBPUB_RAMP_JSON="$ramp_json" osascript -l JavaScript "$SELF_DIR/lib/merge-ramp.js" 2>>"$LOG"; then
+        bytes=$(wc -c <"$json" | tr -d ' ')
+      else
+        log "note: Ramp merge skipped (malformed helper output) — publishing without Ramp"
+      fi
+    elif [[ $ramp_rc -eq 124 ]]; then
+      log "note: Ramp helper timed out after 30s — publishing without Ramp"
+    else
+      log "note: Ramp helper failed (exit code $ramp_rc) — publishing without Ramp"
+    fi
+  else
+    log "note: Ramp stats skipped (absent/unrecognized) — publishing without Ramp"
+  fi
+
   # Per-provider last-known-good carry-forward — MUST run last, after every
   # provider merge, so it sees the final assembled payload. A single provider
   # can time out fetching its upstream (e.g. Codex via the `codex` CLI) while
@@ -706,6 +798,8 @@ cmd_status() {
   print -r -- "og stats:     $([[ -x "$OPENCODE_GO_STATS" ]] && echo "$OPENCODE_GO_STATS" || echo "MISSING/not executable — $OPENCODE_GO_STATS")"
   print -r -- "mimo sess:    $([[ -n "$(get_mimo_session)" ]] && echo 'in Keychain' || echo 'MISSING — run --set-mimo-cookie')"
   print -r -- "mimo stats:   $([[ -x "$MIMO_STATS" ]] && echo "$MIMO_STATS" || echo "MISSING/not executable — $MIMO_STATS")"
+  print -r -- "ramp sess:    $([[ -n "$(get_ramp_session)" ]] && echo 'in Keychain' || echo 'MISSING — run --set-ramp-cookie')"
+  print -r -- "ramp stats:   $([[ -x "$RAMP_STATS" ]] && echo "$RAMP_STATS" || echo "MISSING/not executable — $RAMP_STATS")"
   print -r -- "lkg cache:    $([[ -r "$LKG" ]] && echo "$LKG ($(grep -o '"id"' "$LKG" 2>/dev/null | wc -l | tr -d ' ') providers)" || echo "none yet — $LKG")"
   print -r -- "--- last log lines ---"
   [[ -f "$LOG" ]] && tail -n 8 "$LOG" || print -r -- "(no log yet)"
@@ -721,6 +815,8 @@ case "${1:---once}" in
   --set-mimo-cookie) cmd_set_mimo_cookie ;;
   --set-mimo-cookie-clipboard) cmd_set_mimo_cookie_clipboard ;;
   --set-mimo-cookie-login) cmd_set_mimo_cookie_login ;;
+  --set-ramp-cookie) cmd_set_ramp_cookie ;;
+  --set-ramp-cookie-clipboard) cmd_set_ramp_cookie_clipboard ;;
   --install)   cmd_install ;;
   --uninstall) cmd_uninstall ;;
   --status)    cmd_status ;;
