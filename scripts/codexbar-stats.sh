@@ -208,7 +208,9 @@ if (env('CBAR_MODE')==='json'){
       ? dollarInText(u.loginMethod || (u.identity&&u.identity.loginMethod), /Balance:\s*\$([0-9]+(?:\.[0-9]+)?)/i) : null;
     var deepseekBalance=(e.provider==="deepseek" && pr)
       ? dollarInText(pr.resetDescription, /^\s*\$([0-9]+(?:\.[0-9]+)?)/) : null;
-    if (!pr && !se && !te && !(oru && oru.keyDataFetched) && !hasCredits && moonshotBalance==null){ o.ok=false; return o; }
+    var openrouterBalance=(e.provider==="openrouter")
+      ? dollarInText(u.loginMethod || (u.identity&&u.identity.loginMethod), /Balance:\s*\$([0-9]+(?:\.[0-9]+)?)/i) : null;
+    if (!pr && !se && !te && !(oru && oru.keyDataFetched) && !hasCredits && moonshotBalance==null && openrouterBalance==null){ o.ok=false; return o; }
     o.ok=true;
     if (pr){ var pp=num(pr.usedPercent); if (pp!=null) o.p=pp;
       if (pr.resetDescription) o.pr=String(pr.resetDescription);
@@ -238,6 +240,7 @@ if (env('CBAR_MODE')==='json'){
     if (cobj.cr==null && hasCredits) cobj.cr=cents(e.credits.remaining);
     if (cobj.cr==null && moonshotBalance!=null) cobj.cr=moonshotBalance;
     if (cobj.cr==null && deepseekBalance!=null) cobj.cr=deepseekBalance;
+    if (cobj.cr==null && openrouterBalance!=null) cobj.cr=openrouterBalance;
     if (Object.keys(cobj).length>0) o.cost=cobj;
     return o;
   };
