@@ -62,6 +62,8 @@
 #                         ~/Library/Caches/codexbar-toy/last-good.json)
 #   CBPUB_LKG_MAX_AGE_S  max snapshot age to carry forward, seconds
 #                         (default 86400; <=0 disables the age limit)
+#   CBPUB_LOCK_MAX_AGE_S max age for an ownerless lock before recovery
+#                         (default 3600; live PID-owned locks are never removed)
 #
 # Zero third-party deps: codexbar-stats.sh + base-macOS security/curl/launchctl/
 # osascript/awk/date/mktemp + zsh builtins.
@@ -74,7 +76,8 @@ CURSOR_KC_ACCOUNT="${CBPUB_CURSOR_KC_ACCOUNT:-cursor-session}"
 CFG="${CBPUB_CONFIG:-$HOME/.config/codexbar-toy/config}"; CFG_DIR="${CFG:h}"
 LOG_DIR="${CBPUB_LOG_DIR:-$HOME/Library/Logs/codexbar-toy}"; LOG="$LOG_DIR/publish.log"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
-SELF_DIR="${0:A:h}"
+SELF_PATH="${0:A}"
+SELF_DIR="${SELF_PATH:h}"
 STATS="$SELF_DIR/codexbar-stats.sh"
 PI_STATS="${CBPUB_PI_STATS:-$SELF_DIR/pi-agent-stats.sh}"
 LM_STATS="${CBPUB_LM_STATS:-$SELF_DIR/lmstudio-stats.sh}"
@@ -88,12 +91,16 @@ RAMP_STATS="${CBPUB_RAMP_STATS:-$SELF_DIR/ramp-stats.sh}"
 KC_ACCOUNT_RAMP="${CBPUB_KC_ACCOUNT_RAMP:-ramp-session}"
 # Per-provider last-known-good cache (carry-forward across publish cycles).
 LKG="${CBPUB_LKG:-$HOME/Library/Caches/codexbar-toy/last-good.json}"
+LOCK_MAX_AGE_S="${CBPUB_LOCK_MAX_AGE_S:-3600}"
+[[ "$LOCK_MAX_AGE_S" == <-> ]] || LOCK_MAX_AGE_S=3600
+lockdir=""
+lock_owned=0
 work=""   # temp dir for cmd_once; referenced by its global EXIT trap
 TPL="$SELF_DIR/../launchd/$LABEL.plist.template"
 
 log()  { print -r -- "$(date '+%Y-%m-%dT%H:%M:%S%z') $*"; }
 die()  { log "ERROR: $*"; exit "${2:-1}"; }
-help() { awk 'NR>=2 && /^#/{sub(/^# ?/,"");print;next} NR>=2{exit}' "$0"; }
+help() { awk 'NR>=2 && /^#/{sub(/^# ?/,"");print;next} NR>=2{exit}' "$SELF_PATH"; }
 
 # Parse known KEY=VALUE pairs from $CFG without eval/source (SECURITY.md).
 UPSTASH_REST_URL=""; UPSTASH_KEY="codexbar"; PUBLISH_INTERVAL="300"; MOCK_SINK_URL=""
@@ -114,6 +121,60 @@ read_config() {
 }
 
 get_token() { security find-generic-password -s "$KC_SERVICE" -a "$KC_ACCOUNT" -w 2>/dev/null; }
+
+# Confirm that a lock owner is still this publisher, not merely a reused PID.
+# `kill -0` alone is insufficient because macOS may recycle a dead PID.
+lock_pid_alive() {
+  local pid="$1" cmd
+  [[ "$pid" == <-> ]] || return 1
+  kill -0 "$pid" 2>/dev/null || return 1
+  cmd="$(ps -p "$pid" -o command= 2>/dev/null)" || return 1
+  [[ "$cmd" == *"$SELF_DIR/codexbar-publish.sh"* ]]
+}
+
+lock_is_stale() {
+  local pid age mtime
+  if [[ -r "$lockdir/pid" ]]; then
+    pid="$(<"$lockdir/pid")"
+    if lock_pid_alive "$pid"; then return 1; fi
+    log "recovering orphaned publish lock (owner pid ${pid:-invalid} is not running)"
+    return 0
+  fi
+  mtime="$(stat -f %m "$lockdir" 2>/dev/null || print -r -- 0)"
+  age=$(( $(date +%s) - mtime ))
+  (( age >= LOCK_MAX_AGE_S ))
+}
+
+release_lock() {
+  [[ "${lock_owned:-0}" -eq 1 ]] || return 0
+  rm -f "${lockdir:-}/pid"
+  rmdir "${lockdir:-/nonexistent/x}" 2>/dev/null
+  lock_owned=0
+}
+
+acquire_lock() {
+  if ! mkdir "$lockdir" 2>/dev/null; then
+    if ! lock_is_stale; then
+      log "skip: another publish cycle in progress ($lockdir) — keeping last good"
+      exit 0
+    fi
+    log "removing stale publish lock: $lockdir"
+    rm -f "$lockdir/pid"
+    if ! rmdir "$lockdir" 2>/dev/null; then
+      log "skip: stale publish lock could not be removed ($lockdir) — keeping last good"
+      exit 0
+    fi
+    if ! mkdir "$lockdir" 2>/dev/null; then
+      log "skip: another publish cycle acquired the lock ($lockdir) — keeping last good"
+      exit 0
+    fi
+  fi
+  lock_owned=1
+  if ! print -r -- "$$" >"$lockdir/pid"; then
+    release_lock
+    die "could not record publish lock owner" 1
+  fi
+}
 
 get_cursor_session() {
   security find-generic-password -s "$KC_SERVICE" -a "$CURSOR_KC_ACCOUNT" -w 2>/dev/null
@@ -434,14 +495,14 @@ cmd_once() {
 
   # Single-flight: mkdir is atomic. Prevents an overlapping manual --once and
   # the scheduled launchd cycle from racing. NOT `local` (global EXIT trap).
+  # The lock records this process's PID. A dead PID is recovered immediately;
+  # an old lock from pre-PID versions is recovered only after LOCK_MAX_AGE_S.
   lockdir="$LOG_DIR/.publish.lock"
-  if ! mkdir "$lockdir" 2>/dev/null; then
-    log "skip: another publish cycle in progress ($lockdir) — keeping last good"; exit 0
-  fi
+  acquire_lock
   # NOTE: `work` is intentionally NOT `local` — the EXIT trap fires in global
   # scope after this function returns; a local would be unset there (set -u).
   work=""
-  trap 'rm -rf "${work:-}"; rmdir "${lockdir:-/nonexistent/x}" 2>/dev/null' EXIT INT TERM
+  trap 'rm -rf "${work:-}"; release_lock' EXIT INT TERM
   work="$(mktemp -d "${TMPDIR:-/tmp}/cbpub.XXXXXX")" || die "mktemp failed"
   local json="$work/p.json" resp="$work/resp" kcfg="$work/curl.cfg"
 

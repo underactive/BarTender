@@ -34,7 +34,8 @@ read it over WiFi without ever talking to my Mac directly.
 | Missing/empty config URL | Clear error naming the config file |
 | HTTP non-2xx from Upstash | Log failure + response head, exit ≠0; launchd retries next interval |
 | Run under launchd (sparse env) | `CODEXBAR_BIN`/`PATH` baked into the plist at install |
-| Ctrl-C / early exit | Temp workdir always cleaned (global EXIT trap) |
+| Ctrl-C / early exit | Temp workdir and owned lock always cleaned (global EXIT trap) |
+| Orphaned publisher lock | Recover a dead PID immediately; recover ownerless legacy locks only after the configured age threshold |
 
 ## Not in scope
 

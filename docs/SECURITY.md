@@ -101,7 +101,8 @@ session JSONL rows.
   never be committed if this repo is ever versioned.
 - **Fail-safe.** A transient local failure must not overwrite the store with
   empty/all-error data (publish is skipped — the toy keeps last-known-good);
-  a single-flight lock prevents overlapping cycles.
+  a PID-aware single-flight lock prevents overlapping cycles and recovers locks
+  left by an interrupted publisher without removing a live owner's lock.
 
 **Residual risk (accepted, with mitigation owed):** the device NVS is
 unencrypted (see below). Under v1 a stolen device leaked only "how busy."

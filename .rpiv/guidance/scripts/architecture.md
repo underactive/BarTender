@@ -77,8 +77,10 @@ get_token() {
 
 cmd_once() {
   lockdir="$LOG_DIR/.publish.lock"
-  mkdir "$lockdir" 2>/dev/null || { print -r -- 'skip: already running'; exit 0; }
-  trap 'rmdir "$lockdir" 2>/dev/null' EXIT INT TERM
+  # mkdir is atomic; record the owner so a dead publisher can be recovered.
+  # Preserve a live PID lock. Legacy ownerless locks are age-gated before removal.
+  acquire_lock "$lockdir" || exit 0
+  trap 'rm -rf "${work:-}"; release_lock' EXIT INT TERM
 
   build_payload >"$payload" || exit 3; // skip instead of blanking remote state
   tok="$(get_token)" || exit 5

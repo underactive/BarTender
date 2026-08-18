@@ -7,6 +7,7 @@ Requirements and practices for keeping the system reliable.
 | Failure | Likelihood | Mitigation |
 |---------|------------|------------|
 | Upstash unreachable / TLS / DNS error | Medium | Classify (net vs TLS), surface "fetch error: …", retry with exponential backoff (`fetch.c`, 20→…→300 s) |
+| Publisher interrupted with lock held | Medium | Record the owner PID, preserve live locks, recover dead PID locks immediately; age-gate ownerless legacy locks (`codexbar-publish.sh`) |
 | Upstash auth failure (401/403) | Low | Distinct "auth (token?)" status; never log the bearer token; refuses non-`https://` URLs before sending |
 | Malformed / oversized payload | Medium | Parse + clamp at the boundary (`stats_model.c`: NaN/range guards, forward version gate); oversize → "response too big"; never crash, show "bad data from store" |
 | WiFi association lost / AP flaps | Medium | Reconnect with escalating backoff; roam the ≤5 remembered networks; self-heal to add-network portal only after grace + zero known SSIDs |

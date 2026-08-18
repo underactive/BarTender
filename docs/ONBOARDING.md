@@ -142,8 +142,11 @@ UPSTASH_KEY=codexbar
 PUBLISH_INTERVAL=300        # seconds (default 300 / 5 min)
 ```
 
-**Concurrency guard:** A `$LOG_DIR/.publish.lock` dir — second instance prints "skip:
-already running" and exits 0.
+**Concurrency guard:** A `$LOG_DIR/.publish.lock` dir records the publisher PID.
+A live owner is preserved; a dead PID is recovered on the next run. Locks created
+by older versions without a PID are recovered only after one hour (override with
+`CBPUB_LOCK_MAX_AGE_S`), so an interrupted publisher cannot freeze updates
+indefinitely.
 
 ### Stage 3: Firmware (`firmware/`)
 
