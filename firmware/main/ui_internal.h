@@ -79,9 +79,10 @@ extern const lv_font_t font_lemonmilk_23;
 #define BALANCE_SEG_MAX  10
 #define BALANCE_SEG_VALUE_C 1000  // $10 per segment, in cents
 
-// Bar fill direction. true => 0% draws FULL, 100% draws EMPTY (bars read as
-// "headroom remaining"). Flip this compile-time default to change it globally.
-#define UI_BAR_INVERT_DEFAULT  false
+// Bar fill direction. true => 0% usage draws FULL, 100% usage draws EMPTY
+// (bars read as "headroom remaining"). Flip this compile-time default to change
+// it globally.
+#define UI_BAR_INVERT_DEFAULT  true
 
 // ── Types ────────────────────────────────────────────────────────────────────
 typedef enum { UI_PROVISION, UI_STATS } ui_mode_t;
@@ -260,10 +261,13 @@ lv_color_t pct_color(float p);
 bool prov_accent(const char *id, lv_color_t *out);
 bool is_hidden_provider(const char *id);
 provider_kind_t provider_kind(const char *id);
+bool provider_pct_is_baseline(provider_kind_t k);
 bool provider_balance_c(const stats_provider_t *p, int32_t *out_c);
 int balance_seg_count(int32_t balance_c);
 int balance_bar_units(int32_t balance_c, int segs);
 lv_color_t bar_color(const stats_provider_t *p, float v);
+int pct_remaining_tenths(float used_pct);
+int pct_remaining_int(float used_pct);
 int bar_fill(int pct);
 bool bar_should_pulse(float pct);
 bool bar_pulse_uses_color_cycle(const char *provider_id);
@@ -273,6 +277,7 @@ void fmt_tokens(char *buf, size_t n, int64_t t);
 void fmt_tokens_full(char *buf, size_t n, int64_t t);
 void fmt_money(char *buf, size_t n, int32_t cents);
 void fmt_pct(char *buf, size_t n, bool has, float v);
+void fmt_pct_used(char *buf, size_t n, bool has, float v);
 void up_id(char *dst, size_t n, const char *src);
 int extra_pct(const stats_provider_t *p);
 bool provider_avg_bar(const stats_provider_t *p, float *out_pct);
@@ -320,9 +325,11 @@ void place_summary_hero_amount(hero_amount_t *h, const ui_rect_t *hero,
 void set_hero_amount(hero_amount_t *h, const char *prefix,
                      const char *num, const char *suffix);
 void set_hero_pct(hero_amount_t *h, bool has, float v);
+void set_hero_pct_used(hero_amount_t *h, bool has, float v);
 void set_hero_money(hero_amount_t *h, int32_t cents);
 void hide_hero_amount(hero_amount_t *h);
 void set_bar(lv_obj_t *bar, bool has, float v, const stats_provider_t *p);
+void set_bar_used(lv_obj_t *bar, bool has, float v, const stats_provider_t *p);
 void render_page_chrome(lv_obj_t *hdr, lv_obj_t *logo, lv_obj_t *bg_logo,
                         int card_w, const ui_page_chrome_desc_t *desc);
 void ui_update_grid_overlay(const ui_page_grid_t *g);

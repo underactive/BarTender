@@ -40,10 +40,24 @@ static void test_clampi(void)
 
 static void test_bar_fill(void)
 {
-    // UI_BAR_INVERT_DEFAULT is false, so bar_fill is identity after clamping.
-    EQ_INT(bar_fill(50), 50,  "bar_fill: identity");
-    EQ_INT(bar_fill(-5), 0,   "bar_fill: clamp low");
-    EQ_INT(bar_fill(150), 100, "bar_fill: clamp high");
+    // UI_BAR_INVERT_DEFAULT is true: source usage becomes remaining headroom.
+    EQ_INT(bar_fill(0), 100,   "bar_fill: zero used -> full");
+    EQ_INT(bar_fill(50), 50,   "bar_fill: midpoint");
+    EQ_INT(bar_fill(100), 0,   "bar_fill: fully used -> empty");
+    EQ_INT(bar_fill(-5), 100,  "bar_fill: clamp low");
+    EQ_INT(bar_fill(150), 0,   "bar_fill: clamp high");
+}
+
+static void test_pct_remaining(void)
+{
+    EQ_INT(pct_remaining_tenths(45.3f), 547, "remaining tenths: 45.3 used -> 54.7");
+    EQ_INT(pct_remaining_tenths(0.0f), 1000, "remaining tenths: zero used -> 100.0");
+    EQ_INT(pct_remaining_tenths(100.0f), 0, "remaining tenths: 100 used -> 0.0");
+    EQ_INT(pct_remaining_tenths(125.3f), 0, "remaining tenths: overage -> 0.0");
+    EQ_INT(pct_remaining_tenths(-5.0f), 1000, "remaining tenths: negative -> 100.0");
+    EQ_INT(pct_remaining_int(45.3f), 55, "remaining int: 45.3 used -> 55");
+    EQ_INT(pct_remaining_int(0.0f), 100, "remaining int: zero used -> 100");
+    EQ_INT(pct_remaining_int(125.3f), 0, "remaining int: overage -> 0");
 }
 
 static void test_bar_should_pulse(void)
@@ -95,6 +109,10 @@ static void test_provider_kind(void)
     EQ_INT(provider_kind("nope"), PK_UNKNOWN,          "provider_kind: unknown");
     EQ_INT(provider_kind(NULL), PK_UNKNOWN,            "provider_kind: NULL");
     EQ_INT(provider_kind(""), PK_UNKNOWN,              "provider_kind: empty");
+    CHECK(provider_pct_is_baseline(PK_PI) == true, "provider_pct: Pi baseline");
+    CHECK(provider_pct_is_baseline(PK_MIMO) == true, "provider_pct: MiMo baseline");
+    CHECK(provider_pct_is_baseline(PK_LMSTUDIO) == true, "provider_pct: LM baseline");
+    CHECK(provider_pct_is_baseline(PK_CLAUDE) == false, "provider_pct: Claude quota");
 }
 
 static void test_summary_provider_name(void)
@@ -157,10 +175,12 @@ static void test_fmt_pct(void)
 {
     char b[16];
     fmt_pct(b, sizeof b, false, 50.0f); EQ_STR(b, "--",     "fmt_pct: no data");
-    fmt_pct(b, sizeof b, true, 45.3f);  EQ_STR(b, "45.3%",  "fmt_pct: 45.3");
-    fmt_pct(b, sizeof b, true, 100.0f); EQ_STR(b, "100.0%", "fmt_pct: 100");
-    fmt_pct(b, sizeof b, true, 125.3f); EQ_STR(b, "125.3%", "fmt_pct: >100");
-    fmt_pct(b, sizeof b, true, 0.0f);   EQ_STR(b, "0.0%",   "fmt_pct: 0");
+    fmt_pct(b, sizeof b, true, 45.3f);  EQ_STR(b, "54.7%",  "fmt_pct: remaining from 45.3 used");
+    fmt_pct(b, sizeof b, true, 100.0f); EQ_STR(b, "0.0%",   "fmt_pct: fully used");
+    fmt_pct(b, sizeof b, true, 125.3f); EQ_STR(b, "0.0%",   "fmt_pct: overage");
+    fmt_pct(b, sizeof b, true, 0.0f);   EQ_STR(b, "100.0%", "fmt_pct: zero used");
+    fmt_pct_used(b, sizeof b, true, 45.3f); EQ_STR(b, "45.3%", "fmt_pct_used: 45.3");
+    fmt_pct_used(b, sizeof b, true, 133.3f); EQ_STR(b, "133.3%", "fmt_pct_used: overage");
 }
 
 static void test_fmt_tokens(void)
@@ -311,6 +331,7 @@ int main(void)
 {
     test_clampi();
     test_bar_fill();
+    test_pct_remaining();
     test_bar_should_pulse();
     test_bar_pulse_uses_color_cycle();
     test_pct_tenths();

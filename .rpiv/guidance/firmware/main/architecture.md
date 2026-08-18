@@ -113,6 +113,17 @@ cuts $10 segments with screen-background divider lines. Every render resets the
 shared bar's range and user data first, so a slot switching back to a percentage
 tile cannot retain divider state.
 
+## Usage indicators
+
+The payload's `p`/`s`/`t`/`ph` values remain source usage percentages. Firmware
+renders quota-backed usage indicators as remaining headroom (`100 - used%`): a
+full bar and `100%` label mean no usage, while a zero bar and `0%` label mean the
+limit is fully used. Bar colors and over-limit pulse behavior continue to use
+the source usage percentage, so green/amber/red still communicates consumption
+risk. Pi, MiMo, and LM Studio compare activity with a historical baseline rather
+than a provider quota, so their summary and stats ratios retain the source used
+percentage and overage magnitude.
+
 ## Architectural Boundaries
 - **NO off-task LVGL calls**: other modules use `ui_set_*()` and `ui_handle_input()` only
 - **NO raw NVS access outside `config_store`**: persistence schema and migrations live there

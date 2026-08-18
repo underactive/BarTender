@@ -26,7 +26,9 @@ opening anything.
       legacy SSID is folded into the remembered list, Upstash is preserved,
       no erase and no forced portal.
 - [ ] After provisioning the device joins WiFi and, within ~15 s, shows one
-      row per provider: id, a colored bar + % for the primary window. When Pi
+      row per provider: id, a colored bar plus its display percentage for the
+      primary window. Quota-backed providers show headroom (`100 - used%`);
+      Pi/MiMo/LM Studio baseline ratios retain the used percentage. When Pi
       Agent local usage exists on the Mac, `pi` appears as a first-class row in
       this same provider list rather than a separate screen.
 - [ ] Providers reported `ok:false` render as a dimmed "off", not blank.
@@ -44,11 +46,13 @@ opening anything.
 - [ ] The long-press add-network gesture is honored **even before WiFi has
       ever associated** (e.g. relocated where no remembered SSID is in
       range), not only once connected. Nothing on-device wipes credentials.
-- [ ] Rendered percentages match a `curl GET` of the same Upstash key.
+- [ ] Rendered quota remaining percentages equal `100 - used%` from a `curl
+      GET` of the same Upstash key; baseline-relative activity percentages
+      preserve the source ratio.
 - [ ] OpenRouter, MiMo, Moonshot, DeepSeek, and Ramp show a `$X.XX` prepaid-balance
       headline when a balance is published, with a segmented $10 bar: segment
       count is `ceil(balance/$10)` capped at 10, the final segment is partial,
-      and missing balance falls back to the normal usage-% tile.
+      and missing balance falls back to the normal percentage tile.
 - [ ] No secret is compiled into the firmware or committed to the repo.
 
 ## Edge cases

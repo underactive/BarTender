@@ -66,18 +66,21 @@ Rendering:
       TODAY`, `30D $… • …`, a **labeled 30-day spend bar graph** with side
       margins, autoscaled so the highest point fills the chart, `EXTRA $a / $b`
       bar.
-- [ ] **Claude Usage-Limits card**: session % == the summary row's `p`;
-      weekly % == `s`; reset hints == `pr`/`sr`; plus a **24h SESSION
-      usage-% line sparkline** ("SESSION 24H • now N%") with side margins.
+- [ ] **Claude Usage-Limits card**: session remaining % == `100 - p`;
+      weekly remaining % == `100 - s`; reset hints == `pr`/`sr`; plus a **24h
+      SESSION remaining-% line sparkline** with side margins.
 - [ ] **Codex/Cursor/OpenRouter Cost card** shows "COST DATA NOT AVAILABLE
-      YET"; their Usage-Limits card still shows real session/weekly % and
-      **hides** the 24h sparkline (no `ph` for them).
-- [ ] **Bars read as "headroom" (inverted default).** A low usage % draws a
-      NEARLY-FULL bar; a high usage % draws a NEARLY-EMPTY bar — on the
-      summary rows AND both cards. Bar COLOR still follows true usage
-      (green low → red high), independent of fill. "off"/no-data bars stay
-      empty. (`ui_set_bar_invert(false)` / flip `UI_BAR_INVERT_DEFAULT`
-      restores the classic used-fill direction.)
+      YET"; their Usage-Limits card still shows real remaining session/weekly
+      % and **hides** the 24h sparkline (no `ph` for them).
+- [ ] **Quota bars and percentages read as "headroom" (inverted default).** A
+      low quota usage % renders a high remaining percentage and a NEARLY-FULL
+      bar; a high quota usage % renders a low remaining percentage and a
+      NEARLY-EMPTY bar — on the summary rows AND both cards. Pi, MiMo, and LM
+      Studio baseline-relative activity ratios retain their used percentage and
+      overage magnitude. Bar COLOR still follows true usage (green low → red
+      high), independent of fill. "off"/no-data bars stay empty. (`ui_set_bar_invert(false)`
+      / flip `UI_BAR_INVERT_DEFAULT` restores the classic used-fill direction
+      for quota bars.)
 - [ ] **Over-100% usage bars pulse.** When a provider's true session % exceeds
       100 (e.g. Pi or Cursor on a record day), its summary tile bar and
       Usage-Limits session bar animate: saturated accents (Cursor teal, etc.)

@@ -209,6 +209,14 @@ provider_kind_t provider_kind(const char *id)
     return PK_UNKNOWN;
 }
 
+// Pi, MiMo, and LM Studio compare today's local activity with a historical
+// baseline rather than a provider quota. Their percentages remain source
+// ratios; quota-backed providers render remaining headroom instead.
+bool provider_pct_is_baseline(provider_kind_t k)
+{
+    return k == PK_PI || k == PK_MIMO || k == PK_LMSTUDIO;
+}
+
 bool provider_balance_c(const stats_provider_t *p, int32_t *out_c)
 {
     if (!p || !out_c) return false;
@@ -253,10 +261,25 @@ lv_color_t bar_color(const stats_provider_t *p, float v)
     return pct_color(v);
 }
 
-// Bar fill direction. true => 0% draws FULL, 100% draws EMPTY (bars read as
-// "headroom remaining"). Color is keyed on the true usage % elsewhere, so this
-// affects fill only — never the color.
+// Bar fill direction. true => 0% usage draws FULL, 100% usage draws EMPTY
+// (bars read as "headroom remaining"). Color is keyed on the true usage %
+// elsewhere, so this affects fill only — never the color.
 static const bool s_bar_invert = UI_BAR_INVERT_DEFAULT;
+
+// Convert source usage percentages into the UI's remaining/headroom meaning.
+// Usage can exceed 100%, but displayed remaining headroom never goes below 0.
+int pct_remaining_tenths(float used_pct)
+{
+    int used_tenths = (int)(used_pct * 10.0f + 0.5f);
+    used_tenths = clampi(used_tenths, 0, 1000);
+    return 1000 - used_tenths;
+}
+
+int pct_remaining_int(float used_pct)
+{
+    int used = clampi((int)(used_pct + 0.5f), 0, 100);
+    return 100 - used;
+}
 
 // Map a real 0..100 usage % to the bar's fill value, honoring the flag.
 // Only call with an actual percentage — "no data" stays a literal 0 (empty).
@@ -382,9 +405,15 @@ void fmt_pct(char *buf, size_t n, bool has, float v)
 {
     if (!has) { snprintf(buf, n, "--"); return; }
     // Always 1 decimal place. LVGL sprintf has no float support (CONFIG_LV_USE_FLOAT
-    // unset), so use integer tenths: 45.3 -> tenths=453 -> "45.3%".
-    int tenths = (int)(v * 10.0f + 0.5f);
-    if (tenths < 0) tenths = 0;
+    // unset), so use integer tenths: 45.3% used -> 54.7% remaining.
+    int tenths = pct_remaining_tenths(v);
+    snprintf(buf, n, "%d.%d%%", tenths / 10, tenths % 10);
+}
+
+void fmt_pct_used(char *buf, size_t n, bool has, float v)
+{
+    if (!has) { snprintf(buf, n, "--"); return; }
+    int tenths = pct_tenths(true, v);
     snprintf(buf, n, "%d.%d%%", tenths / 10, tenths % 10);
 }
 
@@ -408,8 +437,9 @@ int extra_pct(const stats_provider_t *p)
 // Summary top-bar % for providers whose bar compares today's tokens to the
 // 30-day daily AVERAGE, excluding zero-use days (MiMo, Pi, LM Studio). This
 // replaces the per-provider CodexBar windowed `p` (a rolling cap / peak) with
-// a "today vs your typical active day" reading that can exceed 100% on a
-// heavy day.
+// a "today vs your typical active day" reading. These baseline-relative
+// percentages remain source ratios so below-baseline activity and overage
+// magnitude stay visible; quota-backed percentages use remaining headroom.
 //
 // Denominator = mean of the nonzero entries in the trailing daily token
 // history; numerator = the provider's dedicated today-tokens field. The daily

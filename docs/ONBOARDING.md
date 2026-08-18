@@ -166,9 +166,10 @@ ESP32-S3 boot
   │     4. Sleep FETCH_INTERVAL (60s) / FETCH_RETRY_S on error
   │
   └─ ui_task → LVGL rendering (all LVGL calls on one thread):
-       summary: per-provider row (bar + %, logo, id), status line
+       summary: per-provider row (bar + display %, logo, id), status line
        cost page: big $, token counts, 30-day bar graph
-       usage limits: session %, weekly %, extra usage bars, 24h sparkline
+       usage limits: quota remaining %, baseline ratios, extra usage bars,
+       24h remaining-% sparkline
        nav: swipe ↔ tap ↔ long-press (touch-only)
 ```
 

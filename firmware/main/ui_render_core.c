@@ -773,6 +773,16 @@ void set_bar(lv_obj_t *bar, bool has, float v, const stats_provider_t *p)
     update_bar_pulse(bar, has ? v : 0.0f, p->id);
 }
 
+void set_bar_used(lv_obj_t *bar, bool has, float v, const stats_provider_t *p)
+{
+    int iv = clampi((int)(v + 0.5f), 0, 100);
+    lv_bar_set_value(bar, has ? iv : 0, LV_ANIM_ON);
+    if (!has || !bar_should_pulse(v) || !bar_pulse_uses_color_cycle(p->id)) {
+        lv_obj_set_style_bg_color(bar, bar_color(p, v), LV_PART_INDICATOR);
+    }
+    update_bar_pulse(bar, has ? v : 0.0f, p->id);
+}
+
 int32_t render_cost_bar_chart(lv_obj_t *chart, lv_chart_series_t *ser,
                               const int32_t *hist, int n, lv_color_t color)
 {
@@ -824,9 +834,17 @@ void set_hero_amount(hero_amount_t *h, const char *prefix,
 void set_hero_pct(hero_amount_t *h, bool has, float v)
 {
     if (!has) { set_hero_amount(h, NULL, "--", NULL); return; }
-    int tenths = (int)(v * 10.0f + 0.5f);
-    if (tenths < 0) tenths = 0;
-    char nb[12];
+    int tenths = pct_remaining_tenths(v);
+    char nb[16];
+    snprintf(nb, sizeof nb, "%d.%d", tenths / 10, tenths % 10);
+    set_hero_amount(h, NULL, nb, "%");
+}
+
+void set_hero_pct_used(hero_amount_t *h, bool has, float v)
+{
+    if (!has) { set_hero_amount(h, NULL, "--", NULL); return; }
+    int tenths = pct_tenths(true, v);
+    char nb[16];
     snprintf(nb, sizeof nb, "%d.%d", tenths / 10, tenths % 10);
     set_hero_amount(h, NULL, nb, "%");
 }

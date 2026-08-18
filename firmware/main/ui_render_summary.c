@@ -43,9 +43,27 @@ static bool secondary_is_hero(provider_kind_t k)
     return k == PK_OPENCODEGO || k == PK_QWENCLOUD;
 }
 
-// Returns the secondary bar's display percentage (0-100), or -1 if the secondary
-// bar is hidden for this provider. Mirrors the side-bar visibility logic so the
-// value label can show "36% / 28%" when a secondary bar is present.
+static int summary_pct_int(provider_kind_t k, float source_pct)
+{
+    if (provider_pct_is_baseline(k)) {
+        int pct = (int)(source_pct + 0.5f);
+        return pct < 0 ? 0 : pct;
+    }
+    return pct_remaining_int(source_pct);
+}
+
+static void fmt_summary_pct(char *buf, size_t n, bool has, float source_pct,
+                            provider_kind_t k)
+{
+    if (provider_pct_is_baseline(k))
+        fmt_pct_used(buf, n, has, source_pct);
+    else
+        fmt_pct(buf, n, has, source_pct);
+}
+
+// Returns the secondary bar's source usage percentage (0-100), or -1 if the
+// secondary bar is hidden for this provider. Quota-backed values convert to
+// remaining headroom; baseline-relative values retain their source ratio.
 //
 // For OpenCode Go the secondary bar shows the tertiary tier (t/tr) instead of
 // the secondary tier (s/sr), because the summary page swaps primary/secondary
@@ -63,7 +81,7 @@ static int secondary_pct(const stats_provider_t *p)
         return clampi((int)(pct + 0.5f), 0, 100);
     }
     if (rpk == PK_OPENROUTER && p->has_cost && p->extra_limit_c > 0) {
-        return clampi(100 - extra_pct(p), 0, 100);
+        return extra_pct(p);
     }
     return -1;
 }
@@ -89,9 +107,9 @@ static void layout_dual_pct_left(lv_obj_t *primary, lv_obj_t *secondary,
     lv_obj_clear_flag(secondary, LV_OBJ_FLAG_HIDDEN);
 }
 
-// Summary-row secondary bar (row_bar_w): Claude/Codex weekly %, LM Studio
-// requests %, or OpenRouter budget %; hidden otherwise. Extracted from render()
-// (Fowler audit).
+// Summary-row secondary bar (row_bar_w): Claude/Codex weekly remaining %, LM
+// Studio requests %, or OpenRouter budget headroom; hidden otherwise.
+// Extracted from render() (Fowler audit).
 //
 // For OpenCode Go the secondary bar shows the tertiary tier (t/tr) instead of
 // the secondary tier (s/sr), because the summary page swaps primary/secondary
@@ -105,7 +123,8 @@ static void render_summary_secondary_bar(int slot, const stats_provider_t *p)
         || (rpk == PK_OPENCODEGO && p->tertiary.has)) {
         float pct = (rpk == PK_OPENCODEGO) ? p->tertiary.pct : p->secondary.pct;
         int wv = clampi((int)(pct + 0.5f), 0, 100);
-        lv_bar_set_value(row_bar_w[slot], bar_fill(wv), LV_ANIM_OFF);
+        int fill = provider_pct_is_baseline(rpk) ? wv : bar_fill(wv);
+        lv_bar_set_value(row_bar_w[slot], fill, LV_ANIM_OFF);
         if (!bar_should_pulse(pct)
             || !bar_pulse_uses_color_cycle(p->id)) {
             lv_obj_set_style_bg_color(row_bar_w[slot],
@@ -115,13 +134,12 @@ static void render_summary_secondary_bar(int slot, const stats_provider_t *p)
         lv_obj_clear_flag(row_bar_w[slot], LV_OBJ_FLAG_HIDDEN);
     } else if (rpk == PK_OPENROUTER && p->has_cost && p->extra_limit_c > 0) {
         int xv = extra_pct(p);
-        int rem = 100 - xv;
-        lv_bar_set_value(row_bar_w[slot], bar_fill(rem), LV_ANIM_OFF);
-        if (!bar_should_pulse((float)rem) || !bar_pulse_uses_color_cycle(p->id)) {
+        lv_bar_set_value(row_bar_w[slot], bar_fill(xv), LV_ANIM_OFF);
+        if (!bar_should_pulse((float)xv) || !bar_pulse_uses_color_cycle(p->id)) {
             lv_obj_set_style_bg_color(row_bar_w[slot],
-                bar_color(p, (float)rem), LV_PART_INDICATOR);
+                bar_color(p, (float)xv), LV_PART_INDICATOR);
         }
-        update_bar_pulse(row_bar_w[slot], (float)rem, p->id);
+        update_bar_pulse(row_bar_w[slot], (float)xv, p->id);
         lv_obj_clear_flag(row_bar_w[slot], LV_OBJ_FLAG_HIDDEN);
     } else {
         lv_obj_add_flag(row_bar_w[slot], LV_OBJ_FLAG_HIDDEN);
@@ -176,7 +194,8 @@ void render_summary_row(int slot, const stats_provider_t *p,
         update_cursor_sess_pulse(row_icon[slot], false);
     }
 
-    // Top-bar source depends on provider:
+    // Top-bar source depends on provider. Quota-backed values render as
+    // remaining headroom; Pi/MiMo/LM Studio baseline ratios stay as used %:
     //  - OpenCode Go / Qwen: secondary tier (s) — see secondary_is_hero();
     //    for OpenCode Go tertiary (t) fills the smaller bottom bar.
     //  - MiMo / Pi / LM Studio: today's tokens vs the 30-day daily average
@@ -200,7 +219,7 @@ void render_summary_row(int slot, const stats_provider_t *p,
         lv_obj_add_flag(row_val_s[slot], LV_OBJ_FLAG_HIDDEN);
     } else {
         int v = clampi((int)(top_pct + 0.5f), 0, 100);
-        int fill = bar_fill(v);
+        int fill = provider_pct_is_baseline(rpk_oc) ? v : bar_fill(v);
         lv_obj_clear_flag(row_bar[slot], LV_OBJ_FLAG_HIDDEN);
         lv_bar_set_value(row_bar[slot], fill, LV_ANIM_OFF);
         if (!bar_should_pulse(top_pct)
@@ -215,14 +234,16 @@ void render_summary_row(int slot, const stats_provider_t *p,
             if (sv >= 0) {
                 char primary_buf[12];
                 char secondary_buf[16];
-                snprintf(primary_buf, sizeof primary_buf, "%d%%", v);
-                snprintf(secondary_buf, sizeof secondary_buf, " / %d%%", sv);
+                snprintf(primary_buf, sizeof primary_buf, "%d%%",
+                         summary_pct_int(rpk_oc, top_pct));
+                snprintf(secondary_buf, sizeof secondary_buf, " / %d%%",
+                         summary_pct_int(rpk_oc, (float)sv));
                 layout_dual_pct_left(row_val[slot], row_val_s[slot],
                     primary_buf, secondary_buf, (lv_coord_t)val_x,
                     (lv_coord_t)(pixel_y + 15));
             } else {
                 char pctbuf[12];
-                fmt_pct(pctbuf, sizeof pctbuf, true, top_pct);
+                fmt_summary_pct(pctbuf, sizeof pctbuf, true, top_pct, rpk_oc);
                 lv_label_set_text(row_val[slot], pctbuf);
                 lv_obj_add_flag(row_val_s[slot], LV_OBJ_FLAG_HIDDEN);
             }
@@ -249,7 +270,8 @@ void render_grid_tile(int slot, const stats_provider_t *p,
     lv_obj_set_style_text_color(row_id[slot], lv_color_hex(0xe8eaed), 0);
     lv_obj_set_pos(row_id[slot], cell->x + 32, cell->y + 2);
 
-    // Top-bar source depends on provider:
+    // Top-bar source depends on provider. Quota-backed values render as
+    // remaining headroom; Pi/MiMo/LM Studio baseline ratios stay as used %:
     //  - OpenCode Go / Qwen: secondary tier (s) — see secondary_is_hero();
     //    for OpenCode Go tertiary (t) fills the smaller bottom bar.
     //  - MiMo / Pi / LM Studio: today's tokens vs the 30-day daily average
@@ -283,18 +305,19 @@ void render_grid_tile(int slot, const stats_provider_t *p,
         lv_obj_add_flag(row_val_s[slot], LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_style_text_color(row_id[slot], lv_color_hex(0xffffff), 0);
     } else if (p->ok && top_has) {
-        int pv = clampi((int)(top_pct + 0.5f), 0, 100);
         if (sv >= 0) {
             char primary_buf[12];
             char secondary_buf[16];
-            snprintf(primary_buf, sizeof primary_buf, "%d%%", pv);
-            snprintf(secondary_buf, sizeof secondary_buf, " / %d%%", sv);
+            snprintf(primary_buf, sizeof primary_buf, "%d%%",
+                     summary_pct_int(rpk_oc, top_pct));
+            snprintf(secondary_buf, sizeof secondary_buf, " / %d%%",
+                     summary_pct_int(rpk_oc, (float)sv));
             layout_dual_pct_left(row_id[slot], row_val_s[slot],
                 primary_buf, secondary_buf,
                 (lv_coord_t)(cell->x + 32), (lv_coord_t)(cell->y + 2));
         } else {
             char pctbuf[12];
-            fmt_pct(pctbuf, sizeof pctbuf, true, top_pct);
+            fmt_summary_pct(pctbuf, sizeof pctbuf, true, top_pct, rpk_oc);
             lv_label_set_text(row_id[slot], pctbuf);
             lv_obj_set_width(row_id[slot], cell->w - 36);
             lv_obj_add_flag(row_val_s[slot], LV_OBJ_FLAG_HIDDEN);
@@ -303,7 +326,7 @@ void render_grid_tile(int slot, const stats_provider_t *p,
         // No primary/session data, but the secondary (e.g. weekly) tier is
         // known — show its percentage instead of a bare "--".
         char pctbuf[12];
-        fmt_pct(pctbuf, sizeof pctbuf, true, (float)sv);
+        fmt_summary_pct(pctbuf, sizeof pctbuf, true, (float)sv, rpk_oc);
         lv_label_set_text(row_id[slot], pctbuf);
         lv_obj_set_width(row_id[slot], cell->w - 36);
         lv_obj_add_flag(row_val_s[slot], LV_OBJ_FLAG_HIDDEN);
@@ -364,7 +387,7 @@ void render_grid_tile(int slot, const stats_provider_t *p,
         if (p->ok) render_summary_secondary_bar(slot, p);
     } else {
         int v = clampi((int)(top_pct + 0.5f), 0, 100);
-        int fill = bar_fill(v);
+        int fill = provider_pct_is_baseline(rpk_oc) ? v : bar_fill(v);
         lv_obj_clear_flag(row_bar[slot], LV_OBJ_FLAG_HIDDEN);
         lv_bar_set_value(row_bar[slot], fill, LV_ANIM_OFF);
         if (!bar_should_pulse(top_pct)

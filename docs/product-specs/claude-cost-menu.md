@@ -5,9 +5,9 @@
 As the owner of the CodexBar toy, I want to scroll a provider list that is
 longer than the screen, tap a provider to see its real cost or local Pi Agent
 rollups (today/30-day spend where available, Pi max spend/tokens, history) and
-usage limits (session %, weekly %, extra-usage $) on dedicated pages, and tap
-again to flip between Cost and Limit — so the desk toy is a glanceable spend +
-limits monitor, not just a clipped usage-% list.
+usage limits (remaining session %, remaining weekly %, extra-usage $) on
+dedicated pages, and tap again to flip between Cost and Limit — so the desk toy is
+a glanceable spend + limits monitor, not just a clipped headroom-% list.
 
 ## Acceptance criteria
 
@@ -39,14 +39,18 @@ limits monitor, not just a clipped usage-% list.
       the reduced `pi.h` payload field, autoscaled so the highest point fills
       the chart. It reuses the existing provider page chrome and does not add
       a Pi-only navigation path.
-- [ ] **Claude Usage-Limits page** shows: `SESSION` + big % + bar + reset;
-      `WEEKLY <%>` + bar + reset; `EXTRA USAGE <used> / <limit>` + bar; and a
-      labeled **24h SESSION usage-% line sparkline** ("SESSION 24H • now N%",
-      from payload `ph`, Claude only — hidden when absent).
-- [ ] **Bars show headroom (inverted default).** Every progress bar (summary
-      rows + both pages) fills 0% → full, 100% → empty. Bar color still tracks
-      true usage % (green low → red high). Switchable via
-      `UI_BAR_INVERT_DEFAULT` / `ui_set_bar_invert()` (future portal setting).
+- [ ] **Claude Usage-Limits page** shows: `SESSION` + big remaining % + bar
+      + reset; `WEEKLY <remaining %>` + bar + reset; `EXTRA USAGE <used> /
+      <limit>` + bar; and a **24h SESSION remaining-% line sparkline** derived
+      from payload `ph` (Claude only — hidden when absent).
+- [ ] **Quota bars and percentages show headroom (inverted default).** Quota-
+      based progress bars and rendered usage percentages (summary rows + both
+      pages) use `100 - used%`: 100% remaining fills the bar and reads `100%`,
+      while 0% remaining is empty and reads `0%`. Pi, MiMo, and LM Studio's
+      baseline-relative activity ratios retain their source used percentages
+      and preserve overage magnitude. Bar color still tracks true usage %
+      (green low → red high). Switchable via `UI_BAR_INVERT_DEFAULT` /
+      `ui_set_bar_invert()` (future portal setting).
 - [ ] **Provider color theme.** Each provider's bars + charts use that
       provider's **CodexBar brand color** (e.g. Claude `0xCC7C5E`, Codex
       `0x49A3B0`, Cursor `0x00BFA5`, OpenRouter `0x6F42C1`). Unknown providers
@@ -63,8 +67,8 @@ limits monitor, not just a clipped usage-% list.
       `curl GET` of the Upstash key.
 - [ ] **Every provider gets both pages.** Providers without reduced cost/Pi
       data show a placeholder ("COST DATA NOT AVAILABLE YET"); their Limit
-      pages render real session/weekly % from `p`/`s`. Tapping still cycles
-      both pages. Pi opens Cost first when its `pi` block is present.
+      pages render real remaining session/weekly % derived from `p`/`s`. Tapping
+      still cycles both pages. Pi opens Cost first when its `pi` block is present.
 - [ ] **Money/tokens render correctly** (no `f%` artifact): `$12.47`,
       `123.2M TOKENS`. All text is ASCII (no tofu glyphs), including the
       ` +N more` scroll hint.
@@ -89,7 +93,7 @@ limits monitor, not just a clipped usage-% list.
 - 24h *hourly* **cost** sparkline — CodexBar's cost cache is day-granular; the
   Cost-page "24h" view is the TODAY big number + the real 30-day daily chart
   (deviation from the original mock, see exec-plan `claude-cost-menu`
-  Decision #3). A 24h *usage-%* sparkline IS shipped on the Limit page.
+  Decision #3). A 24h *remaining-%* sparkline is shipped on the Limit page.
 - Per-model (Opus/Sonnet/Haiku) `$` breakdown — data exists in the cache but
   is intentionally deferred to a follow-up.
 - Cost/history for Cursor/OpenRouter (placeholder unless their live payload exposes balance/cost fields).

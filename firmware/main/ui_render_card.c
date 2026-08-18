@@ -612,12 +612,12 @@ static void render_lmstudio_stats(const stats_provider_t *p,
     lv_obj_add_flag(lim.x_bar, LV_OBJ_FLAG_HIDDEN);
     place_hero_amount(&lim_hero, hero, "TOKENS");
     if (card_entered && p->has_lm) {
-        anim_count_up(lim_hero.num, (int32_t)(p->primary.pct * 10.0f + 0.5f), count_pct_cb);
+        anim_count_up(lim_hero.num, pct_tenths(true, p->primary.pct), count_pct_cb);
     } else {
-        set_hero_pct(&lim_hero, p->has_lm, p->primary.pct);
+        set_hero_pct_used(&lim_hero, p->has_lm, p->primary.pct);
     }
     char pb[12];
-    set_bar(lim.s_bar, p->has_lm, p->primary.pct, p);
+    set_bar_used(lim.s_bar, p->has_lm, p->primary.pct, p);
     lv_obj_add_flag(lim.s_rst, LV_OBJ_FLAG_HIDDEN);
     cost_tok_set_parent(lim.card);
     {
@@ -626,14 +626,14 @@ static void render_lmstudio_stats(const stats_provider_t *p,
         lv_obj_set_pos(lim.w_bar, req_r.x + 12, req_r.y + req_r.h - 5);
     }
     if (p->has_lm) {
-        fmt_pct(pb, sizeof pb, p->has_lm, p->secondary.pct);
+        fmt_pct_used(pb, sizeof pb, p->has_lm, p->secondary.pct);
         lv_label_set_text(cost.tok, pb);
         lv_label_set_text(cost.tok_unit, "requests");
         lv_obj_align_to(cost.tok_unit, cost.tok, LV_ALIGN_OUT_RIGHT_BOTTOM, 5, 0);
         lv_obj_clear_flag(cost.tok, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(cost.tok_unit, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(lim.w_bar, LV_OBJ_FLAG_HIDDEN);
-        set_bar(lim.w_bar, true, p->secondary.pct, p);
+        set_bar_used(lim.w_bar, true, p->secondary.pct, p);
     } else {
         lv_obj_add_flag(cost.tok, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(cost.tok_unit, LV_OBJ_FLAG_HIDDEN);
@@ -673,9 +673,15 @@ static void render_limits_auto(const stats_provider_t *p, bool has_balance,
         lv_label_set_text(lim.a_lbl, pk == PK_OPENCODEGO ? "WEEKLY" :
                           (p->tertiary.has ? (pk == PK_CURSOR ? "AUTO / COMPOSER" : "AUTO")
                                            : "WEEKLY"));
-        fmt_pct(pb, sizeof pb, p->secondary.has, p->secondary.pct);
+        if (provider_pct_is_baseline(pk))
+            fmt_pct_used(pb, sizeof pb, p->secondary.has, p->secondary.pct);
+        else
+            fmt_pct(pb, sizeof pb, p->secondary.has, p->secondary.pct);
         lv_label_set_text(lim.a_big, pb);
-        set_bar(lim.a_bar, p->secondary.has, p->secondary.pct, p);
+        if (provider_pct_is_baseline(pk))
+            set_bar_used(lim.a_bar, p->secondary.has, p->secondary.pct, p);
+        else
+            set_bar(lim.a_bar, p->secondary.has, p->secondary.pct, p);
         set_reset_lbl(lim.a_rst, p->secondary.reset);
     } else {
         hide_tier_row(lim.a_lbl, lim.a_big, lim.a_bar, lim.a_rst);
@@ -692,16 +698,28 @@ static void render_limits_weekly(const stats_provider_t *p,
     if (p->tertiary.has && p->pct_hist_n == 0) {
         show_tier_row(lim.w_lbl, lim.w_big, lim.w_bar);
         lv_label_set_text(lim.w_lbl, pk == PK_OPENCODEGO ? "MONTHLY" : "API");
-        fmt_pct(pb, sizeof pb, p->tertiary.has, p->tertiary.pct);
+        if (provider_pct_is_baseline(pk))
+            fmt_pct_used(pb, sizeof pb, p->tertiary.has, p->tertiary.pct);
+        else
+            fmt_pct(pb, sizeof pb, p->tertiary.has, p->tertiary.pct);
         lv_label_set_text(lim.w_big, pb);
-        set_bar(lim.w_bar, p->tertiary.has, p->tertiary.pct, p);
+        if (provider_pct_is_baseline(pk))
+            set_bar_used(lim.w_bar, p->tertiary.has, p->tertiary.pct, p);
+        else
+            set_bar(lim.w_bar, p->tertiary.has, p->tertiary.pct, p);
         set_reset_lbl(lim.w_rst, p->tertiary.reset);
     } else if (p->secondary.has && p->pct_hist_n > 0) {
         show_tier_row(lim.w_lbl, lim.w_big, lim.w_bar);
         lv_label_set_text(lim.w_lbl, "WEEKLY");
-        fmt_pct(pb, sizeof pb, p->secondary.has, p->secondary.pct);
+        if (provider_pct_is_baseline(pk))
+            fmt_pct_used(pb, sizeof pb, p->secondary.has, p->secondary.pct);
+        else
+            fmt_pct(pb, sizeof pb, p->secondary.has, p->secondary.pct);
         lv_label_set_text(lim.w_big, pb);
-        set_bar(lim.w_bar, p->secondary.has, p->secondary.pct, p);
+        if (provider_pct_is_baseline(pk))
+            set_bar_used(lim.w_bar, p->secondary.has, p->secondary.pct, p);
+        else
+            set_bar(lim.w_bar, p->secondary.has, p->secondary.pct, p);
         set_reset_lbl(lim.w_rst, p->secondary.reset);
     } else {
         hide_tier_row(lim.w_lbl, lim.w_big, lim.w_bar, lim.w_rst);
@@ -740,7 +758,7 @@ static void render_limits_extra(const stats_provider_t *p,
             lv_obj_add_flag(lim.w_big, LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(lim.w_rst, LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(lim.w_bar, LV_OBJ_FLAG_HIDDEN);
-            set_bar(lim.w_bar, true, (float)(100 - xp), p);
+            set_bar(lim.w_bar, true, (float)xp, p);
             update_bar_pulse(lim.x_bar, 0.0f, NULL);
             hide_tier_row(lim.x_lbl, lim.x_val, lim.x_bar, NULL);
         } else {
@@ -763,8 +781,8 @@ static void render_limits_extra(const stats_provider_t *p,
     }
 }
 
-// 24h SESSION usage-% sparkline from `ph` (Claude only; absent elsewhere).
-// Extracted from render_limits_card (Fowler audit).
+// 24h SESSION remaining-% sparkline from source usage-% `ph` (Claude only;
+// absent elsewhere). Extracted from render_limits_card (Fowler audit).
 static void render_limits_sparkline(const stats_provider_t *p, bool card_entered)
 {
     if (p->pct_hist_n > 0) {
@@ -777,7 +795,8 @@ static void render_limits_sparkline(const stats_provider_t *p, bool card_entered
         lv_chart_set_series_color(lim.chart, lim.ser,
             prov_accent(p->id, &lc) ? lc : lv_color_hex(0x30c14e));
         for (int i = 0; i < n; i++)
-            lv_chart_set_value_by_id(lim.chart, lim.ser, i, p->pct_hist[i]);
+            lv_chart_set_value_by_id(lim.chart, lim.ser, i,
+                                     pct_remaining_int((float)p->pct_hist[i]));
         lv_chart_refresh(lim.chart);
         if (card_entered) anim_chart_fadein(lim.chart);
     } else {
@@ -849,18 +868,26 @@ static void render_limits_card(const stats_provider_t *p,
     lv_obj_set_pos(lim.x_val, footer->x + 12, footer->y + 74);
     lv_obj_set_pos(lim.x_bar, footer->x + 12, footer->y + 90);
 
-    // Primary limit hero (Claude/Codex/Cursor/OpenRouter/Pi): caption + pct via
-    // the hero_amount pair. Pi's "SESSION" falls out of the same ternary
-    // (no balance, no total tier).
+    // Primary limit hero (Claude/Codex/Cursor/OpenRouter/Pi): caption + % via
+    // the hero_amount pair. Pi's "SESSION" falls out of the same ternary;
+    // its local baseline ratio stays a used percentage rather than headroom.
+    const bool baseline_pct = provider_pct_is_baseline(pk);
     place_hero_amount(&lim_hero, hero,
                       has_balance ? "API KEY" : (p->tertiary.has ?
                           (pk == PK_OPENCODEGO ? "5-HOUR" : "TOTAL") : "SESSION"));
     if (card_entered && p->primary.has) {
-        anim_count_up(lim_hero.num, (int32_t)(p->primary.pct * 10.0f + 0.5f), count_pct_cb);
+        int target = baseline_pct ? pct_tenths(true, p->primary.pct)
+                                  : pct_remaining_tenths(p->primary.pct);
+        anim_count_up(lim_hero.num, target, count_pct_cb);
+    } else if (baseline_pct) {
+        set_hero_pct_used(&lim_hero, p->primary.has, p->primary.pct);
     } else {
         set_hero_pct(&lim_hero, p->primary.has, p->primary.pct);
     }
-    set_bar(lim.s_bar, p->primary.has, p->primary.pct, p);
+    if (baseline_pct)
+        set_bar_used(lim.s_bar, p->primary.has, p->primary.pct, p);
+    else
+        set_bar(lim.s_bar, p->primary.has, p->primary.pct, p);
     if (has_balance) {
         lv_obj_add_flag(lim.s_rst, LV_OBJ_FLAG_HIDDEN);
     } else {

@@ -60,8 +60,10 @@ Nothing secret is ever compiled into the binary or committed to the repo.
 - Polls `GET {url}/get/{key}` every `FETCH_INTERVAL_S` (60 s) over TLS,
   validating the full hostname/certificate chain against the embedded ISRG Root
   X2 public CA anchor (no leaf-certificate pinning or verification bypass).
-- Renders one row per provider: id, a colored bar + % for the primary
-  window; `off` (dimmed) when that provider is `ok:false`. A status line
+- Renders one row per provider: id, a colored bar plus its display percentage
+  for the primary window; quota-backed providers show headroom (`100 - used%`),
+  while Pi/MiMo/LM Studio baseline ratios retain used %. `off` (dimmed) when
+  that provider is `ok:false`. A status line
   shows link state, "updated Ns ago", and ` +N more` when the list is
   longer than the screen.
 - **Swipe up / down** → scroll the provider list (page at a time).
