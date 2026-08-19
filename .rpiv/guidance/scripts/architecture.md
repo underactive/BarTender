@@ -117,6 +117,7 @@ upstream provider objects.
 ## Architectural Boundaries
 - **NO secrets in committed config or argv**: write tokens live in Keychain, not files or plist args
 - **NO raw upstream payload publishing**: scripts project/merge a reduced contract before Upstash
+- **Today rollups use the local system date**: never infer "today" from the newest upstream cache key; a missing current-day key publishes zero while structural cache failures still skip publishing.
 - **NO manual edits to generated firmware assets**: regenerate `provider_icons.*` from source SVGs
 - **NO cross-import assumptions**: these are process-level tools and protocol peers, not a shared library
 

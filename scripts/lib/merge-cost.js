@@ -39,7 +39,7 @@ var sysToday=(function(){var d=new Date();
     +String(d.getDate()).padStart(2,'0');})();
 var todayCents=(today===sysToday)?tr.c:0;
 var todayTok  =(today===sysToday)?tr.t:0;
-var tms=dms(today), cm=0, tm=0, hist=[];
+var tms=dms(sysToday), cm=0, tm=0, hist=[];
 for(var i=0;i<dk.length;i++){var r=roll(days[dk[i]]); if(!r)continue;
   if((tms-dms(dk[i]))/86400000<=29){cm+=r.c;tm+=r.t;}}
 var hk=dk.slice(-31);

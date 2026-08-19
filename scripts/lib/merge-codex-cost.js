@@ -58,15 +58,14 @@ if(bestCdx){
         if(anyM) merged[ck]={c:Math.round(dc),t:Math.round(dt)};}}}}
 var allDk=Object.keys(merged).filter(function(k){return /^\d{4}-\d{2}-\d{2}$/.test(k);}).sort();
 if(allDk.length===0){ eprint("merged days empty"); $.exit(3); }
-var today=allDk[allDk.length-1], tr=merged[today];
-if(!tr){ eprint("today rollup empty"); $.exit(3); }
 var sysToday=(function(){var d=new Date();
   return d.getFullYear()+'-'
     +String(d.getMonth()+1).padStart(2,'0')+'-'
     +String(d.getDate()).padStart(2,'0');})();
-var todayCents=tr.c;
-var todayTok  =tr.t;
-var tms=dms(today), cm=0, tm=0;
+var cacheToday=allDk[allDk.length-1], tr=merged[sysToday]||null;
+var todayCents=tr?tr.c:0;
+var todayTok  =tr?tr.t:0;
+var tms=dms(sysToday), cm=0, tm=0;
 for(var i=0;i<allDk.length;i++){var r=merged[allDk[i]]; if(!r) continue;
   if((tms-dms(allDk[i]))/86400000<=29){cm+=r.c;tm+=r.t;}}
 var hk=allDk.slice(-31), hist=[];
@@ -83,5 +82,5 @@ if(!did){ eprint("no codex provider in payload — nothing to merge"); $.exit(0)
 var w=$.NSString.alloc.initWithUTF8String(JSON.stringify(pay))
   .writeToFileAtomicallyEncodingError(jsonPath,true,4,null);
 if(!w){ eprint("payload writeback failed"); $.exit(2); }
-eprint("merged codex cost: today="+todayCents+"c/"+todayTok+"tok (cache="+today+"/sys="+sysToday+") 30d="+cm+"c/"+tm+"tok hist="+hist.length+"d (pi="+piDk.length+"d cdx-supp="+(allDk.length-piDk.length)+"d)");
+eprint("merged codex cost: today="+todayCents+"c/"+todayTok+"tok (cache="+cacheToday+"/sys="+sysToday+(tr?"":" today-missing")+") 30d="+cm+"c/"+tm+"tok hist="+hist.length+"d (pi="+piDk.length+"d cdx-supp="+(allDk.length-piDk.length)+"d)");
 $.exit(0);

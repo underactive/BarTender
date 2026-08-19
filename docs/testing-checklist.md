@@ -65,6 +65,9 @@ Rendering:
 - [ ] **Summary token total counts to refreshed values** over the same short
       ease-out animation used by the card hero metrics, without restarting
       on each summary redraw.
+- [ ] **I/O TOKENS respects the local-day boundary.** Shortly after Pacific
+      midnight, the hero is near zero and then grows through the day; the first
+      morning Codex session never causes a stale-yesterday total to cliff down.
 - [ ] **Claude Cost card**: `$X.XX` today (no `f%` artifact), `<n>M TOKENS
       TODAY`, `30D $… • …`, a **labeled 30-day spend bar graph** with side
       margins, autoscaled so the highest point fills the chart, `EXTRA $a / $b`
