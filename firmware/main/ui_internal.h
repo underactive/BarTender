@@ -310,6 +310,7 @@ lv_obj_t *ui_active_screen(void);  // active screen, NULL before build_widgets()
 // from ui_render_card.c and ui_render_summary.c).
 void count_pct_cb(void *obj, int32_t v);
 void count_cents_cb(void *obj, int32_t v);
+void anim_summary_tokens(lv_obj_t *lbl, int64_t start, int64_t target);
 
 void hide_summary_chrome(void);
 void cost_hero_set_parent(lv_obj_t *parent);

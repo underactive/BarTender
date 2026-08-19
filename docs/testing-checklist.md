@@ -62,6 +62,9 @@ Rendering:
 - [ ] **Summary** shows the windowed provider rows for the current scroll
       offset; tapping a row opens that provider's page (no menu screen
       exists anymore).
+- [ ] **Summary token total counts to refreshed values** over the same short
+      ease-out animation used by the card hero metrics, without restarting
+      on each summary redraw.
 - [ ] **Claude Cost card**: `$X.XX` today (no `f%` artifact), `<n>M TOKENS
       TODAY`, `30D $… • …`, a **labeled 30-day spend bar graph** with side
       margins, autoscaled so the highest point fills the chart, `EXTRA $a / $b`

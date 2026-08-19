@@ -22,6 +22,8 @@
 static lv_obj_t *scr, *title, *status, *prov_box, *summary_top, *boot_img, *lock_badge, *footer_bg;
 lv_obj_t *row_id[ROWS], *row_bar[ROWS], *row_val[ROWS], *row_val_s[ROWS], *row_icon[ROWS], *row_bar_w[ROWS];
 
+static void reset_summary_token_animation(void);
+
 // Card widget groups (declared extern in ui_internal.h; defined here).
 cost_card_t cost;
 lim_card_t  lim;
@@ -623,6 +625,7 @@ void hide_summary_chrome(void)  // hide title/status/rows before a card
     lv_obj_add_flag(prov_box,    LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(summary_top, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(footer_bg,   LV_OBJ_FLAG_HIDDEN);
+    reset_summary_token_animation();
     hide_hero_amount(&cost_hero);
     lv_obj_set_style_text_font(cost_hero.num, &font_lemonmilk_48, 0);
     lv_obj_set_style_pad_top(cost_hero.num, -8, 0);
@@ -733,6 +736,44 @@ void count_pct_cb(void *obj, int32_t v)
 void count_cents_cb(void *obj, int32_t v)
 {
     lv_label_set_text_fmt((lv_obj_t *)obj, "$%d.%02d", (int)(v / 100), (int)(v % 100));
+}
+
+static int64_t summary_tok_anim_start;
+static int64_t summary_tok_anim_target;
+static int64_t summary_tok_anim_displayed;
+static bool summary_tok_anim_initialized;
+
+static void summary_tok_anim_cb(void *obj, int32_t progress)
+{
+    int64_t delta = summary_tok_anim_target - summary_tok_anim_start;
+    summary_tok_anim_displayed = summary_tok_anim_start +
+        (delta * progress) / 1000;
+    char buf[32];
+    fmt_tokens_full(buf, sizeof buf, summary_tok_anim_displayed);
+    lv_label_set_text((lv_obj_t *)obj, buf);
+}
+
+void anim_summary_tokens(lv_obj_t *lbl, int64_t start, int64_t target)
+{
+    lv_anim_delete(lbl, summary_tok_anim_cb);
+    summary_tok_anim_start = start;
+    summary_tok_anim_target = target;
+    summary_tok_anim_displayed = start;
+    summary_tok_anim_initialized = true;
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, lbl);
+    lv_anim_set_exec_cb(&a, summary_tok_anim_cb);
+    lv_anim_set_values(&a, 0, 1000);
+    lv_anim_set_duration(&a, HERO_COUNTUP_MS);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_start(&a);
+}
+
+static void reset_summary_token_animation(void)
+{
+    lv_anim_delete(cost_hero.num, summary_tok_anim_cb);
+    summary_tok_anim_initialized = false;
 }
 
 void anim_count_up(lv_obj_t *lbl, int32_t target, lv_anim_exec_xcb_t cb)
@@ -1067,15 +1108,20 @@ void render(void)   // ui_task only
         lv_obj_set_pos(summary_top, 0, 0);
         lv_obj_set_size(summary_top, s_scr_w, content_y0);
         if (st.fetched_ms > 0 && st.stats.n > 0) {
+            const int64_t total = summary_tok_today_total();
             lv_obj_clear_flag(summary_top, LV_OBJ_FLAG_HIDDEN);
             lv_obj_set_style_bg_opa(summary_top, LV_OPA_COVER, 0);
             lv_obj_set_style_bg_color(summary_top, lv_color_hex(0x0b0b0b), 0);
             cost_hero_set_parent(scr);
             place_summary_hero_amount(&cost_hero, &top_r, "I/O TOKENS");
-            char tk[32];
-            fmt_tokens_full(tk, sizeof tk, summary_tok_today_total());
-            set_hero_amount(&cost_hero, NULL, tk, NULL);
+            if (!summary_tok_anim_initialized) {
+                anim_summary_tokens(cost_hero.num, 0, total);
+            } else if (total != summary_tok_anim_target) {
+                anim_summary_tokens(cost_hero.num,
+                                    summary_tok_anim_displayed, total);
+            }
         } else {
+            reset_summary_token_animation();
             lv_obj_add_flag(summary_top, LV_OBJ_FLAG_HIDDEN);
         }
     }
