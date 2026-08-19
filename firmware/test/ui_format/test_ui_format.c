@@ -144,6 +144,22 @@ static void test_balance_helpers(void)
     EQ_INT(balance_bar_units(9200, 10), 920, "balance units: $92");
     EQ_INT(balance_bar_units(20000, 10), 1000, "balance units: cap");
 
+    // $100 circles: ceil(balance/$100) - 1 (exact multiples prefer a full bar).
+    EQ_INT(balance_circle_count(0), 0, "circles: $0 -> 0");
+    EQ_INT(balance_circle_count(-100), 0, "circles: negative -> 0");
+    EQ_INT(balance_circle_count(9999), 0, "circles: $99.99 -> 0");
+    EQ_INT(balance_circle_count(10000), 0, "circles: $100 -> 0");
+    EQ_INT(balance_circle_count(10001), 1, "circles: $100.01 -> 1");
+    EQ_INT(balance_circle_count(15000), 1, "circles: $150 -> 1");
+    EQ_INT(balance_circle_count(20000), 1, "circles: $200 -> 1");
+    EQ_INT(balance_circle_count(30000), 2, "circles: $300 -> 2");
+    EQ_INT(balance_circle_count(61195), 6, "circles: $611.95 -> 6");
+    // Remaining $0-100 window after the whole hundreds.
+    EQ_INT(balance_window_c(15000, 1), 5000, "window: $150 -> $50");
+    EQ_INT(balance_window_c(30000, 2), 10000, "window: $300 -> full");
+    EQ_INT(balance_window_c(10000, 0), 10000, "window: $100 -> full");
+    EQ_INT(balance_window_c(61195, 6), 1195, "window: $611.95 -> $11.95");
+
     stats_provider_t p;
     int32_t balance = 0;
     memset(&p, 0, sizeof p); strcpy(p.id, "openrouter");

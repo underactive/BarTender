@@ -182,6 +182,8 @@ static void build_summary_widgets(int W)
         lv_obj_set_style_bg_opa(row_bar[i], LV_OPA_COVER, 0);
         lv_obj_set_style_bg_color(row_bar[i], lv_color_hex(0x30c14e), LV_PART_INDICATOR);
         lv_obj_add_event_cb(row_bar[i], balance_bar_draw_cb, LV_EVENT_DRAW_POST, NULL);
+        lv_obj_add_event_cb(row_bar[i], balance_bar_ext_size_cb,
+                            LV_EVENT_REFR_EXT_DRAW_SIZE, NULL);
 
         row_val[i] = lv_label_create(scr);
         lv_obj_set_style_text_color(row_val[i], lv_color_hex(0xffffff), 0);

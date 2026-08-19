@@ -252,6 +252,23 @@ int balance_bar_units(int32_t balance_c, int segs)
                   0, segs * 100);
 }
 
+// Completed $100 circles. An exact multiple of $100 prefers a full gauge over
+// an extra empty circle ($300 -> 2 circles + full bar, not 3 circles), so the
+// count is ceil(balance/$100) - 1.
+int balance_circle_count(int32_t balance_c)
+{
+    if (balance_c < BALANCE_CIRCLE_UNIT_C) return 0;
+    return (balance_c - 1) / BALANCE_CIRCLE_UNIT_C;
+}
+
+int32_t balance_window_c(int32_t balance_c, int circles)
+{
+    int32_t w = balance_c - (int32_t)circles * BALANCE_CIRCLE_UNIT_C;
+    if (w < 0) w = 0;
+    if (w > BALANCE_CIRCLE_UNIT_C) w = BALANCE_CIRCLE_UNIT_C;
+    return w;
+}
+
 // Progress-bar indicator color: the provider's theme accent if it has one,
 // else the green/amber/red usage ramp.
 lv_color_t bar_color(const stats_provider_t *p, float v)

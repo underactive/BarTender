@@ -78,6 +78,16 @@ extern const lv_font_t font_lemonmilk_23;
 #define UI_GRID_OPA      LV_OPA_90
 #define BALANCE_SEG_MAX  10
 #define BALANCE_SEG_VALUE_C 1000  // $10 per segment, in cents
+// Balances over $100 render each completed $100 as a filled circle to the
+// right of the bar; the bar shrinks to fit and shows the remaining $0-100
+// window on a fixed 10-section gauge. Circles draw into the bar widget's
+// ext_draw_size margin (see balance_bar_draw_cb / balance_bar_ext_size_cb).
+#define BALANCE_CIRCLE_UNIT_C 10000  // $100 per circle, in cents
+#define BALANCE_QUARTER_SEGS  4      // over-$100 gauge is divided into quarters
+#define BALANCE_CIRCLE_D      6      // filled-circle diameter, px
+#define BALANCE_CIRCLE_GAP    2      // gap before/between circles, px
+#define BALANCE_CIRCLE_PITCH  (BALANCE_CIRCLE_D + BALANCE_CIRCLE_GAP)
+#define BALANCE_GAUGE_MIN_W   20     // keep the $0-100 gauge at least this wide
 
 // Bar fill direction. true => 0% usage draws FULL, 100% usage draws EMPTY
 // (bars read as "headroom remaining"). Flip this compile-time default to change
@@ -265,6 +275,10 @@ bool provider_pct_is_baseline(provider_kind_t k);
 bool provider_balance_c(const stats_provider_t *p, int32_t *out_c);
 int balance_seg_count(int32_t balance_c);
 int balance_bar_units(int32_t balance_c, int segs);
+// Number of completed $100 circles for a balance (0 when <= $100).
+int balance_circle_count(int32_t balance_c);
+// Remaining $0-100 window (in cents) after `circles` whole hundreds.
+int32_t balance_window_c(int32_t balance_c, int circles);
 lv_color_t bar_color(const stats_provider_t *p, float v);
 int pct_remaining_tenths(float used_pct);
 int pct_remaining_int(float used_pct);
@@ -346,3 +360,4 @@ void render_card(void);
 void render_summary_row(int slot, const stats_provider_t *p, int pixel_y, int W);
 void render_grid_tile(int slot, const stats_provider_t *p, const ui_rect_t *cell);
 void balance_bar_draw_cb(lv_event_t *e);
+void balance_bar_ext_size_cb(lv_event_t *e);

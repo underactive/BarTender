@@ -53,6 +53,12 @@ opening anything.
       headline when a balance is published, with a segmented $10 bar: segment
       count is `ceil(balance/$10)` capped at 10, the final segment is partial,
       and missing balance falls back to the normal percentage tile.
+- [ ] Balances over $100 render each completed $100 as a filled circle to the
+      right of the bar; the bar shrinks to fit and shows the remaining $0-100
+      window on a gauge divided into quarters (e.g. $150 -> half-full quartered
+      bar + one circle; $300 -> full bar + two circles). Circle count is
+      `ceil(balance/$100) - 1`, so exact multiples prefer a full bar. Balances
+      at or below $100 keep the tenths ($10-per-segment) gauge.
 - [ ] No secret is compiled into the firmware or committed to the repo.
 
 ## Edge cases

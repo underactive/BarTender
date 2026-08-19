@@ -10,28 +10,68 @@
 #include <string.h>
 #include <stdio.h>
 
+// row_bar user_data packs the balance-gauge segment count (low 16 bits) and the
+// number of completed-$100 circles (high 16 bits); 0 for non-balance bars.
+#define BALANCE_BAR_SEGS(ud)    ((int)((uintptr_t)(ud) & 0xFFFFu))
+#define BALANCE_BAR_CIRCLES(ud) ((int)(((uintptr_t)(ud) >> 16) & 0xFFFFu))
+#define BALANCE_BAR_PACK(segs, circles) \
+    ((void *)(intptr_t)(((unsigned)(circles) << 16) | ((unsigned)(segs) & 0xFFFFu)))
+
 void balance_bar_draw_cb(lv_event_t *e)
 {
     lv_obj_t *bar = lv_event_get_target(e);
-    int segs = (int)(intptr_t)lv_obj_get_user_data(bar);
-    if (segs <= 1) return;
+    void *ud = lv_obj_get_user_data(bar);
+    int segs    = BALANCE_BAR_SEGS(ud);
+    int circles = BALANCE_BAR_CIRCLES(ud);
+    if (segs <= 1 && circles <= 0) return;
 
     lv_layer_t *layer = lv_event_get_layer(e);
     lv_area_t area;
     lv_obj_get_coords(bar, &area);
     int width = lv_area_get_width(&area);
-    lv_draw_line_dsc_t dsc;
-    lv_draw_line_dsc_init(&dsc);
-    dsc.color = lv_color_hex(0x0b0b0b);
-    dsc.width = 2;
-    dsc.p1.y = area.y1;
-    dsc.p2.y = area.y2;
-    for (int k = 1; k < segs; k++) {
-        int x = area.x1 + (int)((int64_t)width * k / segs);
-        dsc.p1.x = x;
-        dsc.p2.x = x;
-        lv_draw_line(layer, &dsc);
+
+    if (segs > 1) {
+        lv_draw_line_dsc_t dsc;
+        lv_draw_line_dsc_init(&dsc);
+        dsc.color = lv_color_hex(0x0b0b0b);
+        dsc.width = 2;
+        dsc.p1.y = area.y1;
+        dsc.p2.y = area.y2;
+        for (int k = 1; k < segs; k++) {
+            int x = area.x1 + (int)((int64_t)width * k / segs);
+            dsc.p1.x = x;
+            dsc.p2.x = x;
+            lv_draw_line(layer, &dsc);
+        }
     }
+
+    // Filled $100 circles, drawn to the right of the (shrunk) bar in the
+    // widget's ext_draw_size margin. Same accent color as the bar fill.
+    if (circles > 0) {
+        lv_draw_rect_dsc_t cd;
+        lv_draw_rect_dsc_init(&cd);
+        cd.bg_color = lv_obj_get_style_bg_color(bar, LV_PART_INDICATOR);
+        cd.bg_opa = LV_OPA_COVER;
+        cd.radius = LV_RADIUS_CIRCLE;
+        int top = (area.y1 + area.y2) / 2 - BALANCE_CIRCLE_D / 2;
+        int x = area.x2 + BALANCE_CIRCLE_GAP;
+        for (int i = 0; i < circles; i++) {
+            lv_area_t ca = { x, top, x + BALANCE_CIRCLE_D - 1,
+                             top + BALANCE_CIRCLE_D - 1 };
+            lv_draw_rect(layer, &cd, &ca);
+            x += BALANCE_CIRCLE_PITCH;
+        }
+    }
+}
+
+// Grant the balance bar room to draw its $100 circles beyond its own width.
+void balance_bar_ext_size_cb(lv_event_t *e)
+{
+    lv_obj_t *bar = lv_event_get_target(e);
+    int circles = BALANCE_BAR_CIRCLES(lv_obj_get_user_data(bar));
+    if (circles <= 0) return;
+    lv_event_set_ext_draw_size(
+        e, circles * BALANCE_CIRCLE_PITCH + BALANCE_CIRCLE_GAP + 2);
 }
 
 // Providers whose hero metric is the secondary tier (s) rather than the primary
@@ -294,6 +334,7 @@ void render_grid_tile(int slot, const stats_provider_t *p,
 
     // A slot can switch between a balance and a percentage tile on rerender.
     lv_obj_set_user_data(row_bar[slot], NULL);
+    lv_obj_refresh_ext_draw_size(row_bar[slot]);  // drop any prior circle margin
     lv_bar_set_range(row_bar[slot], 0, 100);
 
     // Percentage label where the provider name used to be
@@ -368,11 +409,31 @@ void render_grid_tile(int slot, const stats_provider_t *p,
     }
 
     if (bal_mode) {
-        int segs = balance_seg_count(bal_c);
-        lv_bar_set_range(row_bar[slot], 0, segs * 100);
-        lv_bar_set_value(row_bar[slot], balance_bar_units(bal_c, segs), LV_ANIM_OFF);
+        int bar_w = cell->w - 36;
+        int circles = balance_circle_count(bal_c);
+        int max_circ = (bar_w - BALANCE_GAUGE_MIN_W) / BALANCE_CIRCLE_PITCH;
+        if (max_circ < 0) max_circ = 0;
+        if (circles > max_circ) circles = max_circ;
+        if (circles > 0) {
+            // Over $100: the gauge shows the current $100 window divided into
+            // quarters; each completed $100 is a circle to the right of the
+            // bar. The fill keeps $10 resolution (range/value below); only the
+            // divider count stored in user_data changes to quarters.
+            int32_t window_c = balance_window_c(bal_c, circles);
+            lv_obj_set_size(row_bar[slot], bar_w - circles * BALANCE_CIRCLE_PITCH, 5);
+            lv_bar_set_range(row_bar[slot], 0, BALANCE_SEG_MAX * 100);
+            lv_bar_set_value(row_bar[slot],
+                balance_bar_units(window_c, BALANCE_SEG_MAX), LV_ANIM_OFF);
+            lv_obj_set_user_data(row_bar[slot],
+                BALANCE_BAR_PACK(BALANCE_QUARTER_SEGS, circles));
+        } else {
+            int segs = balance_seg_count(bal_c);
+            lv_bar_set_range(row_bar[slot], 0, segs * 100);
+            lv_bar_set_value(row_bar[slot], balance_bar_units(bal_c, segs), LV_ANIM_OFF);
+            lv_obj_set_user_data(row_bar[slot], (void *)(intptr_t)segs);
+        }
         lv_obj_set_style_bg_color(row_bar[slot], bar_color(p, 0.0f), LV_PART_INDICATOR);
-        lv_obj_set_user_data(row_bar[slot], (void *)(intptr_t)segs);
+        lv_obj_refresh_ext_draw_size(row_bar[slot]);
         update_bar_pulse(row_bar[slot], 0.0f, NULL);
         lv_obj_clear_flag(row_bar[slot], LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(row_bar_w[slot], LV_OBJ_FLAG_HIDDEN);
