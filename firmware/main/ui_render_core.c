@@ -155,6 +155,12 @@ static void build_summary_widgets(int W)
         row_icon[i] = lv_image_create(scr);
         lv_obj_set_pos(row_icon[i], 8, y + (ROW_H - ROW_ICON_PX) / 2);
         lv_obj_set_style_image_recolor_opa(row_icon[i], LV_OPA_COVER, 0);
+        // Icons are a fixed 32 px source but grid tiles size the widget to
+        // 24 px; CONTAIN rescales the image to fit (and centers it) instead
+        // of clipping wide marks (openrouter, kimi) against the widget edge.
+        // Recomputed on every lv_image_set_src from the current widget size,
+        // so 32 px summary rows stay 1:1 and 24 px grid tiles scale to 0.75x.
+        lv_image_set_inner_align(row_icon[i], LV_IMAGE_ALIGN_CONTAIN);
         lv_obj_add_flag(row_icon[i], LV_OBJ_FLAG_HIDDEN);
 
         row_id[i] = lv_label_create(scr);
