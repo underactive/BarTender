@@ -45,7 +45,7 @@ void balance_bar_draw_cb(lv_event_t *e)
         }
     }
 
-    // Filled $100 circles, drawn to the right of the (shrunk) bar in the
+    // Filled $100 circles, drawn to the left of the (shrunk) bar in the
     // widget's ext_draw_size margin. Same accent color as the bar fill.
     if (circles > 0) {
         lv_draw_rect_dsc_t cd;
@@ -54,12 +54,12 @@ void balance_bar_draw_cb(lv_event_t *e)
         cd.bg_opa = LV_OPA_COVER;
         cd.radius = LV_RADIUS_CIRCLE;
         int top = (area.y1 + area.y2) / 2 - BALANCE_CIRCLE_D / 2;
-        int x = area.x2 + BALANCE_CIRCLE_GAP;
+        int x = area.x1 - BALANCE_CIRCLE_PITCH;
         for (int i = 0; i < circles; i++) {
             lv_area_t ca = { x, top, x + BALANCE_CIRCLE_D - 1,
                              top + BALANCE_CIRCLE_D - 1 };
             lv_draw_rect(layer, &cd, &ca);
-            x += BALANCE_CIRCLE_PITCH;
+            x -= BALANCE_CIRCLE_PITCH;
         }
     }
 }
@@ -419,6 +419,10 @@ void render_grid_tile(int slot, const stats_provider_t *p,
             // the circles carry the coarse magnitude and the bar reads as one
             // continuous hundred. The fill keeps $10 resolution.
             int32_t window_c = balance_window_c(bal_c, circles);
+            // Circles occupy the left of the tile's bar track, so the shrunk
+            // bar starts after them and the pair still ends at the same edge.
+            lv_obj_set_pos(row_bar[slot],
+                cell->x + 32 + circles * BALANCE_CIRCLE_PITCH, cell->y + 18);
             lv_obj_set_size(row_bar[slot], bar_w - circles * BALANCE_CIRCLE_PITCH, 5);
             lv_bar_set_range(row_bar[slot], 0, BALANCE_SEG_MAX * 100);
             lv_bar_set_value(row_bar[slot],

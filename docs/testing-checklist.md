@@ -99,11 +99,12 @@ Rendering:
       providers retain their percentage label and solid bar. Reuse a tile slot
       between balance and percentage providers without stale dividers/ranges.
 - [ ] **Balances over $100 add filled circles**: each completed $100 draws as a
-      filled accent circle to the right of the bar, which shrinks to fit. The
-      bar then shows the remaining $0-100 window with no dividers at all (not
-      tenths): `$150` -> half-full plain bar + one circle (`==--o`), `$300` ->
-      full bar + two circles (`====oo`), `$611.95` -> nearly-empty plain bar +
-      six circles. Balances `<= $100` keep the tenths gauge. Reusing the
+      filled accent circle to the left of the bar, which shrinks and shifts
+      right to fit so the circles start where a plain bar would. The bar then
+      shows the remaining $0-100 window with no dividers at all (not tenths):
+      `$150` -> one circle + half-full plain bar (`o==--`), `$300` -> two
+      circles + full bar (`oo====`), `$611.95` -> six circles + nearly-empty
+      plain bar. Balances `<= $100` keep the tenths gauge. Reusing the
       slot for a `<= $100` balance or a percentage tile leaves no leftover
       circles.
 - [ ] **Summary rows show the provider's CodexBar logo** in the left margin,

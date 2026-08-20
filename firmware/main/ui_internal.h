@@ -79,12 +79,13 @@ extern const lv_font_t font_lemonmilk_23;
 #define BALANCE_SEG_MAX  10
 #define BALANCE_SEG_VALUE_C 1000  // $10 per segment, in cents
 // Balances over $100 render each completed $100 as a filled circle to the
-// right of the bar; the bar shrinks to fit and shows the remaining $0-100
-// window on an undivided gauge. Circles draw into the bar widget's
-// ext_draw_size margin (see balance_bar_draw_cb / balance_bar_ext_size_cb).
+// left of the bar; the bar shrinks and shifts right to fit, and shows the
+// remaining $0-100 window on an undivided gauge. Circles draw into the bar
+// widget's ext_draw_size margin (see balance_bar_draw_cb /
+// balance_bar_ext_size_cb).
 #define BALANCE_CIRCLE_UNIT_C 10000  // $100 per circle, in cents
 #define BALANCE_CIRCLE_D      6      // filled-circle diameter, px
-#define BALANCE_CIRCLE_GAP    2      // gap before/between circles, px
+#define BALANCE_CIRCLE_GAP    2      // gap between circles and before the bar, px
 #define BALANCE_CIRCLE_PITCH  (BALANCE_CIRCLE_D + BALANCE_CIRCLE_GAP)
 #define BALANCE_GAUGE_MIN_W   20     // keep the $0-100 gauge at least this wide
 
