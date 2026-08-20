@@ -415,17 +415,15 @@ void render_grid_tile(int slot, const stats_provider_t *p,
         if (max_circ < 0) max_circ = 0;
         if (circles > max_circ) circles = max_circ;
         if (circles > 0) {
-            // Over $100: the gauge shows the current $100 window divided into
-            // quarters; each completed $100 is a circle to the right of the
-            // bar. The fill keeps $10 resolution (range/value below); only the
-            // divider count stored in user_data changes to quarters.
+            // Over $100: the gauge shows the current $100 window undivided, so
+            // the circles carry the coarse magnitude and the bar reads as one
+            // continuous hundred. The fill keeps $10 resolution.
             int32_t window_c = balance_window_c(bal_c, circles);
             lv_obj_set_size(row_bar[slot], bar_w - circles * BALANCE_CIRCLE_PITCH, 5);
             lv_bar_set_range(row_bar[slot], 0, BALANCE_SEG_MAX * 100);
             lv_bar_set_value(row_bar[slot],
                 balance_bar_units(window_c, BALANCE_SEG_MAX), LV_ANIM_OFF);
-            lv_obj_set_user_data(row_bar[slot],
-                BALANCE_BAR_PACK(BALANCE_QUARTER_SEGS, circles));
+            lv_obj_set_user_data(row_bar[slot], BALANCE_BAR_PACK(0, circles));
         } else {
             int segs = balance_seg_count(bal_c);
             lv_bar_set_range(row_bar[slot], 0, segs * 100);

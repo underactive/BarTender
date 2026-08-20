@@ -55,8 +55,8 @@ opening anything.
       and missing balance falls back to the normal percentage tile.
 - [ ] Balances over $100 render each completed $100 as a filled circle to the
       right of the bar; the bar shrinks to fit and shows the remaining $0-100
-      window on a gauge divided into quarters (e.g. $150 -> half-full quartered
-      bar + one circle; $300 -> full bar + two circles). Circle count is
+      window as an unsegmented gauge (e.g. $150 -> half-full plain bar + one
+      circle; $300 -> full bar + two circles). Circle count is
       `ceil(balance/$100) - 1`, so exact multiples prefer a full bar. Balances
       at or below $100 keep the tenths ($10-per-segment) gauge.
 - [ ] No secret is compiled into the firmware or committed to the repo.
