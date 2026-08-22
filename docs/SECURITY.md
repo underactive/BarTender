@@ -56,7 +56,11 @@ personal desk object, recorded here as the mandated re-justification.
 
 **What now crosses the boundary (v2 payload):** usage `%` + reset hints,
 extra-usage `$` (cents), prepaid account balances for OpenRouter/MiMo,
-Moonshot/DeepSeek (reduced to cents from CodexBar's provider display data) and
+Moonshot/DeepSeek (reduced to cents from CodexBar's provider display data),
+DeepSeek aggregate per-day token counts and USD-cent spend rollups from the
+platform.deepseek.com dashboard API via `deepseek-stats.sh` (the responses
+carry per-model breakdowns, but model names are summed away during aggregation
+and never reach the payload; no request contents or account identifiers), and
 Ramp Router (cents + aggregate spend/token rollups from the router.ramp.com
 dashboard API via `ramp-stats.sh`; no model names, request contents, or
 account identifiers),
@@ -97,9 +101,13 @@ session JSONL rows.
   **write** token lives in the macOS Keychain (service `codexbar-toy`),
   passed to `curl` via a `0600 -K` config (never argv/log/plist). Provider
   credentials sit beside it under the same service — including the OpenRouter
-  management key (account `openrouter-key`), which `openrouter-stats.sh`
-  sends via an in-process `urllib` header rather than `curl`, so it never
-  appears in argv where `ps` could read it. The device
+  management key (account `openrouter-key`) and the DeepSeek platform
+  `userToken` (account `deepseek-token`), which `openrouter-stats.sh` and
+  `deepseek-stats.sh` send via an in-process `urllib` header rather than
+  `curl`, so neither appears in argv where `ps` could read it. The DeepSeek
+  value is a full **dashboard session** credential rather than a scoped API
+  key, so it is never echoed to the log or plist and `--set-deepseek-token`
+  reads it with a hidden `read -rs`. The device
   holds a *separate* **read-only** token. The capture fixtures under
   `docs/references/` (account email, spend) are `.gitignore`d — they must
   never be committed if this repo is ever versioned.

@@ -24,15 +24,15 @@
           "tr": { "type": "string", "description": "Tertiary reset hint." },
           "cost": {
             "type": "object",
-            "description": "v2 optional. Present for providers with a generic cost payload (Claude/Codex cost-cache rollups; OpenRouter live keyDataFetched fields; Ramp Router dashboard-API rollups via ramp-stats.sh). Money is integer CENTS (LVGL has no float printf). Pi uses the sibling `pi` block instead; firmware still maps it into cost-card-capable fields.",
+            "description": "v2 optional. Present for providers with a generic cost payload (Claude/Codex cost-cache rollups; OpenRouter live keyDataFetched fields; Ramp Router dashboard-API rollups via ramp-stats.sh; DeepSeek platform-dashboard rollups via deepseek-stats.sh). Money is integer CENTS (LVGL has no float printf). Pi uses the sibling `pi` block instead; firmware still maps it into cost-card-capable fields.",
             "properties": {
               "xu": { "type": "integer", "description": "Extra-usage overage used, cents (providerCost.used for Claude; keyUsage for OpenRouter). NOT total spend." },
               "xl": { "type": "integer", "description": "Extra-usage overage limit, cents (providerCost.limit for Claude; keyLimit for OpenRouter)." },
-              "ct": { "type": "integer", "description": "Total spend for the local calendar day, cents (Claude/Codex: publisher rollup from cost cache; OpenRouter: keyUsageDaily)." },
+              "ct": { "type": "integer", "description": "Total spend for the local calendar day, cents (Claude/Codex: publisher rollup from cost cache; OpenRouter: keyUsageDaily; DeepSeek: usage/cost day bucket matching the local date — the API pre-buckets days in its own timezone, so this is USD-only and may be offset by up to a day boundary)." },
               "cm": { "type": "integer", "description": "Total spend trailing 30 days, cents (Claude cost cache only)." },
-              "tt": { "type": "integer", "description": "Tokens for the local calendar day (Claude/Codex cost-cache rollups sum model tokens; OpenRouter sums prompt+completion from analytics/query hourly buckets folded into local days)." },
+              "tt": { "type": "integer", "description": "Tokens for the local calendar day (Claude/Codex cost-cache rollups sum model tokens; OpenRouter sums prompt+completion from analytics/query hourly buckets folded into local days; DeepSeek sums all non-REQUEST usage types across models from usage/amount, on the API's own pre-bucketed day)." },
               "tm": { "type": "integer", "description": "Tokens trailing 30 days (Claude cost cache only)." },
-              "cw": { "type": "integer", "description": "Spend this week, cents (OpenRouter: keyUsageWeekly)." },
+              "cw": { "type": "integer", "description": "Spend this week, cents (OpenRouter: keyUsageWeekly; DeepSeek: trailing 7 days inclusive of today, summed from the daily cost series)." },
               "cr": { "type": "integer", "description": "Account balance remaining, cents (OpenRouter dedicated balance or Balance display string; generic credits.remaining where provided; Moonshot/DeepSeek balance display strings; Ramp remaining_credit_usd). Firmware credits_remaining_c." },
               "cl": { "type": "integer", "description": "Total account credits, cents (OpenRouter: totalCredits; Ramp total_credits_usd). Firmware credits_limit_c." },
               "h":  {
@@ -45,7 +45,7 @@
                 "type": "array",
                 "items": { "type": "integer" },
                 "maxItems": 31,
-                "description": "Per-day TOKEN totals, oldest -> newest. Sibling of `h` (daily spend cents), mirroring the pi.h/pi.ht pairing. OpenRouter only; zero-filled on days with no activity. Firmware caps at STATS_HIST_MAX=31."
+                "description": "Per-day TOKEN totals, oldest -> newest. Sibling of `h` (daily spend cents), mirroring the pi.h/pi.ht pairing. OpenRouter and DeepSeek; zero-filled on days with no activity. Firmware caps at STATS_HIST_MAX=31."
               }
             },
             "additionalProperties": false

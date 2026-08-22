@@ -23,6 +23,7 @@ Layout:
 ./scripts/codexbar-publish.sh --once
 ./scripts/preflight.sh
 ./scripts/openrouter-stats.sh --check   # OpenRouter token pull (auth probe)
+./scripts/deepseek-stats.sh --check     # DeepSeek token/spend pull (auth probe)
 ```
 
 ## Build / dev (`scripts/build/`)

@@ -82,9 +82,19 @@ Rendering:
       row the card shows `<N>M tokens` (today, Mac-local calendar day) and a
       30-day token bar chart, with the balance still on the bottom row. Tokens
       must stay non-zero on a day whose spend is `$0.00` (OpenRouter bills many
-      models at $0 — charting spend alone would flatline). Moonshot, DeepSeek,
-      and other balance providers publish no `cost.ht` and must render the
-      original layout with that band left empty.
+      models at $0 — charting spend alone would flatline). Moonshot and other
+      balance providers publish no `cost.ht` and must render the original
+      layout with that band left empty.
+- [ ] **DeepSeek TODAY card token row + chart.** With a platform token stored
+      (`codexbar-publish.sh --set-deepseek-token`), the card shows a `$X.XX`
+      SPEND hero, `$X.XX this week`, `<N> tokens`, a 30-day token bar chart,
+      and the balance still on the bottom row. With no token stored the helper
+      exits 3 and the card must fall back to the balance-only layout rather
+      than blanking. Note DeepSeek's "today" is the API's own pre-bucketed day
+      (no timezone given, likely UTC+8), so it can disagree with the
+      Claude/Codex/OpenRouter heroes beside it by up to a day boundary — that
+      is expected, not a bug. An account billed in `CNY` renders `$0.00` for
+      spend while tokens still populate.
 - [ ] **Quota bars and percentages read as "headroom" (inverted default).** A
       low quota usage % renders a high remaining percentage and a NEARLY-FULL
       bar; a high quota usage % renders a low remaining percentage and a

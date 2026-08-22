@@ -123,6 +123,52 @@ process.
   reasoning tokens, matching the `oc.tk` convention.
   `openrouter-stats.sh --check` probes auth without publishing.
 
+## DeepSeek platform dashboard API
+
+- **What:** per-day token counts and spend for the `deepseek` provider.
+  CodexBar's DeepSeek hook calls only `GET api.deepseek.com/user/balance`,
+  which returns a balance and no usage, so the toy's DeepSeek card rendered a
+  balance with empty spend/token rows. There is no public usage API: the
+  standing feature request is
+  `deepseek-ai/awesome-deepseek-integration#654` (still open 2026-08-21). The
+  data therefore comes from the console's own private endpoints (verified
+  2026-08-21).
+- **Loaded via:** `scripts/deepseek-stats.sh` — the platform `userToken`
+  (Keychain service `codexbar-toy`, account `deepseek-token`; stored with
+  `codexbar-publish.sh --set-deepseek-token`) Bearer-authorizes
+  `GET /api/v0/usage/amount` and `GET /api/v0/usage/cost`, both
+  `?month=&year=` scoped. `merge-ds.js` folds `tt`, `ht[]`, `ct` and `cw`
+  into the `cost` block the projection already built, leaving its `cr`
+  balance intact.
+- **Lifecycle:** invoked per publish cycle with a 45 s timeout (≤4 requests at
+  10 s each). Fail-soft: no token, an unreachable API, or a rejected session
+  exits 3 and the publisher emits the balance-only DeepSeek provider. The
+  month endpoints re-serve the whole window every call, so there is no local
+  history cache to drift.
+- **Privacy:** only aggregate per-day totals cross Upstash. The responses do
+  carry per-model breakdowns, and those model names are **discarded during
+  aggregation** — they are summed away before the fragment is emitted and
+  never reach the payload (`docs/SECURITY.md`).
+- **Gotchas:** auth failure is returned as **HTTP 200** with `code` or
+  `data.biz_code` of `40002`/`40003` — a status-only check parses `data:null`
+  as an empty month and silently publishes zeros, which is exactly the bug
+  described in issue #654. `biz_data` is an **object** for `amount` but an
+  **array** for `cost`. All `amount` values are **strings**. The `REQUEST`
+  usage type is a request count, not tokens, and is excluded from both sums;
+  any other type is included. Days arrive **pre-bucketed** as `YYYY-MM-DD`
+  with no timezone and no hourly granularity to re-bucket from, so the
+  local-calendar-day convention used elsewhere in the pipeline cannot be
+  honoured — DeepSeek's "today" is not the same 24 hours as the adjacent
+  tiles. DeepSeek's timezone is ahead of US local time whether it is UTC or
+  UTC+8, so during the local afternoon and evening current usage is filed
+  under **tomorrow's** date; the helper folds future-dated buckets into the
+  today slot, because dropping them would blank the token row for up to ~15
+  hours after real activity. A 30-day window crosses a month boundary, so current and previous
+  month are fetched and stitched on the absolute date keys. Accounts billed in
+  `CNY` publish tokens only, since `ct`/`cw` are USD cents by schema. These
+  are undocumented console endpoints and may change without notice.
+  `deepseek-stats.sh --check` probes auth without publishing.
+
 ## Pi Agent local state
 
 - **What:** Pi Agent CLI harness local session history and custom provider/model

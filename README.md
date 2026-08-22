@@ -91,6 +91,12 @@ chmod +x scripts/openrouter-stats.sh
 ./scripts/codexbar-publish.sh --set-openrouter-key   # management key from openrouter.ai/settings/management-keys
 ./scripts/openrouter-stats.sh                        # should print ok:true with cost:{tt,ht}
 ./scripts/codexbar-publish.sh --once                 # merges tokens onto the openrouter row
+
+# 6. (optional) DeepSeek token counts + spend on the DEEPSEEK card
+chmod +x scripts/deepseek-stats.sh
+./scripts/codexbar-publish.sh --set-deepseek-token   # localStorage `userToken` from platform.deepseek.com DevTools
+./scripts/deepseek-stats.sh --check                  # should print ok:true with auth:true
+./scripts/codexbar-publish.sh --once                 # merges tokens + spend onto the deepseek row
 ```
 
 **Cursor session (if `cursor-stats.sh` prints HTTP 403 or `no usable Cursor token data`):** log in at [cursor.com](https://cursor.com), open DevTools → **Network**, reload the usage dashboard, click any `cursor.com/api/…` request, and copy the full **`Cookie`** request header (not just `WorkosCursorSessionToken`). Then either:
@@ -128,6 +134,8 @@ Diagnose without publishing secrets:
 | `codexbar-publish.sh --set-ramp-cookie-clipboard` | Store Ramp Router Cookie from clipboard (`pbpaste`) |
 | `codexbar-publish.sh --set-openrouter-key` | Store the OpenRouter management key (hidden terminal paste) |
 | `openrouter-stats.sh` | Emit OpenRouter `cost.tt`/`cost.ht` tokens (merged by the publisher onto `openrouter`) |
+| `codexbar-publish.sh --set-deepseek-token` | Store the DeepSeek platform `userToken` (hidden terminal paste) |
+| `deepseek-stats.sh` | Emit DeepSeek `cost.tt`/`ht`/`ct`/`cw` tokens + spend (merged by the publisher onto `deepseek`) |
 | `cursor-stats.sh` | Emit `cu` token rollup JSON (merged by the publisher onto `cursor`) |
 | `ramp-stats.sh` | Emit the `ramp` provider (balance + tokens via generic `cost`; appended by the publisher) |
 | `codexbar-publish.sh --install` / `--uninstall` | Add/remove the launchd schedule |

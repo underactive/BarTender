@@ -16,6 +16,7 @@
 #   codexbar-publish.sh --set-ramp-cookie  # paste Ramp Router Cookie header
 #   codexbar-publish.sh --set-ramp-cookie-clipboard  # read from pbpaste
 #   codexbar-publish.sh --set-openrouter-key  # paste OpenRouter management key
+#   codexbar-publish.sh --set-deepseek-token  # paste DeepSeek platform userToken
 #
 # MiMo cookie is auto-refreshed via Playwright headless before each publish
 # cycle if expired. First run: --set-mimo-cookie-login. After that, automatic.
@@ -91,6 +92,8 @@ KC_ACCOUNT_MO="${CBPUB_KC_ACCOUNT_MO:-mimo-session}"
 RAMP_STATS="${CBPUB_RAMP_STATS:-$SELF_DIR/ramp-stats.sh}"
 OPENROUTER_STATS="${CBPUB_OPENROUTER_STATS:-$SELF_DIR/openrouter-stats.sh}"
 KC_ACCOUNT_OR="${CBPUB_KC_ACCOUNT_OR:-openrouter-key}"
+DEEPSEEK_STATS="${CBPUB_DEEPSEEK_STATS:-$SELF_DIR/deepseek-stats.sh}"
+KC_ACCOUNT_DS="${CBPUB_KC_ACCOUNT_DS:-deepseek-token}"
 KC_ACCOUNT_RAMP="${CBPUB_KC_ACCOUNT_RAMP:-ramp-session}"
 # Per-provider last-known-good cache (carry-forward across publish cycles).
 LKG="${CBPUB_LKG:-$HOME/Library/Caches/codexbar-toy/last-good.json}"
@@ -482,6 +485,50 @@ cmd_set_openrouter_key() {
   store_openrouter_key "$key"
 }
 
+get_deepseek_token() {
+  security find-generic-password -s "$KC_SERVICE" -a "$KC_ACCOUNT_DS" -w 2>/dev/null
+}
+
+store_deepseek_token() {
+  local tok="$1"
+  tok="${tok//$'\r'/}"; tok="${tok%%$'\n'*}"
+  tok="${tok## }"; tok="${tok%% }"
+  # DevTools "Copy value" on a localStorage string includes the JSON quotes.
+  tok="${tok#[\"\']}"; tok="${tok%[\"\']}"
+  [[ -n "$tok" ]] || die "empty token — nothing stored" 5
+  if ! security add-generic-password -U -s "$KC_SERVICE" -a "$KC_ACCOUNT_DS" \
+        -l "CodexBar toy DeepSeek platform token" -w "$tok"; then
+    die "security add-generic-password failed (token NOT stored)"
+  fi
+  local n; n=$(get_deepseek_token | wc -c | tr -d ' ')
+  [[ "${n:-0}" -ge 2 ]] || die "no token captured (empty) — re-run --set-deepseek-token" 5
+  log "DeepSeek platform token stored in Keychain (${n} bytes incl. trailing newline)"
+}
+
+cmd_set_deepseek_token() {
+  print -r -- "Storing DeepSeek platform token in Keychain"
+  print -r -- "(service=$KC_SERVICE account=$KC_ACCOUNT_DS)."
+  print -r -- ""
+  print -r -- "Log in at https://platform.deepseek.com, then DevTools >"
+  print -r -- "Application > Local Storage > https://platform.deepseek.com >"
+  print -r -- "copy the value of the key 'userToken' (surrounding quotes are"
+  print -r -- "stripped automatically)."
+  print -r -- ""
+  print -r -- "This is NOT a Cookie header and NOT an api.deepseek.com sk-... key"
+  print -r -- "— an API key cannot read the dashboard (it returns code 40003)."
+  print -r -- ""
+  local tok
+  if [[ ! -t 0 ]]; then
+    tok=$(cat)
+    print -r -- "(read from stdin)"
+  else
+    print -r -- "Paste userToken, then Enter (hidden):"
+    read -rs tok
+    print -r -- ""
+  fi
+  store_deepseek_token "$tok"
+}
+
 # Roll up Claude total spend / tokens / 30-day history from CodexBar's LOCAL
 # cost cache and merge into the v2 payload. Reads ONLY the aggregate `days`
 # map (date -> model -> [input,cacheRead,cacheCreate,output,costNanos,n,n],
@@ -745,6 +792,36 @@ cmd_once() {
     log "note: OpenRouter stats skipped (absent/unrecognized) — publishing dollars-only openrouter"
   fi
 
+  # Patch `cost.tt`/`ht`/`ct`/`cw` onto the CodexBar `deepseek` provider from
+  # deepseek-stats.sh. CodexBar's DeepSeek hook calls only /user/balance, so
+  # the card's token and spend rows are otherwise empty; this is purely
+  # additive to the balance (`cost.cr`) the projection already scraped.
+  # Fail-safe: helper failure -> publish the balance-only deepseek provider.
+  local ds_json="$work/deepseek.json"
+  local ds_rc=127
+  if [[ -x "$DEEPSEEK_STATS" ]]; then
+    if command -v timeout >/dev/null 2>&1; then
+      timeout 45 "$DEEPSEEK_STATS" >"$ds_json" 2>>"$LOG"; ds_rc=$?
+    elif command -v gtimeout >/dev/null 2>&1; then
+      gtimeout 45 "$DEEPSEEK_STATS" >"$ds_json" 2>>"$LOG"; ds_rc=$?
+    else
+      "$DEEPSEEK_STATS" >"$ds_json" 2>>"$LOG"; ds_rc=$?
+    fi
+    if [[ $ds_rc -eq 0 ]]; then
+      if CBPUB_JSON="$json" CBPUB_DS_JSON="$ds_json" osascript -l JavaScript "$SELF_DIR/lib/merge-ds.js" 2>>"$LOG"; then
+        bytes=$(wc -c <"$json" | tr -d ' ')
+      else
+        log "note: DeepSeek merge skipped (malformed helper output) — publishing balance-only deepseek"
+      fi
+    elif [[ $ds_rc -eq 124 ]]; then
+      log "note: DeepSeek helper timed out after 45s — publishing balance-only deepseek"
+    else
+      log "note: DeepSeek helper failed (exit code $ds_rc) — publishing balance-only deepseek"
+    fi
+  else
+    log "note: DeepSeek stats skipped (absent/unrecognized) — publishing balance-only deepseek"
+  fi
+
   # ── MiMo cookie auto-refresh (Playwright headless) ──────────────────────
   # Before calling mimo-stats.sh, check if the stored cookie is still valid.
   # If expired, try a headless Chromium refresh. Fail-safe: on any failure,
@@ -933,6 +1010,8 @@ cmd_status() {
   print -r -- "ramp stats:   $([[ -x "$RAMP_STATS" ]] && echo "$RAMP_STATS" || echo "MISSING/not executable — $RAMP_STATS")"
   print -r -- "openrtr key:  $([[ -n "$(get_openrouter_key)" ]] && echo 'in Keychain' || echo 'MISSING — run --set-openrouter-key')"
   print -r -- "openrtr stat: $([[ -x "$OPENROUTER_STATS" ]] && echo "$OPENROUTER_STATS" || echo "MISSING/not executable — $OPENROUTER_STATS")"
+  print -r -- "deepsk token: $([[ -n "$(get_deepseek_token)" ]] && echo 'in Keychain' || echo 'MISSING — run --set-deepseek-token')"
+  print -r -- "deepsk stat:  $([[ -x "$DEEPSEEK_STATS" ]] && echo "$DEEPSEEK_STATS" || echo "MISSING/not executable — $DEEPSEEK_STATS")"
   print -r -- "lkg cache:    $([[ -r "$LKG" ]] && echo "$LKG ($(grep -o '"id"' "$LKG" 2>/dev/null | wc -l | tr -d ' ') providers)" || echo "none yet — $LKG")"
   print -r -- "--- last log lines ---"
   [[ -f "$LOG" ]] && tail -n 8 "$LOG" || print -r -- "(no log yet)"
@@ -951,6 +1030,7 @@ case "${1:---once}" in
   --set-ramp-cookie) cmd_set_ramp_cookie ;;
   --set-ramp-cookie-clipboard) cmd_set_ramp_cookie_clipboard ;;
   --set-openrouter-key) cmd_set_openrouter_key ;;
+  --set-deepseek-token) cmd_set_deepseek_token ;;
   --install)   cmd_install ;;
   --uninstall) cmd_uninstall ;;
   --status)    cmd_status ;;

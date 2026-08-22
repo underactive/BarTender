@@ -126,6 +126,40 @@ otherwise violate the local-date rollup rule below. Tokens go in the generic
 existed and only the token history (`cost.ht`, sibling of the `cost.h` spend
 history) was missing.
 
+## DeepSeek token + spend rollup
+
+CodexBar's DeepSeek hook returns a balance and no usage, so `deepseek-stats.sh`
+pulls tokens and spend from the console's private dashboard endpoints
+(`GET /api/v0/usage/{amount,cost}`) and `merge-ds.js` folds `cost.tt`, `ht`,
+`ct` and `cw` into the block the projection already built.
+
+Four things constrain this integration:
+
+- **The merge must be additive.** The projection has already reduced DeepSeek's
+  balance display string into `cost.cr`, and that field is what makes
+  `ui_render_card.c` choose the balance layout. Replacing the `cost` object
+  instead of merging into it collapses the card to the standard layout, which
+  charts fields DeepSeek does not publish.
+- **Auth failures arrive as HTTP 200** with `code`/`data.biz_code` `40002` or
+  `40003`. A status-only check reads `data:null` as an empty month and
+  publishes zeros, so the code check is mandatory and is evaluated before the
+  generic non-zero-code branch to keep the "token expired" message actionable.
+- **The endpoints are month-scoped**, so a 30-day window fetches the current
+  and previous month and stitches them on absolute date keys. No local history
+  cache: the window is fully re-derivable each run.
+- **The local-date rollup rule below cannot be honoured here.** Days arrive
+  pre-bucketed as `YYYY-MM-DD` with no timezone and no hourly granularity to
+  re-bucket from, unlike OpenRouter where hour buckets made local days
+  possible. This is a documented, deliberate exception — we match the API's
+  day string to the local date rather than guessing an offset correction. The
+  one correction made is folding future-dated buckets into today: DeepSeek's
+  timezone is ahead of US local time either way, so afternoon/evening usage is
+  filed under tomorrow and would otherwise be dropped for ~15 hours.
+
+`cost.h` is deliberately not published: the balance renderer charts `tok_hist`
+and never reads `p->hist`, and the device's response buffer is a fixed size
+shared by every provider, so an unrendered field is pure overflow risk.
+
 ## Architectural Boundaries
 - **NO secrets in committed config or argv**: write tokens live in Keychain, not files or plist args
 - **NO raw upstream payload publishing**: scripts project/merge a reduced contract before Upstash

@@ -1058,6 +1058,39 @@ static void test_cost_tok_hist_absent(void)
     CHECK_EQ_INT(st.p[0].hist_n, 2);
 }
 
+static void test_deepseek_tokens_and_spend(void)
+{
+    TEST("deepseek_tokens_and_spend");
+
+    // deepseek-stats.sh patches tt/ht/ct/cw onto the balance (cr) that
+    // codexbar-stats.sh already scraped. The generic cost parser must absorb
+    // all of it with no per-provider handling, and cr must survive alongside
+    // the new fields -- ui_render_card keys the balance layout off it.
+    const char *inner =
+        "{\"v\":2,\"ts\":\"2024-01-01T00:00:00Z\","
+        "\"providers\":["
+        "{\"id\":\"deepseek\",\"ok\":true,"
+        "\"cost\":{\"cr\":4075,\"tt\":1000,\"ct\":43,\"cw\":53,"
+        "\"ht\":[0,50,1000]}}"
+        "]}";
+
+    char *env = make_envelope(inner);
+    stats_t st;
+    stats_parse_t r = stats_model_parse(env, &st);
+    free(env);
+
+    CHECK_EQ_INT(r, STATS_PARSE_OK);
+    CHECK(st.p[0].has_cost == true);
+    CHECK_EQ_INT(st.p[0].credits_remaining_c, 4075);
+    CHECK(st.p[0].tok_today == 1000);
+    CHECK_EQ_INT(st.p[0].cost_today_c, 43);
+    CHECK_EQ_INT(st.p[0].cost_week_c, 53);
+    CHECK_EQ_INT(st.p[0].tok_hist_n, 3);
+    CHECK(st.p[0].tok_hist[2] == 1000);
+    // No cost.h published for DeepSeek: the balance card charts tok_hist only.
+    CHECK_EQ_INT(st.p[0].hist_n, 0);
+}
+
 static void test_cost_tok_hist_cap(void)
 {
     TEST("cost_tok_hist_cap");
@@ -1185,6 +1218,7 @@ int main(void)
     test_cu_hist_cap();
     test_cost_tok_hist();
     test_cost_tok_hist_absent();
+    test_deepseek_tokens_and_spend();
     test_cost_tok_hist_cap();
     test_tertiary_field_parsed();
     test_pi_hist_resets_on_pi_block();

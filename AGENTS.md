@@ -59,6 +59,7 @@ See [`scripts/README.md`](scripts/README.md) for layout. User-facing CLIs live a
 | `lmstudio-stats.sh` | LM Studio stats integration |
 | `ramp-stats.sh` | Ramp Router balance + token usage for publish merge |
 | `openrouter-stats.sh` | OpenRouter daily token counts for publish merge |
+| `deepseek-stats.sh` | DeepSeek daily tokens + spend for publish merge |
 | `preflight.sh` | Dependency check, guided setup, optional `--install` / `--flash` |
 | `uninstall.sh` | Remove launchd job and local install artifacts |
 
