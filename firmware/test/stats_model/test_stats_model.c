@@ -1008,6 +1008,86 @@ static void test_cu_hist_cap(void)
     CHECK_EQ_INT(st.p[0].cu_ht_n, STATS_HIST_MAX);
 }
 
+static void test_cost_tok_hist(void)
+{
+    TEST("cost_tok_hist");
+
+    // OpenRouter publishes tokens alongside a $0 spend history: cost.ht must
+    // populate tok_hist[] without disturbing the sibling spend history in h.
+    const char *inner =
+        "{\"v\":2,\"ts\":\"2024-01-01T00:00:00Z\","
+        "\"providers\":["
+        "{\"id\":\"openrouter\",\"ok\":true,"
+        "\"cost\":{\"tt\":60769529,\"cr\":4562,"
+        "\"h\":[0,0,0],\"ht\":[469311,0,60769529]}}"
+        "]}";
+
+    char *env = make_envelope(inner);
+    stats_t st;
+    stats_parse_t r = stats_model_parse(env, &st);
+    free(env);
+
+    CHECK_EQ_INT(r, STATS_PARSE_OK);
+    CHECK(st.p[0].has_cost == true);
+    CHECK(st.p[0].tok_today == 60769529);
+    CHECK_EQ_INT(st.p[0].tok_hist_n, 3);
+    CHECK(st.p[0].tok_hist[0] == 469311);
+    CHECK(st.p[0].tok_hist[2] == 60769529);
+    CHECK_EQ_INT(st.p[0].hist_n, 3);
+}
+
+static void test_cost_tok_hist_absent(void)
+{
+    TEST("cost_tok_hist_absent");
+
+    // Providers that never publish cost.ht must leave tok_hist_n at 0 so the
+    // UI keeps hiding the token chart for them.
+    const char *inner =
+        "{\"v\":2,\"ts\":\"2024-01-01T00:00:00Z\","
+        "\"providers\":["
+        "{\"id\":\"moonshot\",\"ok\":true,\"cost\":{\"cr\":1000,\"h\":[1,2]}}"
+        "]}";
+
+    char *env = make_envelope(inner);
+    stats_t st;
+    stats_parse_t r = stats_model_parse(env, &st);
+    free(env);
+
+    CHECK_EQ_INT(r, STATS_PARSE_OK);
+    CHECK_EQ_INT(st.p[0].tok_hist_n, 0);
+    CHECK_EQ_INT(st.p[0].hist_n, 2);
+}
+
+static void test_cost_tok_hist_cap(void)
+{
+    TEST("cost_tok_hist_cap");
+
+    const int OVER = STATS_HIST_MAX + 3;
+    char arr[1024];
+    int pos = 0;
+    pos += snprintf(arr + pos, sizeof(arr) - pos, "[");
+    for (int i = 0; i < OVER; i++) {
+        if (i > 0) pos += snprintf(arr + pos, sizeof(arr) - pos, ",");
+        pos += snprintf(arr + pos, sizeof(arr) - pos, "%d", i * 1000);
+    }
+    pos += snprintf(arr + pos, sizeof(arr) - pos, "]");
+
+    char inner[2048];
+    snprintf(inner, sizeof(inner),
+             "{\"v\":2,\"ts\":\"2024-01-01T00:00:00Z\","
+             "\"providers\":["
+             "{\"id\":\"openrouter\",\"ok\":true,\"cost\":{\"ht\":%s}}"
+             "]}", arr);
+
+    char *env = make_envelope(inner);
+    stats_t st;
+    stats_parse_t r = stats_model_parse(env, &st);
+    free(env);
+
+    CHECK_EQ_INT(r, STATS_PARSE_OK);
+    CHECK_EQ_INT(st.p[0].tok_hist_n, STATS_HIST_MAX);
+}
+
 static void test_tertiary_field_parsed(void)
 {
     TEST("tertiary_field_t_and_tr_parsed");
@@ -1103,6 +1183,9 @@ int main(void)
     test_lm_week_cap();
     test_lm_hist_caps();
     test_cu_hist_cap();
+    test_cost_tok_hist();
+    test_cost_tok_hist_absent();
+    test_cost_tok_hist_cap();
     test_tertiary_field_parsed();
     test_pi_hist_resets_on_pi_block();
 

@@ -115,6 +115,15 @@ static void parse_cost(const cJSON *e, stats_provider_t *p)
                 p->hist[p->hist_n++] = i32_clamp(hv->valuedouble);
         }
     }
+    const cJSON *ht = cJSON_GetObjectItemCaseSensitive(c, "ht");
+    if (cJSON_IsArray(ht)) {
+        const cJSON *hv;
+        cJSON_ArrayForEach(hv, ht) {
+            if (p->tok_hist_n >= STATS_HIST_MAX) break;
+            if (cJSON_IsNumber(hv))
+                p->tok_hist[p->tok_hist_n++] = i64_clamp(hv->valuedouble);
+        }
+    }
 }
 
 // v2 optional `pi` block: Pi Agent publishes today's spend/tokens,

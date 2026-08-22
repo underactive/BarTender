@@ -104,6 +104,16 @@ static void wifi_mgr_task(void *arg) {
 }
 ```
 
+## OpenRouter token chart
+
+`render_cost_openrouter()` keeps the spend hero, week, and balance rows and
+fills the previously empty band with a token count (row 3) and a 30-day token
+bar chart (rows 4-6), driven by `cost.tt` / `cost.ht` (`tok_today` /
+`tok_hist[]`). Both are gated on token data being present, so the other
+balance providers sharing this renderer (Moonshot, DeepSeek) are unaffected.
+The chart plots tokens rather than the `hist[]` spend series because
+OpenRouter serves many models at $0, which would flatline a spend chart.
+
 ## Summary balance tiles
 
 `render_grid_tile()` shows OpenRouter, MiMo, Moonshot, DeepSeek, and Ramp balances as

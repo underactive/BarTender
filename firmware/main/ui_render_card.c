@@ -386,6 +386,9 @@ static void render_cost_openrouter(const stats_provider_t *p,
                               cost.cost_30, cost.or_lbl };
     for (unsigned i = 0; i < sizeof or_unused / sizeof *or_unused; i++)
         lv_obj_add_flag(or_unused[i], LV_OBJ_FLAG_HIDDEN);
+    // Balance providers that publish no token data (Moonshot, DeepSeek) keep
+    // the original layout with rows 3-6 empty.
+    const bool has_tokens = (p->tok_today > 0 || p->tok_hist_n > 0);
     const ui_rect_t week_r = ui_grid_span(g, 0, 2, 2, 1);
     const ui_rect_t bal_r  = ui_grid_span(g, 0, 7, 2, 1);
     char bal[16], wk[16];
@@ -413,6 +416,41 @@ static void render_cost_openrouter(const stats_provider_t *p,
     lv_label_set_text(cost.or_row2, "balance");
     lv_obj_align_to(cost.or_row2, cost.or_row1, LV_ALIGN_OUT_RIGHT_BOTTOM, 5, 0);
     lv_obj_clear_flag(cost.or_row2, LV_OBJ_FLAG_HIDDEN);
+
+    if (!has_tokens) return;
+
+    // Row 3 — token count, styled to match the week/balance rows.
+    const ui_rect_t tok_r = ui_grid_span(g, 0, 3, 2, 1);
+    char tk[16];
+    fmt_tokens(tk, sizeof tk, p->tok_today);
+    lv_obj_set_pos(cost.or_lbl, tok_r.x + 12, tok_r.y + 2);
+    lv_obj_set_style_text_font(cost.or_lbl, &font_lemonmilk_24, 0);
+    lv_obj_set_style_text_color(cost.or_lbl, lv_color_hex(0x9aa0a6), 0);
+    lv_label_set_text(cost.or_lbl, tk);
+    lv_obj_clear_flag(cost.or_lbl, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_style_text_font(cost.cost_30, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(cost.cost_30, lv_color_hex(0x9aa0a6), 0);
+    lv_label_set_text(cost.cost_30, "tokens");
+    lv_obj_align_to(cost.cost_30, cost.or_lbl, LV_ALIGN_OUT_RIGHT_BOTTOM, 5, 0);
+    lv_obj_clear_flag(cost.cost_30, LV_OBJ_FLAG_HIDDEN);
+
+    if (p->tok_hist_n <= 0) return;
+
+    // Rows 4-6 — 30-day token history. OpenRouter bills many models at $0, so
+    // charting the spend history here would flatline while tokens stay busy.
+    const ui_rect_t chart_r = ui_grid_span(g, 0, 4, 2, 3);
+    lv_obj_set_size(cost.chart, chart_r.w - 24, chart_r.h - 8);
+    lv_obj_set_pos(cost.chart, chart_r.x + 12, chart_r.y + 4);
+    lv_obj_clear_flag(cost.chart, LV_OBJ_FLAG_HIDDEN);
+
+    int n = p->tok_hist_n;
+    if (n > NAV_HIST_PTS) n = NAV_HIST_PTS;
+    lv_color_t cc;
+    int32_t ht32[STATS_HIST_MAX];
+    i64_hist_to_i32(ht32, p->tok_hist, n);
+    (void)render_cost_bar_chart(cost.chart, cost.ser, ht32, n,
+        prov_accent(p->id, &cc) ? cc : lv_color_hex(UI_DEFAULT_CHART_COLOR));
+    if (card_entered) anim_chart_fadein(cost.chart);
 }
 
 // Claude / Codex / Pi TODAY card: spend hero + tokens + bar chart.

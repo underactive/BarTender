@@ -57,6 +57,12 @@ typedef struct {
     int      hist_n;                  // valid entries in hist[] (0 => no chart)
     int32_t  hist[STATS_HIST_MAX];    // per-day spend, cents, oldest -> newest
 
+    // v2 optional `cost.ht`: per-day TOKEN totals, sibling of hist[] above.
+    // OpenRouter publishes tokens but bills many models at $0, so the spend
+    // history alone would chart a flat line. Absent => tok_hist_n stays 0.
+    int      tok_hist_n;                // valid entries in tok_hist[]
+    int64_t  tok_hist[STATS_HIST_MAX];  // per-day tokens, oldest -> newest
+
     // v2 optional `ph`: ~24h usage-% history (0..100), oldest->newest.
     // Usage %, NOT cost — feeds the Usage-Limits card sparkline. Additive
     // within v2 (absent => pct_hist_n=0); not tied to has_cost.

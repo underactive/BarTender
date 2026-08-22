@@ -78,6 +78,13 @@ Rendering:
 - [ ] **Codex/Cursor/OpenRouter Cost card** shows "COST DATA NOT AVAILABLE
       YET"; their Usage-Limits card still shows real remaining session/weekly
       % and **hides** the 24h sparkline (no `ph` for them).
+- [ ] **OpenRouter TODAY card token row + chart.** Below the `$X.XX this week`
+      row the card shows `<N>M tokens` (today, Mac-local calendar day) and a
+      30-day token bar chart, with the balance still on the bottom row. Tokens
+      must stay non-zero on a day whose spend is `$0.00` (OpenRouter bills many
+      models at $0 — charting spend alone would flatline). Moonshot, DeepSeek,
+      and other balance providers publish no `cost.ht` and must render the
+      original layout with that band left empty.
 - [ ] **Quota bars and percentages read as "headroom" (inverted default).** A
       low quota usage % renders a high remaining percentage and a NEARLY-FULL
       bar; a high quota usage % renders a low remaining percentage and a

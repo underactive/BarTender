@@ -78,6 +78,11 @@ uint32_t provider_metric_sig(const stats_provider_t *p)
         h = hash_mix_u32(h, (uint32_t)p->hist_n);
         for (int i = 0; i < p->hist_n && i < STATS_HIST_MAX; i++)
             h = hash_mix_u32(h, (uint32_t)p->hist[i]);
+        h = hash_mix_u32(h, (uint32_t)p->tok_hist_n);
+        for (int i = 0; i < p->tok_hist_n && i < STATS_HIST_MAX; i++) {
+            h = hash_mix_u32(h, (uint32_t)p->tok_hist[i]);
+            h = hash_mix_u32(h, (uint32_t)(p->tok_hist[i] >> 32));
+        }
     }
     h = hash_mix_u32(h, (uint32_t)p->pct_hist_n);
     for (int i = 0; i < p->pct_hist_n && i < STATS_PCT_HIST_MAX; i++)
