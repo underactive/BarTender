@@ -82,9 +82,25 @@ Rendering:
       row the card shows `<N>M tokens` (today, Mac-local calendar day) and a
       30-day token bar chart, with the balance still on the bottom row. Tokens
       must stay non-zero on a day whose spend is `$0.00` (OpenRouter bills many
-      models at $0 — charting spend alone would flatline). Moonshot and other
-      balance providers publish no `cost.ht` and must render the original
-      layout with that band left empty.
+      models at $0 — charting spend alone would flatline). Other balance
+      providers that publish no `cost.ht` must render the original layout with
+      that band left empty.
+- [ ] **Moonshot TODAY card shows Pi-derived tokens.** Moonshot draws the
+      balance card, so its token row and 30-day chart come from tokens derived
+      from local Pi Agent sessions, with the real `$X.XX` balance still on the
+      bottom row. The SPEND hero stays `$0.00` by design — spend is not
+      derived, because an undercounted figure beside an accurate balance would
+      contradict itself.
+- [ ] **Qwen Cloud TODAY card shows a 30-day token total.** Qwen has no
+      balance, so it draws the standard card: token row from `cost.tt` and
+      `30 DAYS TOTAL: $0.00 · <N>M Toks` from `cost.tm`. The bar chart stays
+      empty (that chart plots spend, which Qwen's prepaid Credits plan reports
+      as $0), and the card must no longer read "COST DATA NOT AVAILABLE YET".
+- [ ] **Derived token counts are a floor, not a total.** Both numbers above
+      count only traffic that went through Pi Agent and will read low against
+      the providers' own consoles — measured at 41% coverage on the DeepSeek
+      control. A number lower than the provider's dashboard is expected
+      behavior, not a regression.
 - [ ] **DeepSeek TODAY card token row + chart.** With a platform token stored
       (`codexbar-publish.sh --set-deepseek-token`), the card shows a `$X.XX`
       SPEND hero, `$X.XX this week`, `<N> tokens`, a 30-day token bar chart,

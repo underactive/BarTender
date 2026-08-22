@@ -646,6 +646,14 @@ cmd_once() {
       else
         log "note: Pi Agent merge skipped (malformed helper output) — publishing without Pi"
       fi
+      # Same helper output, second pass: attribute Pi-visible tokens back to
+      # Moonshot / Qwen Cloud, which expose no token API of their own. Kept
+      # separate from merge-pi.js so a fault here cannot disturb Pi itself.
+      if CBPUB_JSON="$json" CBPUB_PI_JSON="$pi_json" osascript -l JavaScript "$SELF_DIR/lib/merge-pd.js" 2>>"$LOG"; then
+        bytes=$(wc -c <"$json" | tr -d ' ')
+      else
+        log "note: Pi-derived token merge skipped (malformed helper output) — publishing without derived tokens"
+      fi
     elif [[ $pi_rc -eq 124 ]]; then
       log "note: Pi Agent helper timed out after 30s — publishing without Pi"
     else

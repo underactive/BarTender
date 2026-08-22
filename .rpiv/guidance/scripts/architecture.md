@@ -160,6 +160,39 @@ Four things constrain this integration:
 and never reads `p->hist`, and the device's response buffer is a fixed size
 shared by every provider, so an unrendered field is pure overflow risk.
 
+## Pi-derived Moonshot / Qwen Cloud tokens
+
+Neither provider exposes token usage anywhere: Moonshot's API is balance-only
+and Qwen Cloud bills in Credits. Pi Agent session rows carry
+`message.provider` beside per-turn token counts, so `pi-agent-stats.sh` emits a
+`derived[]` array in the same scan it already performs, and `merge-pd.js` folds
+it into those providers' `cost` blocks.
+
+This is an accepted undercount, not an estimate to be refined. It captures only
+Pi-routed traffic; on the DeepSeek control (the sole provider with a real
+dashboard total to compare against) Pi saw 41% of August tokens and nothing at
+all on 12 of 21 active days. Anything that reconciles these figures against a
+balance or a provider console will disagree, by design.
+
+Three rules keep it honest:
+
+- **Match the provider id, not the model.** `kimi-*` and `qwen-*` also run via
+  `opencode-go` and `ramp-router`, which bill separately and are already their
+  own providers; matching on model name would double-count across providers.
+- **Publish only what the target card renders.** Moonshot has a balance so it
+  draws the balance card (`tt` + `ht` chart); Qwen Cloud has none so it draws
+  the standard card, which charts spend rather than `ht` and surfaces a 30-day
+  token total (`tt` + `tm`). Publishing `ht` for Qwen would render nothing.
+- **Do not derive spend for Moonshot.** Its card shows the true account balance
+  one row below; an undercounted SPEND next to an accurate balance contradicts
+  itself on screen. Tokens have no competing authoritative number on the card.
+
+Everything `pi-agent-stats.sh` emits — Pi's own totals and these slices — keys
+on the local calendar day, per the rule below. It bucketed in UTC until
+2026-08-21; besides rolling Pi's "today" over mid-afternoon, each UTC bucket
+straddled two local days, which inflated the 30-day token peak and split single
+spend days across two buckets.
+
 ## Architectural Boundaries
 - **NO secrets in committed config or argv**: write tokens live in Keychain, not files or plist args
 - **NO raw upstream payload publishing**: scripts project/merge a reduced contract before Upstash

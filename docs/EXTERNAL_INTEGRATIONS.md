@@ -184,9 +184,37 @@ process.
   non-Pi payload.
 - **Environment / hostname gating:** local macOS files only. The published
   boundary is reduced to `{id:"pi", ok:true, p, pi:{ts,tt,ps,pt,h}}`: today's
-  spend/tokens, max daily spend/tokens, and 30-day daily spend history. Raw prompts,
-  command/session trees, cwd/project paths, model names, response IDs, and
-  provider credentials never leave the Mac.
+  spend/tokens, max daily spend/tokens, and 30-day daily spend history, plus
+  the derived slices below. Raw prompts, command/session trees, cwd/project
+  paths, model names, response IDs, and provider credentials never leave the
+  Mac.
+- **Derived Moonshot / Qwen Cloud tokens (`derived[]`):** Moonshot's API is
+  balance-only and Qwen Cloud bills in Credits, so neither exposes a token
+  count anywhere. Pi session rows carry `message.provider` beside per-turn
+  token counts, making Pi the only available token signal for them.
+  `pi-agent-stats.sh` emits a `derived` array in the same scan and
+  `lib/merge-pd.js` folds it into each provider's `cost` block, leaving
+  Moonshot's `cr` balance intact. `merge-pi.js` handles the `pi` provider
+  itself and ignores the extra key, so the two passes share one session scan.
+
+  **This is a known, accepted undercount.** It sees only traffic routed
+  through Pi Agent; usage from any other client is invisible. Measured against
+  DeepSeek — the one provider where a real dashboard total exists to check
+  against — Pi accounted for **41% of August tokens (72.3M of 178.2M) and
+  showed zero on 12 of the 21 days that had real activity.** Treat these two
+  numbers as a floor, never as the provider's true usage, and never as a basis
+  for reconciling spend against a balance.
+
+  Matching is on the Pi *provider* id (prefix `moonshot`/`qwen`), never the
+  model name: `kimi-*` and `qwen-*` models also run through `opencode-go` and
+  `ramp-router`, which are billed by those services and already tracked as
+  their own providers. Fields follow what each card renders — Moonshot has a
+  balance so it draws the balance card (`tt` + `ht` chart); Qwen Cloud has no
+  balance so it draws the standard card, which charts spend rather than `ht`
+  and shows a 30-day token total (`tt` + `tm`). Spend is deliberately not
+  derived for Moonshot: an undercounted SPEND figure sitting one row above its
+  accurate balance would contradict itself on screen. Unlike Pi's own totals,
+  these slices bucket on the **local** calendar day, per the repo-wide rule.
 - **Key env vars / CLI flags:** `PI_AGENT_HOME`, `PI_AGENT_SESSIONS_DIR`,
   `PI_AGENT_MODELS_FILE`, `PYTHON3`; `--help`.
 - **Gotchas:** Do not confuse Pi Agent sessions with CodexBar's unrelated

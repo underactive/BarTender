@@ -65,7 +65,11 @@ Ramp Router (cents + aggregate spend/token rollups from the router.ramp.com
 dashboard API via `ramp-stats.sh`; no model names, request contents, or
 account identifiers),
 Claude/Codex total spend and token rollups, a 30-day per-day spend history where
-available, and — for Pi Agent — max daily spend,
+available, aggregate Moonshot/Qwen Cloud daily token counts derived from local
+Pi Agent sessions (attributed by provider id only — model names, prompts, and
+session paths are still never projected; this widens the Pi reduction from
+purely aggregate to per-provider attribution for those two ids), and — for Pi
+Agent — max daily spend,
 max daily tokens, and a 30-day daily spend history reduced from local Pi Agent
 session usage. Account email / `identity` / `loginMethod` are still **not
 projected** (`codexbar-stats.sh` simply never reads them; they are absent by

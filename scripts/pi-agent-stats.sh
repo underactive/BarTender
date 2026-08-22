@@ -11,7 +11,37 @@
 #
 # Output is privacy-reduced and contains no prompts, cwd/project paths, model
 # names, provider credentials, response IDs, or raw session rows:
-#   {"id":"pi","ok":true,"p":41.2,"pi":{"ts":512,"tt":123456,"ps":1245,"pt":893421,"h":[...],"ht":[...]}}
+#   {"id":"pi","ok":true,"p":41.2,"pi":{"ts":512,"tt":123456,"ps":1245,"pt":893421,"h":[...],"ht":[...]},
+#    "derived":[{"id":"moonshot","tt":0,"ht":[...]},{"id":"qwencloud","tt":0,"tm":9217336}]}
+#
+# DERIVED PROVIDER SLICES (`derived`)
+# Moonshot and Qwen Cloud expose no token-usage API at all — Moonshot's API is
+# balance-only and Qwen Cloud bills in Credits, which are not tokens. Pi Agent
+# session rows DO carry `message.provider` alongside per-turn token counts, so
+# usage routed through Pi can be attributed back to those providers. This is
+# the only token signal available for them.
+#
+# It is a KNOWN UNDERCOUNT. It sees only traffic that went through Pi Agent;
+# usage from any other client is invisible. Measured against DeepSeek, the one
+# provider where a real dashboard total exists to check against, Pi accounted
+# for 41% of August tokens (72.3M of 178.2M) and showed zero on 12 of 21 days
+# that had real activity. Treat these two numbers as a floor, never as the
+# provider's true usage, and never as a basis for reconciling spend.
+#
+# Matching is on the Pi PROVIDER id, never the model name: kimi-* and qwen-*
+# models also run through `opencode-go` and `ramp-router`, which are billed by
+# those services and already tracked as their own providers. Attributing them
+# to Moonshot/Qwen would double-count across providers.
+#
+# Field choice is driven by what each card actually renders:
+#   moonshot   publishes cost.cr, so it draws the balance card — tt fills the
+#              token row and ht[] the 30-day chart.
+#   qwencloud  publishes no balance, so it draws the standard card, which
+#              charts cost.h (spend) rather than ht and shows a 30-day token
+#              total — hence tt + tm, and no ht that would render nothing.
+# Spend is deliberately NOT derived for Moonshot: its card shows the real
+# account balance one row below, and an undercounted SPEND beside an accurate
+# balance would contradict itself on screen.
 #
 # Field units:
 #   p      today's usage as % of the prior 29-day peak (or peak tokens if
@@ -122,6 +152,30 @@ def usage_objects(row: dict):
     return candidates
 
 
+# Pi provider-id prefix -> payload provider id. Prefix rather than exact match
+# so a plan rename (qwen-token-plan-individual -> ...-team) does not silently
+# drop the slice. Matching the provider, not the model, keeps kimi/qwen traffic
+# billed by opencode-go or ramp-router out of these totals.
+DERIVED_PREFIXES = (("moonshot", "moonshot"), ("qwen", "qwencloud"))
+
+
+def derived_target(provider) -> str | None:
+    if not isinstance(provider, str):
+        return None
+    p = provider.strip().lower()
+    for prefix, target in DERIVED_PREFIXES:
+        if p.startswith(prefix):
+            return target
+    return None
+
+
+def row_provider(row: dict):
+    msg = row.get("message")
+    if isinstance(msg, dict) and msg.get("provider"):
+        return msg.get("provider")
+    return row.get("provider")
+
+
 def timestamp_day(row: dict):
     """Bucket a session row on the LOCAL calendar day.
 
@@ -179,6 +233,8 @@ dates = [today - dt.timedelta(days=i) for i in range(29, -1, -1)]
 window = {d: {"dollars": 0.0, "tokens": 0} for d in dates}
 start, end = dates[0], dates[-1]
 
+derived_window = {target: {d: 0 for d in dates} for _, target in DERIVED_PREFIXES}
+
 files = rows = used_rows = 0
 for path in sessions_dir.rglob("*.jsonl"):
     # Fast filename-date prune for the common Pi Agent naming convention:
@@ -206,6 +262,11 @@ for path in sessions_dir.rglob("*.jsonl"):
                 if not isinstance(row, dict):
                     continue
                 day = timestamp_day(row)
+                target = derived_target(row_provider(row))
+                if target is not None and day in derived_window[target]:
+                    for usage in usage_objects(row):
+                        derived_window[target][day] += usage_tokens(usage)
+
                 if day not in window:
                     continue
                 for usage in usage_objects(row):
@@ -264,15 +325,37 @@ else:
     pct = 0.0
 pct = max(0.0, pct)
 
+# Only fields the target card actually renders (see header): moonshot draws the
+# balance card (tt + ht), qwencloud the standard card (tt + tm).
+DERIVED_FIELDS = {"moonshot": ("tt", "ht"), "qwencloud": ("tt", "tm")}
+
+derived = []
+for target, by_day in derived_window.items():
+    series = [int(by_day[d]) for d in dates]
+    if not any(series):
+        continue
+    fields = DERIVED_FIELDS.get(target, ("tt",))
+    entry = {"id": target, "tt": series[-1]}
+    if "ht" in fields:
+        entry["ht"] = series
+    if "tm" in fields:
+        entry["tm"] = sum(series)
+    derived.append(entry)
+
 provider = {
     "id": "pi",
     "ok": True,
     "p": pct,
     "pi": {"ts": latest_spend, "tt": latest_tokens, "ps": max_spend, "pt": max_tokens, "h": hist, "ht": tok_hist},
 }
+if derived:
+    provider["derived"] = derived
 print(json.dumps(provider, separators=(",", ":")))
 eprint(
     f"reduced {used_rows} usage rows from {files} files: "
     f"today={latest_spend}c/{latest_tokens}tok max={max_spend}c/{max_tokens}tok hist={len(hist)}d"
 )
+for e in derived:
+    eprint(f"derived {e['id']}: today={e['tt']}tok 30d={sum(derived_window[e['id']].values())}tok "
+           f"(Pi-visible traffic only — undercounts other clients)")
 PY

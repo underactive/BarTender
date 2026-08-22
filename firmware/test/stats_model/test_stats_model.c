@@ -1091,6 +1091,49 @@ static void test_deepseek_tokens_and_spend(void)
     CHECK_EQ_INT(st.p[0].hist_n, 0);
 }
 
+static void test_pi_derived_tokens(void)
+{
+    TEST("pi_derived_tokens");
+
+    // merge-pd.js attributes Pi-visible tokens to providers that expose no
+    // token API. The two carry different fields because their cards differ:
+    // moonshot has a balance so it draws the balance card (tt + ht chart);
+    // qwencloud has none so it draws the standard card, which surfaces a
+    // 30-day total (tt + tm) and charts spend rather than ht.
+    const char *inner =
+        "{\"v\":2,\"ts\":\"2024-01-01T00:00:00Z\","
+        "\"providers\":["
+        "{\"id\":\"moonshot\",\"ok\":true,"
+        "\"cost\":{\"cr\":1952,\"tt\":41999,\"ht\":[0,8338505,41999]}},"
+        "{\"id\":\"qwencloud\",\"ok\":true,"
+        "\"cost\":{\"tt\":0,\"tm\":9217336}}"
+        "]}";
+
+    char *env = make_envelope(inner);
+    stats_t st;
+    stats_parse_t r = stats_model_parse(env, &st);
+    free(env);
+
+    CHECK_EQ_INT(r, STATS_PARSE_OK);
+    CHECK_EQ_INT(st.n, 2);
+
+    // moonshot: balance survives beside the derived tokens, so the card keeps
+    // the balance layout that charts tok_hist.
+    CHECK(st.p[0].has_cost == true);
+    CHECK_EQ_INT(st.p[0].credits_remaining_c, 1952);
+    CHECK(st.p[0].tok_today == 41999);
+    CHECK_EQ_INT(st.p[0].tok_hist_n, 3);
+    CHECK(st.p[0].tok_hist[1] == 8338505);
+
+    // qwencloud: has_cost flips true off tokens alone, which is what lifts the
+    // card off its "no cost data" state. No balance, so no balance layout.
+    CHECK(st.p[1].has_cost == true);
+    CHECK(st.p[1].tok_month == 9217336);
+    CHECK_EQ_INT(st.p[1].credits_remaining_c, 0);
+    CHECK_EQ_INT(st.p[1].credits_limit_c, 0);
+    CHECK_EQ_INT(st.p[1].tok_hist_n, 0);
+}
+
 static void test_cost_tok_hist_cap(void)
 {
     TEST("cost_tok_hist_cap");
@@ -1219,6 +1262,7 @@ int main(void)
     test_cost_tok_hist();
     test_cost_tok_hist_absent();
     test_deepseek_tokens_and_spend();
+    test_pi_derived_tokens();
     test_cost_tok_hist_cap();
     test_tertiary_field_parsed();
     test_pi_hist_resets_on_pi_block();
