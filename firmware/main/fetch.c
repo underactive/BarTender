@@ -21,10 +21,11 @@ static int64_t now_ms(void) { return esp_timer_get_time() / 1000; }
 static bool do_fetch(const char *url, const char *key, const char *tok)
 {
     ui_set_status("fetching...");
-    // v2 payload (Claude cost block + ~31-day history) is ~1-2 KB escaped vs
-    // the old ~450 B; size generously. Oversize still fails safe via
-    // upstash.c's response-too-big guard -> "bad data from store".
-    static char body[4096];
+    // v2 payload is ~3.7 KB escaped as of the DeepSeek token/spend rollup and
+    // grows with every per-day history array. Oversize fails safe via
+    // upstash.c's response-too-big guard, but it blanks the WHOLE toy with
+    // "bad data from store" rather than one tile, so keep real headroom here.
+    static char body[8192];
     size_t bl = 0;
     upstash_status_t us = upstash_get(url, key, tok, body, sizeof body, &bl);
     if (us != UPSTASH_OK) {
