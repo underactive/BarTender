@@ -192,7 +192,11 @@ process.
 - **Gotchas:** Do not confuse Pi Agent sessions with CodexBar's unrelated
   `pi-sessions-v*.json` cost-cache files, which are used only to roll up Codex
   cost. Local/free Pi backends may have token usage with `$0.00` spend; the Pi
-  row can still render token counts while the spend graph is flat.
+  row can still render token counts while the spend graph is flat. Every
+  bucket keys on the **local** calendar day; this helper bucketed in UTC until
+  2026-08-21, which rolled Pi's "today" over mid-afternoon in US timezones and
+  also straddled two local days per bucket, inflating the 30-day token peak
+  and splitting single spend days in two.
 
 ## clawd-tank board layer (vendored)
 

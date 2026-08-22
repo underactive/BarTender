@@ -26,6 +26,11 @@
 #   pi.ht  daily token history, oldest -> newest, 30 points (sibling of h);
 #          drives the summary bar's today-vs-average comparison
 #
+# All buckets key on the Mac's LOCAL calendar day, matching every other rollup
+# in this pipeline. This helper previously bucketed in UTC, which rolled Pi's
+# "today" over mid-afternoon in US timezones and disagreed with the Claude,
+# Codex and OpenRouter tiles beside it.
+#
 # Note: 'p' is today vs the busiest prior day (excluding today), so a new
 #       record can exceed 100%. ps/pt are the overall 30-day peaks.
 #
@@ -118,18 +123,23 @@ def usage_objects(row: dict):
 
 
 def timestamp_day(row: dict):
+    """Bucket a session row on the LOCAL calendar day.
+
+    Row timestamps are UTC-stamped, but every rollup in this pipeline keys on
+    the Mac's local date. .astimezone() with no argument resolves the correct
+    local offset per instant, so days spanning a DST change bucket correctly.
+    """
     msg = row.get("message") if isinstance(row.get("message"), dict) else {}
     raw = row.get("timestamp") or msg.get("timestamp")
     if not raw:
         return None
-    s = str(raw)
     try:
-        parsed = dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
+        parsed = dt.datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
     except ValueError:
         return None
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=dt.timezone.utc)
-    return parsed.astimezone(dt.timezone.utc).date()
+    return parsed.astimezone().date()
 
 
 home = Path.home()
@@ -164,7 +174,7 @@ if not sessions_dir.is_dir():
     eprint(f"sessions dir absent: {sessions_dir}")
     sys.exit(3)
 
-today = dt.datetime.now(dt.timezone.utc).date()
+today = dt.datetime.now().astimezone().date()
 dates = [today - dt.timedelta(days=i) for i in range(29, -1, -1)]
 window = {d: {"dollars": 0.0, "tokens": 0} for d in dates}
 start, end = dates[0], dates[-1]
