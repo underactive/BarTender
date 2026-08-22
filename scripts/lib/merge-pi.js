@@ -26,7 +26,15 @@ if(ts===null || tt===null || ps===null || pt===null || !Array.isArray(src.pi.h))
 var h=[];
 for(var i=0;i<src.pi.h.length && h.length<30;i++){ var hv=i32(src.pi.h[i]); if(hv!==null) h.push(hv); }
 if(h.length===0){ eprint('empty helper history'); $.exit(3); }
+// Optional: absent from older publishers, in which case pi_ht_n stays 0 and
+// the firmware falls back to the windowed primary.pct for Pi's summary bar.
+// When present it drives provider_avg_bar()'s today-vs-30-day-average compare.
+var ht=[];
+if(Array.isArray(src.pi.ht)){
+  for(var i=0;i<src.pi.ht.length && ht.length<30;i++){
+    var tv=i64(src.pi.ht[i]); if(tv!==null) ht.push(tv); } }
 var dst={id:'pi', ok:true, pi:{ts:ts, tt:tt, ps:ps, pt:pt, h:h}};
+if(ht.length>0) dst.pi.ht=ht;
 if(p!==null){ if(p<0)p=0; dst.p=Math.round(p*10)/10; }
 var hadPi=false;
 var next=[];
@@ -39,5 +47,5 @@ pay.providers=next;
 var w=$.NSString.alloc.initWithUTF8String(JSON.stringify(pay))
   .writeToFileAtomicallyEncodingError(jsonPath,true,4,null);
 if(!w){ eprint('payload writeback failed'); $.exit(2); }
-eprint((hadPi?'replaced':'prepended')+' pi provider: today='+ts+'c/'+tt+'tok max='+ps+'c/'+pt+'tok hist='+h.length+'d');
+eprint((hadPi?'replaced':'prepended')+' pi provider: today='+ts+'c/'+tt+'tok max='+ps+'c/'+pt+'tok hist='+h.length+'d tokhist='+ht.length+'d');
 $.exit(0);
