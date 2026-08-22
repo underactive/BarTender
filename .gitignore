@@ -34,6 +34,7 @@ firmware/test/**/*.dSYM/
 # These contain the account email / spend aggregates / private project paths.
 # docs/SECURITY.md treats the publish path as a private single-user channel;
 # these must never enter version control. (See §"Project exception".)
-docs/references/codexbar-usage-claude.sample.json
-docs/references/codexbar-cost-cache-claude.sample.json
-docs/references/codexbar-raw-claude.sample.json
+# Wildcard rather than a per-file list: AGENTS.md documents this directory as
+# gitignored, but the explicit list silently failed to cover new fixtures.
+docs/references/*.sample.json
+!docs/references/.gitkeep
