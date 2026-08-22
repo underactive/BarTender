@@ -22,6 +22,7 @@ Layout:
 ./scripts/codexbar-stats.sh --json
 ./scripts/codexbar-publish.sh --once
 ./scripts/preflight.sh
+./scripts/openrouter-stats.sh --check   # OpenRouter token pull (auth probe)
 ```
 
 ## Build / dev (`scripts/build/`)

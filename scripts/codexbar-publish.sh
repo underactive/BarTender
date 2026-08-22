@@ -15,6 +15,7 @@
 #   codexbar-publish.sh --set-mimo-cookie-login  # one-time Playwright login (headed)
 #   codexbar-publish.sh --set-ramp-cookie  # paste Ramp Router Cookie header
 #   codexbar-publish.sh --set-ramp-cookie-clipboard  # read from pbpaste
+#   codexbar-publish.sh --set-openrouter-key  # paste OpenRouter management key
 #
 # MiMo cookie is auto-refreshed via Playwright headless before each publish
 # cycle if expired. First run: --set-mimo-cookie-login. After that, automatic.
@@ -88,6 +89,8 @@ KC_ACCOUNT_OG="${CBPUB_KC_ACCOUNT_OG:-opencodego-session}"
 MIMO_STATS="${CBPUB_MIMO_STATS:-$SELF_DIR/mimo-stats.sh}"
 KC_ACCOUNT_MO="${CBPUB_KC_ACCOUNT_MO:-mimo-session}"
 RAMP_STATS="${CBPUB_RAMP_STATS:-$SELF_DIR/ramp-stats.sh}"
+OPENROUTER_STATS="${CBPUB_OPENROUTER_STATS:-$SELF_DIR/openrouter-stats.sh}"
+KC_ACCOUNT_OR="${CBPUB_KC_ACCOUNT_OR:-openrouter-key}"
 KC_ACCOUNT_RAMP="${CBPUB_KC_ACCOUNT_RAMP:-ramp-session}"
 # Per-provider last-known-good cache (carry-forward across publish cycles).
 LKG="${CBPUB_LKG:-$HOME/Library/Caches/codexbar-toy/last-good.json}"
@@ -441,6 +444,44 @@ cmd_set_ramp_cookie_clipboard() {
   store_ramp_session "$session"
 }
 
+get_openrouter_key() {
+  security find-generic-password -s "$KC_SERVICE" -a "$KC_ACCOUNT_OR" -w 2>/dev/null
+}
+
+store_openrouter_key() {
+  local key="$1"
+  key="${key//$'\r'/}"; key="${key%%$'\n'*}"
+  key="${key## }"; key="${key%% }"
+  [[ -n "$key" ]] || die "empty key — nothing stored" 5
+  if ! security add-generic-password -U -s "$KC_SERVICE" -a "$KC_ACCOUNT_OR" \
+        -l "CodexBar toy OpenRouter management key" -w "$key"; then
+    die "security add-generic-password failed (key NOT stored)"
+  fi
+  local n; n=$(get_openrouter_key | wc -c | tr -d ' ')
+  [[ "${n:-0}" -ge 2 ]] || die "no key captured (empty) — re-run --set-openrouter-key" 5
+  log "OpenRouter management key stored in Keychain (${n} bytes incl. trailing newline)"
+}
+
+cmd_set_openrouter_key() {
+  print -r -- "Storing OpenRouter management key in Keychain"
+  print -r -- "(service=$KC_SERVICE account=$KC_ACCOUNT_OR)."
+  print -r -- ""
+  print -r -- "Create one at https://openrouter.ai/settings/management-keys —"
+  print -r -- "an ordinary inference key is rejected with HTTP 403 even though"
+  print -r -- "it shares the same sk-or-v1- prefix."
+  print -r -- ""
+  local key
+  if [[ ! -t 0 ]]; then
+    key=$(cat)
+    print -r -- "(read from stdin)"
+  else
+    print -r -- "Paste management key, then Enter (hidden):"
+    read -rs key
+    print -r -- ""
+  fi
+  store_openrouter_key "$key"
+}
+
 # Roll up Claude total spend / tokens / 30-day history from CodexBar's LOCAL
 # cost cache and merge into the v2 payload. Reads ONLY the aggregate `days`
 # map (date -> model -> [input,cacheRead,cacheCreate,output,costNanos,n,n],
@@ -675,6 +716,35 @@ cmd_once() {
     log "note: OpenCode Go stats skipped (absent/unrecognized) — publishing limits-only opencodego"
   fi
 
+  # Patch `cost.tt`/`cost.ht` (token counts) onto the CodexBar `openrouter`
+  # provider from openrouter-stats.sh. CodexBar supplies only dollar figures
+  # for OpenRouter, so this is additive to the cost block it already built.
+  # Fail-safe: helper failure -> publish the dollars-only openrouter provider.
+  local or_json="$work/openrouter.json"
+  local or_rc=127
+  if [[ -x "$OPENROUTER_STATS" ]]; then
+    if command -v timeout >/dev/null 2>&1; then
+      timeout 45 "$OPENROUTER_STATS" >"$or_json" 2>>"$LOG"; or_rc=$?
+    elif command -v gtimeout >/dev/null 2>&1; then
+      gtimeout 45 "$OPENROUTER_STATS" >"$or_json" 2>>"$LOG"; or_rc=$?
+    else
+      "$OPENROUTER_STATS" >"$or_json" 2>>"$LOG"; or_rc=$?
+    fi
+    if [[ $or_rc -eq 0 ]]; then
+      if CBPUB_JSON="$json" CBPUB_OR_JSON="$or_json" osascript -l JavaScript "$SELF_DIR/lib/merge-or.js" 2>>"$LOG"; then
+        bytes=$(wc -c <"$json" | tr -d ' ')
+      else
+        log "note: OpenRouter merge skipped (malformed helper output) — publishing dollars-only openrouter"
+      fi
+    elif [[ $or_rc -eq 124 ]]; then
+      log "note: OpenRouter helper timed out after 45s — publishing dollars-only openrouter"
+    else
+      log "note: OpenRouter helper failed (exit code $or_rc) — publishing dollars-only openrouter"
+    fi
+  else
+    log "note: OpenRouter stats skipped (absent/unrecognized) — publishing dollars-only openrouter"
+  fi
+
   # ── MiMo cookie auto-refresh (Playwright headless) ──────────────────────
   # Before calling mimo-stats.sh, check if the stored cookie is still valid.
   # If expired, try a headless Chromium refresh. Fail-safe: on any failure,
@@ -861,6 +931,8 @@ cmd_status() {
   print -r -- "mimo stats:   $([[ -x "$MIMO_STATS" ]] && echo "$MIMO_STATS" || echo "MISSING/not executable — $MIMO_STATS")"
   print -r -- "ramp sess:    $([[ -n "$(get_ramp_session)" ]] && echo 'in Keychain' || echo 'MISSING — run --set-ramp-cookie')"
   print -r -- "ramp stats:   $([[ -x "$RAMP_STATS" ]] && echo "$RAMP_STATS" || echo "MISSING/not executable — $RAMP_STATS")"
+  print -r -- "openrtr key:  $([[ -n "$(get_openrouter_key)" ]] && echo 'in Keychain' || echo 'MISSING — run --set-openrouter-key')"
+  print -r -- "openrtr stat: $([[ -x "$OPENROUTER_STATS" ]] && echo "$OPENROUTER_STATS" || echo "MISSING/not executable — $OPENROUTER_STATS")"
   print -r -- "lkg cache:    $([[ -r "$LKG" ]] && echo "$LKG ($(grep -o '"id"' "$LKG" 2>/dev/null | wc -l | tr -d ' ') providers)" || echo "none yet — $LKG")"
   print -r -- "--- last log lines ---"
   [[ -f "$LOG" ]] && tail -n 8 "$LOG" || print -r -- "(no log yet)"
@@ -878,6 +950,7 @@ case "${1:---once}" in
   --set-mimo-cookie-login) cmd_set_mimo_cookie_login ;;
   --set-ramp-cookie) cmd_set_ramp_cookie ;;
   --set-ramp-cookie-clipboard) cmd_set_ramp_cookie_clipboard ;;
+  --set-openrouter-key) cmd_set_openrouter_key ;;
   --install)   cmd_install ;;
   --uninstall) cmd_uninstall ;;
   --status)    cmd_status ;;

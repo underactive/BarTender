@@ -114,6 +114,18 @@ into `cost.cr`. OpenRouter's dedicated balance remains the preferred source.
 This preserves the reduced, firmware-owned payload rather than exposing
 upstream provider objects.
 
+## OpenRouter token rollup
+
+CodexBar reports OpenRouter in dollars only, so `openrouter-stats.sh` pulls
+tokens directly from `POST /api/v1/analytics/query` and `merge-or.js` folds
+`cost.tt` + `cost.ht` into the block the projection already built. The query
+uses **hour** granularity and re-buckets into local calendar days: the daily
+`/api/v1/activity` endpoint refuses the in-progress UTC day, which would
+otherwise violate the local-date rollup rule below. Tokens go in the generic
+`cost` block rather than a provider-specific one because `cost.tt` already
+existed and only the token history (`cost.ht`, sibling of the `cost.h` spend
+history) was missing.
+
 ## Architectural Boundaries
 - **NO secrets in committed config or argv**: write tokens live in Keychain, not files or plist args
 - **NO raw upstream payload publishing**: scripts project/merge a reduced contract before Upstash

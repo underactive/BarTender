@@ -30,7 +30,7 @@
               "xl": { "type": "integer", "description": "Extra-usage overage limit, cents (providerCost.limit for Claude; keyLimit for OpenRouter)." },
               "ct": { "type": "integer", "description": "Total spend for the local calendar day, cents (Claude/Codex: publisher rollup from cost cache; OpenRouter: keyUsageDaily)." },
               "cm": { "type": "integer", "description": "Total spend trailing 30 days, cents (Claude cost cache only)." },
-              "tt": { "type": "integer", "description": "Tokens for the local calendar day (Claude/Codex cost-cache rollups sum model tokens)." },
+              "tt": { "type": "integer", "description": "Tokens for the local calendar day (Claude/Codex cost-cache rollups sum model tokens; OpenRouter sums prompt+completion from analytics/query hourly buckets folded into local days)." },
               "tm": { "type": "integer", "description": "Tokens trailing 30 days (Claude cost cache only)." },
               "cw": { "type": "integer", "description": "Spend this week, cents (OpenRouter: keyUsageWeekly)." },
               "cr": { "type": "integer", "description": "Account balance remaining, cents (OpenRouter dedicated balance or Balance display string; generic credits.remaining where provided; Moonshot/DeepSeek balance display strings; Ramp remaining_credit_usd). Firmware credits_remaining_c." },
@@ -40,6 +40,12 @@
                 "items": { "type": "integer" },
                 "maxItems": 31,
                 "description": "Per-day total spend, cents, oldest -> newest (Claude and Ramp; firmware caps at STATS_HIST_MAX=31)."
+              },
+              "ht": {
+                "type": "array",
+                "items": { "type": "integer" },
+                "maxItems": 31,
+                "description": "Per-day TOKEN totals, oldest -> newest. Sibling of `h` (daily spend cents), mirroring the pi.h/pi.ht pairing. OpenRouter only; zero-filled on days with no activity. Firmware caps at STATS_HIST_MAX=31."
               }
             },
             "additionalProperties": false

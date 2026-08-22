@@ -85,6 +85,12 @@ chmod +x scripts/ramp-stats.sh
 ./scripts/codexbar-publish.sh --set-ramp-cookie-clipboard   # after copying Cookie from router.ramp.com DevTools
 ./scripts/ramp-stats.sh                              # should print ok:true with cost:{...}
 ./scripts/codexbar-publish.sh --once                 # appends the ramp provider
+
+# 5. (optional) OpenRouter token counts on the OPENROUTER card
+chmod +x scripts/openrouter-stats.sh
+./scripts/codexbar-publish.sh --set-openrouter-key   # management key from openrouter.ai/settings/management-keys
+./scripts/openrouter-stats.sh                        # should print ok:true with cost:{tt,ht}
+./scripts/codexbar-publish.sh --once                 # merges tokens onto the openrouter row
 ```
 
 **Cursor session (if `cursor-stats.sh` prints HTTP 403 or `no usable Cursor token data`):** log in at [cursor.com](https://cursor.com), open DevTools → **Network**, reload the usage dashboard, click any `cursor.com/api/…` request, and copy the full **`Cookie`** request header (not just `WorkosCursorSessionToken`). Then either:
@@ -120,6 +126,8 @@ Diagnose without publishing secrets:
 | `codexbar-publish.sh --set-cursor-session-clipboard` | Store Cursor Cookie from clipboard (`pbpaste`) |
 | `codexbar-publish.sh --set-ramp-cookie` | Store Ramp Router Cookie header (visible terminal paste) |
 | `codexbar-publish.sh --set-ramp-cookie-clipboard` | Store Ramp Router Cookie from clipboard (`pbpaste`) |
+| `codexbar-publish.sh --set-openrouter-key` | Store the OpenRouter management key (hidden terminal paste) |
+| `openrouter-stats.sh` | Emit OpenRouter `cost.tt`/`cost.ht` tokens (merged by the publisher onto `openrouter`) |
 | `cursor-stats.sh` | Emit `cu` token rollup JSON (merged by the publisher onto `cursor`) |
 | `ramp-stats.sh` | Emit the `ramp` provider (balance + tokens via generic `cost`; appended by the publisher) |
 | `codexbar-publish.sh --install` / `--uninstall` | Add/remove the launchd schedule |

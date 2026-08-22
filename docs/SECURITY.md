@@ -95,7 +95,11 @@ session JSONL rows.
   cost figure.
 - **Credentials never transit and never rest in the repo.** The Upstash
   **write** token lives in the macOS Keychain (service `codexbar-toy`),
-  passed to `curl` via a `0600 -K` config (never argv/log/plist). The device
+  passed to `curl` via a `0600 -K` config (never argv/log/plist). Provider
+  credentials sit beside it under the same service — including the OpenRouter
+  management key (account `openrouter-key`), which `openrouter-stats.sh`
+  sends via an in-process `urllib` header rather than `curl`, so it never
+  appears in argv where `ps` could read it. The device
   holds a *separate* **read-only** token. The capture fixtures under
   `docs/references/` (account email, spend) are `.gitignore`d — they must
   never be committed if this repo is ever versioned.

@@ -92,6 +92,37 @@ process.
   not `document.cookie`); the JWT expires in ~15 min so it is minted fresh
   every run; `ramp-stats.sh --check` probes auth without publishing.
 
+## OpenRouter analytics API
+
+- **What:** per-day token counts for the `openrouter` provider. CodexBar's
+  `openRouterUsage` hook supplies dollars only (`keyUsageDaily`, `balance`,
+  `totalCredits`), so tokens come straight from OpenRouter (verified
+  2026-08-21).
+- **Loaded via:** `scripts/openrouter-stats.sh` — a Keychain **management**
+  key (service `codexbar-toy`, account `openrouter-key`; stored with
+  `codexbar-publish.sh --set-openrouter-key`) Bearer-authorizes
+  `POST /api/v1/analytics/query` with `metrics:[tokens_total]`,
+  `granularity:hour` over a 30-local-day window. `merge-or.js` folds `tt`
+  (tokens today) and `ht[]` (daily totals) into the `cost` block CodexBar
+  already built, leaving its dollar fields intact.
+- **Lifecycle:** invoked per publish cycle with a 45 s timeout. Fail-soft: no
+  key or an unreachable API exits 3 and the publisher emits the dollars-only
+  OpenRouter provider. The API serves the full 30-day window every call, so
+  there is no local history cache to drift.
+- **Privacy:** only aggregate daily token totals cross Upstash — the query
+  requests no `dimensions`, so no model slugs, API-key IDs, or request
+  contents are ever returned, let alone published (`docs/SECURITY.md`).
+- **Gotchas:** the obvious `GET /api/v1/activity` endpoint is **unusable for
+  today** — it rejects the in-progress UTC day outright (`400 Date must be
+  within the last 30 (completed) UTC days`), so before ~17:00 local its newest
+  bucket contains none of the current local day. Hourly buckets are what make
+  local-calendar-day rollups possible at all. Hourly `time_range` is capped at
+  31 days. A normal inference key returns 403 despite sharing the `sk-or-v1-`
+  prefix. Responses nest as `{"data":{"data":[...]}}` and return metric values
+  as **strings**. `tokens_total` counts prompt + completion and excludes
+  reasoning tokens, matching the `oc.tk` convention.
+  `openrouter-stats.sh --check` probes auth without publishing.
+
 ## Pi Agent local state
 
 - **What:** Pi Agent CLI harness local session history and custom provider/model
