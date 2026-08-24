@@ -242,14 +242,6 @@ bool provider_balance_c(const stats_provider_t *p, int32_t *out_c)
     }
 }
 
-int balance_seg_count(int32_t balance_c)
-{
-    if (balance_c < 0) balance_c = 0;
-    int n = balance_c / BALANCE_SEG_VALUE_C
-          + ((balance_c % BALANCE_SEG_VALUE_C) ? 1 : 0);
-    return clampi(n, 1, BALANCE_SEG_MAX);
-}
-
 int balance_bar_units(int32_t balance_c, int segs)
 {
     if (balance_c < 0) balance_c = 0;

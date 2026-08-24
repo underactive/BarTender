@@ -119,8 +119,11 @@ OpenRouter serves many models at $0, which would flatline a spend chart.
 `render_grid_tile()` shows OpenRouter, MiMo, Moonshot, DeepSeek, and Ramp balances as
 `$X.XX` when their reduced payload balance is available. It reuses the existing
 `row_bar[]` widget: `balance_bar_draw_cb()` handles `LV_EVENT_DRAW_POST` and
-cuts $10 segments with screen-background divider lines. Every render resets the
-shared bar's range and user data first, so a slot switching back to a percentage
+cuts the bar into 4 quarter segments ($25 each, `BALANCE_SEG_MAX`) with
+screen-background divider lines. The bar always reads as a fixed $0-100 gauge;
+balances over $100 add filled circles to the left for each completed hundred
+and the gauge shows the remaining window. Every render resets the shared
+bar's range and user data first, so a slot switching back to a percentage
 tile cannot retain divider state.
 
 ## Usage indicators

@@ -126,20 +126,20 @@ Rendering:
       fade opacity in the accent color; light accents (Pi) cycle grey↔white;
       bars at or below 100% stay static.
 - [ ] **Prepaid balance tiles**: OpenRouter, MiMo, Moonshot, DeepSeek, and Ramp show
-      `$X.XX` plus a segmented $10 bar when a balance is available: `$0` is one
-      empty segment, `$18` is one full + 80% of a second, `$40` is four full,
-      and `$92` is nine full + 20% of a tenth (10 segments total). Other
-      providers retain their percentage label and solid bar. Reuse a tile slot
-      between balance and percentage providers without stale dividers/ranges.
+      `$X.XX` plus a bar segmented into 4 quarters ($25 each) reading against a
+      fixed $0-100 scale when a balance is available: `$0` is empty, `$22` fills
+      under one quarter, `$50` is exactly two quarters full, and `$92` is
+      three full quarters + most of the fourth. Other providers retain their
+      percentage label and solid bar. Reuse a tile slot between balance and
+      percentage providers without stale dividers/ranges.
 - [ ] **Balances over $100 add filled circles**: each completed $100 draws as a
       filled accent circle to the left of the bar, which shrinks and shifts
       right to fit so the circles start where a plain bar would. The bar then
-      shows the remaining $0-100 window with no dividers at all (not tenths):
-      `$150` -> one circle + half-full plain bar (`o==--`), `$300` -> two
-      circles + full bar (`oo====`), `$611.95` -> six circles + nearly-empty
-      plain bar. Balances `<= $100` keep the tenths gauge. Reusing the
-      slot for a `<= $100` balance or a percentage tile leaves no leftover
-      circles.
+      shows the remaining $0-100 window on the same quarter-segmented gauge:
+      `$150` -> one circle + half-full bar with 2 of 4 quarters filled
+      (`o==--`), `$300` -> two circles + full bar (`oo====`), `$611.95` -> six
+      circles + nearly-empty bar. Reusing the slot for a `<= $100` balance or a
+      percentage tile leaves no leftover circles.
 - [ ] **Summary rows show the provider's CodexBar logo** in the left margin,
       tinted with that provider's accent (light grey if un-themed), spanning
       the name + bar lines (two-line row). A provider with no bundled icon

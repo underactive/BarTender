@@ -414,26 +414,18 @@ void render_grid_tile(int slot, const stats_provider_t *p,
         int max_circ = (bar_w - BALANCE_GAUGE_MIN_W) / BALANCE_CIRCLE_PITCH;
         if (max_circ < 0) max_circ = 0;
         if (circles > max_circ) circles = max_circ;
-        if (circles > 0) {
-            // Over $100: the gauge shows the current $100 window undivided, so
-            // the circles carry the coarse magnitude and the bar reads as one
-            // continuous hundred. The fill keeps $10 resolution.
-            int32_t window_c = balance_window_c(bal_c, circles);
-            // Circles occupy the left of the tile's bar track, so the shrunk
-            // bar starts after them and the pair still ends at the same edge.
-            lv_obj_set_pos(row_bar[slot],
-                cell->x + 32 + circles * BALANCE_CIRCLE_PITCH, cell->y + 18);
-            lv_obj_set_size(row_bar[slot], bar_w - circles * BALANCE_CIRCLE_PITCH, 5);
-            lv_bar_set_range(row_bar[slot], 0, BALANCE_SEG_MAX * 100);
-            lv_bar_set_value(row_bar[slot],
-                balance_bar_units(window_c, BALANCE_SEG_MAX), LV_ANIM_OFF);
-            lv_obj_set_user_data(row_bar[slot], BALANCE_BAR_PACK(0, circles));
-        } else {
-            int segs = balance_seg_count(bal_c);
-            lv_bar_set_range(row_bar[slot], 0, segs * 100);
-            lv_bar_set_value(row_bar[slot], balance_bar_units(bal_c, segs), LV_ANIM_OFF);
-            lv_obj_set_user_data(row_bar[slot], (void *)(intptr_t)segs);
-        }
+        // Every balance bar reads as a fixed $0-100 gauge split into quarters;
+        // completed hundreds beyond the current window are carried by circles.
+        int32_t window_c = balance_window_c(bal_c, circles);
+        // Circles occupy the left of the tile's bar track, so the shrunk
+        // bar starts after them and the pair still ends at the same edge.
+        lv_obj_set_pos(row_bar[slot],
+            cell->x + 32 + circles * BALANCE_CIRCLE_PITCH, cell->y + 18);
+        lv_obj_set_size(row_bar[slot], bar_w - circles * BALANCE_CIRCLE_PITCH, 5);
+        lv_bar_set_range(row_bar[slot], 0, BALANCE_SEG_MAX * 100);
+        lv_bar_set_value(row_bar[slot],
+            balance_bar_units(window_c, BALANCE_SEG_MAX), LV_ANIM_OFF);
+        lv_obj_set_user_data(row_bar[slot], BALANCE_BAR_PACK(BALANCE_SEG_MAX, circles));
         lv_obj_set_style_bg_color(row_bar[slot], bar_color(p, 0.0f), LV_PART_INDICATOR);
         lv_obj_refresh_ext_draw_size(row_bar[slot]);
         update_bar_pulse(row_bar[slot], 0.0f, NULL);

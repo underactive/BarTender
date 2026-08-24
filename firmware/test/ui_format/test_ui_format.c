@@ -130,19 +130,13 @@ static void test_summary_provider_name(void)
 
 static void test_balance_helpers(void)
 {
-    EQ_INT(balance_seg_count(0), 1, "balance segments: $0 -> 1");
-    EQ_INT(balance_seg_count(500), 1, "balance segments: $5 -> 1");
-    EQ_INT(balance_seg_count(1800), 2, "balance segments: $18 -> 2");
-    EQ_INT(balance_seg_count(4000), 4, "balance segments: $40 -> 4");
-    EQ_INT(balance_seg_count(9200), 10, "balance segments: $92 -> 10");
-    EQ_INT(balance_seg_count(10000), 10, "balance segments: $100 -> 10");
-    EQ_INT(balance_seg_count(10500), 10, "balance segments: cap");
-    EQ_INT(balance_seg_count(-100), 1, "balance segments: negative -> 1");
-    EQ_INT(balance_bar_units(0, 1), 0, "balance units: $0");
-    EQ_INT(balance_bar_units(1800, 2), 180, "balance units: $18");
-    EQ_INT(balance_bar_units(4000, 4), 400, "balance units: $40");
-    EQ_INT(balance_bar_units(9200, 10), 920, "balance units: $92");
-    EQ_INT(balance_bar_units(20000, 10), 1000, "balance units: cap");
+    // Every balance bar is a fixed $0-100 gauge split into quarters ($25 each).
+    EQ_INT(balance_bar_units(0, BALANCE_SEG_MAX), 0, "balance units: $0");
+    EQ_INT(balance_bar_units(2200, BALANCE_SEG_MAX), 88, "balance units: $22");
+    EQ_INT(balance_bar_units(2500, BALANCE_SEG_MAX), 100, "balance units: $25 -> 1 quarter");
+    EQ_INT(balance_bar_units(5000, BALANCE_SEG_MAX), 200, "balance units: $50 -> 2 quarters");
+    EQ_INT(balance_bar_units(10000, BALANCE_SEG_MAX), 400, "balance units: $100 -> full");
+    EQ_INT(balance_bar_units(20000, BALANCE_SEG_MAX), 400, "balance units: cap");
 
     // $100 circles: ceil(balance/$100) - 1 (exact multiples prefer a full bar).
     EQ_INT(balance_circle_count(0), 0, "circles: $0 -> 0");

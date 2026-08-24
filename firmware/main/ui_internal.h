@@ -76,12 +76,12 @@ extern const lv_font_t font_lemonmilk_23;
 #define SUMMARY_GRID_SLOTS ((UI_GRID_ROWS - UI_SUMMARY_TOP_ROWS) * UI_GRID_COLS)
 #define UI_GRID_COLOR    0x8da4c0
 #define UI_GRID_OPA      LV_OPA_90
-#define BALANCE_SEG_MAX  10
-#define BALANCE_SEG_VALUE_C 1000  // $10 per segment, in cents
+#define BALANCE_SEG_MAX  4
+#define BALANCE_SEG_VALUE_C 2500  // $25 per segment (quarter of $100), in cents
 // Balances over $100 render each completed $100 as a filled circle to the
 // left of the bar; the bar shrinks and shifts right to fit, and shows the
-// remaining $0-100 window on an undivided gauge. Circles draw into the bar
-// widget's ext_draw_size margin (see balance_bar_draw_cb /
+// remaining $0-100 window on a quarter-segmented gauge. Circles draw into the
+// bar widget's ext_draw_size margin (see balance_bar_draw_cb /
 // balance_bar_ext_size_cb).
 #define BALANCE_CIRCLE_UNIT_C 10000  // $100 per circle, in cents
 #define BALANCE_CIRCLE_D      6      // filled-circle diameter, px
@@ -273,7 +273,6 @@ bool is_hidden_provider(const char *id);
 provider_kind_t provider_kind(const char *id);
 bool provider_pct_is_baseline(provider_kind_t k);
 bool provider_balance_c(const stats_provider_t *p, int32_t *out_c);
-int balance_seg_count(int32_t balance_c);
 int balance_bar_units(int32_t balance_c, int segs);
 // Number of completed $100 circles for a balance (0 when <= $100).
 int balance_circle_count(int32_t balance_c);
