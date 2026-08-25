@@ -30,6 +30,10 @@ firmware/test/**/*.dSYM/
 # Timestamped screenshots dumped at repo root by the capture scripts.
 /screenshot_*.png
 
+# ---- Pi agent state (session-local, machine-specific) ----
+.pi/
+.rpiv/
+
 # ---- Local-only capture fixtures (SECURITY-CRITICAL — never commit) ----
 # These contain the account email / spend aggregates / private project paths.
 # docs/SECURITY.md treats the publish path as a private single-user channel;
