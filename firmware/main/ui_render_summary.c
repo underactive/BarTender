@@ -105,25 +105,39 @@ static void fmt_summary_pct(char *buf, size_t n, bool has, float source_pct,
 // secondary bar is hidden for this provider. Quota-backed values convert to
 // remaining headroom; baseline-relative values retain their source ratio.
 //
-// For OpenCode Go the secondary bar shows the tertiary tier (t/tr) instead of
-// the secondary tier (s/sr), because the summary page swaps primary/secondary
-// display for this provider (secondary replaces the top bar, tertiary becomes
+// For Cursor the secondary bar shows the tertiary tier (t/tr), which
+// CodexBar uses for Third Party API usage. OpenCode Go also shows its tertiary
+// tier instead of the secondary tier because the summary page swaps its
+// primary/secondary display (secondary replaces the top bar, tertiary becomes
 // the smaller bottom bar). Qwen has no tertiary tier, so it returns -1 and the
 // small bar stays hidden.
-static int secondary_pct(const stats_provider_t *p)
+// Cursor's `t` value is displayed as remaining headroom. Round after the
+// subtraction so 87.5% used matches the dashboard's 13% remaining display.
+// Other providers retain the existing summary rounding behavior.
+static int summary_secondary_pct_int(provider_kind_t k, float source_pct)
+{
+    if (k == PK_CURSOR)
+        return clampi((int)(100.0f - source_pct + 0.5f), 0, 100);
+    return summary_pct_int(k, source_pct);
+}
+
+static float secondary_pct(const stats_provider_t *p)
 {
     provider_kind_t rpk = provider_kind(p->id);
     if (((rpk == PK_CLAUDE || rpk == PK_CODEX) && p->secondary.has)
         || rpk == PK_LMSTUDIO
         || rpk == PK_OLLAMA
-        || (rpk == PK_OPENCODEGO && p->tertiary.has)) {
-        float pct = (rpk == PK_OPENCODEGO) ? p->tertiary.pct : p->secondary.pct;
-        return clampi((int)(pct + 0.5f), 0, 100);
+        || (rpk == PK_OPENCODEGO && p->tertiary.has)
+        || (rpk == PK_CURSOR && p->tertiary.has)) {
+        float pct = (rpk == PK_OPENCODEGO || rpk == PK_CURSOR)
+                        ? p->tertiary.pct : p->secondary.pct;
+        if (pct < 0.0f) return 0.0f;
+        return pct > 100.0f ? 100.0f : pct;
     }
     if (rpk == PK_OPENROUTER && p->has_cost && p->extra_limit_c > 0) {
-        return extra_pct(p);
+        return (float)extra_pct(p);
     }
-    return -1;
+    return -1.0f;
 }
 
 // Nudge Montserrat-10 suffix down so its baseline lines up with Montserrat-14 primary.
@@ -147,22 +161,26 @@ static void layout_dual_pct_left(lv_obj_t *primary, lv_obj_t *secondary,
     lv_obj_clear_flag(secondary, LV_OBJ_FLAG_HIDDEN);
 }
 
-// Summary-row secondary bar (row_bar_w): Claude/Codex weekly remaining %, LM
-// Studio requests %, or OpenRouter budget headroom; hidden otherwise.
+// Summary-row secondary bar (row_bar_w): Cursor Third Party API usage,
+// Claude/Codex weekly remaining %, LM Studio/Ollama activity, OpenCode Go's
+// tertiary tier, or OpenRouter budget headroom; hidden otherwise.
 // Extracted from render() (Fowler audit).
 //
-// For OpenCode Go the secondary bar shows the tertiary tier (t/tr) instead of
-// the secondary tier (s/sr), because the summary page swaps primary/secondary
-// display for this provider.
+// Cursor and OpenCode Go use the tertiary tier (t/tr) for this smaller bar;
+// OpenCode Go swaps its secondary tier into the top bar.
 static void render_summary_secondary_bar(int slot, const stats_provider_t *p)
 {
     provider_kind_t rpk = provider_kind(p->id);
     if (((rpk == PK_CLAUDE || rpk == PK_CODEX) && p->secondary.has)
         || rpk == PK_LMSTUDIO
         || rpk == PK_OLLAMA
-        || (rpk == PK_OPENCODEGO && p->tertiary.has)) {
-        float pct = (rpk == PK_OPENCODEGO) ? p->tertiary.pct : p->secondary.pct;
-        int wv = clampi((int)(pct + 0.5f), 0, 100);
+        || (rpk == PK_OPENCODEGO && p->tertiary.has)
+        || (rpk == PK_CURSOR && p->tertiary.has)) {
+        float pct = (rpk == PK_OPENCODEGO || rpk == PK_CURSOR)
+                        ? p->tertiary.pct : p->secondary.pct;
+        int wv = (rpk == PK_CURSOR)
+                     ? 100 - summary_secondary_pct_int(rpk, pct)
+                     : clampi((int)(pct + 0.5f), 0, 100);
         int fill = provider_pct_is_baseline(rpk) ? wv : bar_fill(wv);
         lv_bar_set_value(row_bar_w[slot], fill, LV_ANIM_OFF);
         if (!bar_should_pulse(pct)
@@ -270,14 +288,14 @@ void render_summary_row(int slot, const stats_provider_t *p,
         update_bar_pulse(row_bar[slot], top_pct, p->id);
         lv_obj_set_style_text_color(row_val[slot], lv_color_hex(0xffffff), 0);
         {
-            int sv = secondary_pct(p);
-            if (sv >= 0) {
+            float sv = secondary_pct(p);
+            if (sv >= 0.0f) {
                 char primary_buf[12];
                 char secondary_buf[16];
                 snprintf(primary_buf, sizeof primary_buf, "%d%%",
                          summary_pct_int(rpk_oc, top_pct));
                 snprintf(secondary_buf, sizeof secondary_buf, " / %d%%",
-                         summary_pct_int(rpk_oc, (float)sv));
+                         summary_secondary_pct_int(rpk_oc, sv));
                 layout_dual_pct_left(row_val[slot], row_val_s[slot],
                     primary_buf, secondary_buf, (lv_coord_t)val_x,
                     (lv_coord_t)(pixel_y + 15));
@@ -328,7 +346,7 @@ void render_grid_tile(int slot, const stats_provider_t *p,
                             : (avg_swap ? avg_pct : p->primary.pct);
     // Independent of top_has: e.g. Codex's weekly (secondary) window can be
     // known even when the 5h primary/session window has no recent data.
-    int sv = secondary_pct(p);
+    float sv = secondary_pct(p);
     int32_t bal_c = 0;
     const bool bal_mode = p->ok && provider_balance_c(p, &bal_c);
 
@@ -346,13 +364,13 @@ void render_grid_tile(int slot, const stats_provider_t *p,
         lv_obj_add_flag(row_val_s[slot], LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_style_text_color(row_id[slot], lv_color_hex(0xffffff), 0);
     } else if (p->ok && top_has) {
-        if (sv >= 0) {
+        if (sv >= 0.0f) {
             char primary_buf[12];
             char secondary_buf[16];
             snprintf(primary_buf, sizeof primary_buf, "%d%%",
                      summary_pct_int(rpk_oc, top_pct));
             snprintf(secondary_buf, sizeof secondary_buf, " / %d%%",
-                     summary_pct_int(rpk_oc, (float)sv));
+                     summary_secondary_pct_int(rpk_oc, sv));
             layout_dual_pct_left(row_id[slot], row_val_s[slot],
                 primary_buf, secondary_buf,
                 (lv_coord_t)(cell->x + 32), (lv_coord_t)(cell->y + 2));

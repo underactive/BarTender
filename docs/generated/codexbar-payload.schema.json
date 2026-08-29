@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://bartender/docs/generated/codexbar-payload.schema.json",
   "title": "CodexBar toy Upstash payload (inner, decoded from the {\"result\":\"...\"} envelope)",
-  "description": "Hand-maintained. Producer: scripts/codexbar-stats.sh --json (usage % + extra-usage $) augmented by scripts/codexbar-publish.sh (Claude/Codex cost rollups from CodexBar's local cost caches plus the reduced Pi Agent provider from scripts/pi-agent-stats.sh, the LM Studio provider from scripts/lmstudio-stats.sh, the Ollama provider from scripts/ollama-stats.sh, and optional per-provider `cu` on `cursor` from scripts/cursor-stats.sh). Consumer: firmware/main/stats_model.{h,c}. v1 = pre-cost {id,ok,p?,pr?,s?,sr?}; v2 is a strict superset adding optional per-provider `cost`, `ph`, `pi`, `lm`, `ol`, and `cu` objects. Firmware accepts v1 and v2; rejects other versions.",
+  "description": "Hand-maintained. Producer: scripts/codexbar-stats.sh --json (usage % + extra-usage $) augmented by scripts/codexbar-publish.sh (Claude/Codex cost rollups from CodexBar's local cost caches plus the reduced Pi Agent provider from scripts/pi-agent-stats.sh, the LM Studio provider from scripts/lmstudio-stats.sh, the Ollama provider from scripts/ollama-stats.sh, and optional per-provider `cu` on `cursor` from scripts/cursor-stats.sh). Consumer: firmware/main/stats_model.{h,c}. v1 = pre-cost {id,ok,p?,pr?,s?,sr?,t?,tr?}; v2 is a strict superset adding optional per-provider `cost`, `ph`, `pi`, `lm`, `ol`, and `cu` objects. Firmware accepts v1 and v2; rejects other versions.",
   "type": "object",
   "required": ["v", "ts", "providers"],
   "properties": {
@@ -20,7 +20,7 @@
           "pr": { "type": "string", "description": "Primary reset hint." },
           "s":  { "type": "number", "description": "Secondary/weekly used %, 0-100." },
           "sr": { "type": "string", "description": "Secondary reset hint." },
-          "t":  { "type": "number", "description": "Tertiary used %, 0-100." },
+          "t":  { "type": "number", "description": "Tertiary used %, 0-100 (Cursor's Third Party API pool)." },
           "tr": { "type": "string", "description": "Tertiary reset hint." },
           "cost": {
             "type": "object",

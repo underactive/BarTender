@@ -62,6 +62,9 @@ Rendering:
 - [ ] **Summary** shows the windowed provider rows for the current scroll
       offset; tapping a row opens that provider's page (no menu screen
       exists anymore).
+- [ ] **Cursor Third Party API bar**: a Cursor payload with `t: 87.5`
+      renders a smaller secondary bar at 13% remaining and a `13%` secondary
+      label; omitting `t` hides that bar without affecting the primary bar.
 - [ ] **Summary token total counts to refreshed values** over the same short
       ease-out animation used by the card hero metrics, without restarting
       on each summary redraw.

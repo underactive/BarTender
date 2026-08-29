@@ -164,7 +164,7 @@ if (!anyParsed && expected.length===0){ eprint("error: codexbar returned no usab
 
 if (env('CBAR_MODE')==='json'){
   // v2 projection. PII (accountEmail/loginMethod/identity) is structurally
-  // never read here. `p/pr/s/sr` are usage %; the optional `cost` object
+  // never read here. `p/pr/s/sr/t/tr` are usage %; the optional `cost` object
   // carries only the extra-usage OVERAGE (providerCost: a $used/$limit figure,
   // NOT total spend) as integer cents. Total spend/tokens and the per-day
   // history are merged in by codexbar-publish.sh from CodexBar's local cost

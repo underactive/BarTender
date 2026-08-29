@@ -20,6 +20,9 @@ process.
   reads local caches; `auto` may scrape web dashboards.
 - **Key env vars / CLI flags:** `CODEXBAR_BIN`, `CODEXBAR_CONFIG`,
   `CBAR_CLI_PROVIDERS` (default `codex`), `CBAR_TIMEOUT`; `--json`, `--all`.
+- **Cursor usage tiers:** CodexBar maps the included plan to `primary`, Cursor
+  Models to `secondary`, and the Third Party API pool to `tertiary`; the
+  reduced payload preserves these as `p`, `s`, and `t` respectively.
 - **Gotchas:** exit code is non-zero if *any* provider fails but JSON is still
   valid (JSON is authoritative); `--provider all` returns ~40 providers;
   `codexbar serve` does **not** cache (rejected). Claude/Codex cost-cache day

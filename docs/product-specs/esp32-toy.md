@@ -27,10 +27,12 @@ opening anything.
       no erase and no forced portal.
 - [ ] After provisioning the device joins WiFi and, within ~15 s, shows one
       row per provider: id, a colored bar plus its display percentage for the
-      primary window. Quota-backed providers show headroom (`100 - used%`);
-      Pi/MiMo/LM Studio baseline ratios retain the used percentage. When Pi
-      Agent local usage exists on the Mac, `pi` appears as a first-class row in
-      this same provider list rather than a separate screen.
+      primary window. Cursor also shows a smaller bar for its Third Party API
+      pool (the tertiary usage tier). Quota-backed providers show headroom
+      (`100 - used%`); Pi/MiMo/LM Studio baseline ratios retain the used
+      percentage. When Pi Agent local usage exists on the Mac, `pi` appears as
+      a first-class row in this same provider list rather than a separate
+      screen.
 - [ ] Providers reported `ok:false` render as a dimmed "off", not blank.
 - [ ] A status line shows link state and "updated Ns ago".
 - [ ] The screen renders in portrait orientation (taller than wide); the
@@ -47,7 +49,8 @@ opening anything.
       ever associated** (e.g. relocated where no remembered SSID is in
       range), not only once connected. Nothing on-device wipes credentials.
 - [ ] Rendered quota remaining percentages equal `100 - used%` from a `curl
-      GET` of the same Upstash key; baseline-relative activity percentages
+      GET` of the same Upstash key; this includes Cursor's smaller Third Party
+      API bar sourced from `t`. Baseline-relative activity percentages
       preserve the source ratio.
 - [ ] OpenRouter, MiMo, Moonshot, DeepSeek, and Ramp show a `$X.XX` prepaid-balance
       headline when a balance is published, with a bar always segmented into 4

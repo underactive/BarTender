@@ -55,6 +55,9 @@ a glanceable spend + limits monitor, not just a clipped headroom-% list.
       provider's **CodexBar brand color** (e.g. Claude `0xCC7C5E`, Codex
       `0x49A3B0`, Cursor `0x00BFA5`, OpenRouter `0x6F42C1`). Unknown providers
       fall back to the green/amber/red usage ramp. Color is independent of fill.
+- [ ] **Cursor Third Party API bar.** The Cursor summary tile shows its
+      tertiary `t` usage tier as a smaller second bar, rendered as remaining
+      headroom (`100 - used%`); for example, `t: 87.5` reads as 13% remaining.
 - [ ] **Provider logo on summary rows.** Each summary row shows the
       provider's CodexBar logo (A8 silhouette, accent-tinted) in the left
       margin, spanning the two-line row. Source: `scripts/build/assets/codexbar-logos/`

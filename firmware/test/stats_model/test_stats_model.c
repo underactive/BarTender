@@ -583,7 +583,7 @@ static void test_cursor_provider_parsed(void)
     const char *inner =
         "{\"v\":2,\"ts\":\"2024-01-01T00:00:00Z\","
         "\"providers\":["
-        "{\"id\":\"cursor\",\"ok\":true,"
+        "{\"id\":\"cursor\",\"ok\":true,\"t\":87.5,\"tr\":\"monthly\","
         "\"cu\":{\"sess\":true,\"tk\":50000,\"mxt\":200000,"
         "\"ht\":[1000,2000,3000]}}"
         "]}";
@@ -597,6 +597,9 @@ static void test_cursor_provider_parsed(void)
     CHECK_STR(st.p[0].id, "cursor");
     CHECK(st.p[0].has_cu == true);
     CHECK(st.p[0].cu_sess_ok == true);
+    CHECK(st.p[0].tertiary.has == true);
+    CHECK(st.p[0].tertiary.pct > 87.4f && st.p[0].tertiary.pct < 87.6f);
+    CHECK_STR(st.p[0].tertiary.reset, "monthly");
     CHECK_EQ_INT((long long)st.p[0].cu_tok_today, 50000LL);
     CHECK_EQ_INT((long long)st.p[0].cu_tok_month_max, 200000LL);
     CHECK_EQ_INT(st.p[0].cu_ht_n, 3);

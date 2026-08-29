@@ -2,11 +2,11 @@
 //
 // Two-step parse of the Upstash response into a flat struct.
 //   body  = {"result":"<escaped-json>"}                       (Upstash envelope)
-//   inner = {v,ts,providers:[{id,ok,p?,pr?,s?,sr?,cost?}]}     (our payload)
+//   inner = {v,ts,providers:[{id,ok,p?,pr?,s?,sr?,t?,tr?,cost?}]} (our payload)
 // Field optionality matches the live contract verified against real bytes:
-// an `ok:false` provider carries ONLY id+ok; `p`/`s` may be int or float.
+// an `ok:false` provider carries ONLY id+ok; `p`/`s`/`t` may be int or float.
 //
-// Schema versions: v1 = {id,ok,p?,pr?,s?,sr?}. v2 is a strict SUPERSET — same
+// Schema versions: v1 = {id,ok,p?,pr?,s?,sr?,t?,tr?}. v2 is a strict SUPERSET — same
 // fields plus an optional `cost` object (Claude and Pi providers this build). A v2 parser
 // reads v1 unchanged (no cost => has_cost=false); both v1 and v2 are accepted.
 #pragma once
