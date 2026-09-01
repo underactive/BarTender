@@ -38,8 +38,9 @@ for(var d=0;d<src.derived.length;d++){
     if(!pr || pr.id!==e.id) continue;
     // Merge in place. moonshot already carries cost.cr from the projection,
     // and that field is what selects its balance card layout; replacing the
-    // object would drop it. qwencloud has no cost block at all, so one is
-    // created here -- that is what promotes its card off the "N/A" state.
+    // object would drop it. qwencloud may already carry cost.cu from the
+    // projection, so create the block only when it is absent; the derived
+    // tokens are what promote its card off the "N/A" state.
     if(!pr.cost || typeof pr.cost!=='object' || Array.isArray(pr.cost)) pr.cost={};
     pr.cost.tt=tt;
     if(ht.length>0) pr.cost.ht=ht;

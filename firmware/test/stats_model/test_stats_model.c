@@ -1109,7 +1109,9 @@ static void test_pi_derived_tokens(void)
         "{\"id\":\"moonshot\",\"ok\":true,"
         "\"cost\":{\"cr\":1952,\"tt\":41999,\"ht\":[0,8338505,41999]}},"
         "{\"id\":\"qwencloud\",\"ok\":true,"
-        "\"cost\":{\"tt\":0,\"tm\":9217336}}"
+        "\"s\":26.6,\"sr\":\"2026-09-04 10:17:00\","
+        "\"cost\":{\"tt\":0,\"tm\":9217336,"
+        "\"cu\":\"663.81 / 2,500 credits used\"}}"
         "]}";
 
     char *env = make_envelope(inner);
@@ -1131,7 +1133,11 @@ static void test_pi_derived_tokens(void)
     // qwencloud: has_cost flips true off tokens alone, which is what lifts the
     // card off its "no cost data" state. No balance, so no balance layout.
     CHECK(st.p[1].has_cost == true);
+    CHECK(st.p[1].secondary.has == true);
+    CHECK(st.p[1].secondary.pct == 26.6f);
+    CHECK_STR(st.p[1].secondary.reset, "2026-09-04 10:17:00");
     CHECK(st.p[1].tok_month == 9217336);
+    CHECK_STR(st.p[1].credits_used, "663.81 / 2,500 credits used");
     CHECK_EQ_INT(st.p[1].credits_remaining_c, 0);
     CHECK_EQ_INT(st.p[1].credits_limit_c, 0);
     CHECK_EQ_INT(st.p[1].tok_hist_n, 0);

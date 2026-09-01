@@ -263,6 +263,18 @@ static void test_provider_tok_today(void)
     EQ_INT(provider_tok_today(&p), 42, "tok_today: default cost path");
 }
 
+static void test_provider_metric_sig_includes_credits(void)
+{
+    stats_provider_t p;
+    memset(&p, 0, sizeof p);
+    strcpy(p.id, "qwencloud");
+    p.has_cost = true;
+    uint32_t before = provider_metric_sig(&p);
+    strcpy(p.credits_used, "663.81 / 2,500 credits used");
+    uint32_t after = provider_metric_sig(&p);
+    CHECK(before != after, "metric_sig: Qwen credits-used changes signature");
+}
+
 static void test_provider_avg_bar(void)
 {
     stats_provider_t p;
@@ -358,6 +370,7 @@ int main(void)
     test_provider_has_limits_card();
     test_i64_hist_to_i32();
     test_provider_tok_today();
+    test_provider_metric_sig_includes_credits();
     test_provider_avg_bar();
     test_colors();
 

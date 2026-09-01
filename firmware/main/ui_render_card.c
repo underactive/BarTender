@@ -518,9 +518,15 @@ static void render_cost_standard(const stats_provider_t *p,
         prov_accent(p->id, &cc) ? cc : lv_color_hex(0xe06c4b));
     if (card_entered) anim_chart_fadein(cost.chart);
     if (!is_standard) {
-        char cmx[16];
-        fmt_money(cmx, sizeof cmx, mx);
-        lv_label_set_text_fmt(cost.cap, "%d DAY SPEND (max): %s", n, cmx);
+        if (pk == PK_QWENCLOUD && p->credits_used[0]) {
+            // Qwen's secondary resetDescription is a credits-used string,
+            // not a reset time. The publisher carries it as cost.cu.
+            lv_label_set_text(cost.cap, p->credits_used);
+        } else {
+            char cmx[16];
+            fmt_money(cmx, sizeof cmx, mx);
+            lv_label_set_text_fmt(cost.cap, "%d DAY SPEND (max): %s", n, cmx);
+        }
     }
 }
 

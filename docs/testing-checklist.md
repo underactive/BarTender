@@ -94,11 +94,15 @@ Rendering:
       bottom row. The SPEND hero stays `$0.00` by design — spend is not
       derived, because an undercounted figure beside an accurate balance would
       contradict itself.
-- [ ] **Qwen Cloud TODAY card shows a 30-day token total.** Qwen has no
-      balance, so it draws the standard card: token row from `cost.tt` and
-      `30 DAYS TOTAL: $0.00 · <N>M Toks` from `cost.tm`. The bar chart stays
-      empty (that chart plots spend, which Qwen's prepaid Credits plan reports
-      as $0), and the card must no longer read "COST DATA NOT AVAILABLE YET".
+- [ ] **Qwen Cloud TODAY card shows credits and a 30-day token total.** Qwen
+      has no balance, so it draws the standard card: token row from `cost.tt`,
+      `30 DAYS TOTAL: $0.00 · <N>M Toks` from `cost.tm`, and the
+      credits-used string from `cost.cu`. The bar chart stays empty (that chart
+      plots spend, which Qwen's prepaid Credits plan reports as $0), and the
+      card must no longer read "COST DATA NOT AVAILABLE YET". The Usage-Limits
+      page also shows Qwen's weekly reset hint in `sr` as local
+      `YYYY-MM-DD HH:MM:SS`, derived from the separate `resetsAt` timestamp;
+      the credits string remains only in `cu`.
 - [ ] **Derived token counts are a floor, not a total.** Both numbers above
       count only traffic that went through Pi Agent and will read low against
       the providers' own consoles — measured at 41% coverage on the DeepSeek

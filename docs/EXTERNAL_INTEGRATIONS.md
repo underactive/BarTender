@@ -32,7 +32,11 @@ process.
   reduced projection maps generic `credits.remaining` to `cost.cr` (integer
   cents) when available; it also reduces Moonshot's `Balance: $…` display
   string and DeepSeek's leading `$…` balance/reset string to `cost.cr`, while
-  OpenRouter retains its dedicated balance source. See memory
+  OpenRouter retains its dedicated balance source. Qwen Cloud's secondary
+  `resetDescription` is currently a credits-used display string rather than a
+  reset time, so it is published as `cost.cu`; its separate `resetsAt` timestamp
+  is formatted into the actual weekly reset hint `sr` as local
+  `YYYY-MM-DD HH:MM:SS`. See memory
   `codexbar-cli-behavior`.
 
 ## Upstash Redis (REST)
@@ -214,10 +218,14 @@ process.
   their own providers. Fields follow what each card renders — Moonshot has a
   balance so it draws the balance card (`tt` + `ht` chart); Qwen Cloud has no
   balance so it draws the standard card, which charts spend rather than `ht`
-  and shows a 30-day token total (`tt` + `tm`). Spend is deliberately not
-  derived for Moonshot: an undercounted SPEND figure sitting one row above its
-  accurate balance would contradict itself on screen. Unlike Pi's own totals,
-  these slices bucket on the **local** calendar day, per the repo-wide rule.
+  and shows a 30-day token total (`tt` + `tm`). Its credits-used display string
+  is carried separately as `cost.cu`; the secondary `sr` carries the weekly
+  reset hint from CodexBar's separate `resetsAt` timestamp in local
+  `YYYY-MM-DD HH:MM:SS` format.
+  Spend is deliberately not derived for Moonshot: an undercounted SPEND figure
+  sitting one row above its accurate balance would contradict itself on screen.
+  Unlike Pi's own totals, these slices bucket on the **local** calendar day,
+  per the repo-wide rule.
 - **Key env vars / CLI flags:** `PI_AGENT_HOME`, `PI_AGENT_SESSIONS_DIR`,
   `PI_AGENT_MODELS_FILE`, `PYTHON3`; `--help`.
 - **Gotchas:** Do not confuse Pi Agent sessions with CodexBar's unrelated

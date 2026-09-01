@@ -164,14 +164,16 @@ Diagnose without publishing secrets:
 
 The **v2** payload carries usage % + reset hints + extra-usage $, and — for
 Claude/Codex — total spend, token counts, and per-day spend history rolled up
-from CodexBar's **local** cost caches. It can also append a first-class `pi`
-provider from `scripts/pi-agent-stats.sh`, reduced from Pi Agent session JSONL
-under `~/.pi/agent/sessions/` into max daily spend, max daily tokens, and a
-30-day spend graph only. This is a **deliberately relaxed, private single-user
-channel**: account email / identity are never projected, CodexBar's
-per-project paths and Pi Agent raw sessions/prompts never leave the Mac, but
-real spend now transits Upstash, so its endpoint + token must be kept private
-(full rationale + residual NVS risk in [docs/SECURITY.md](docs/SECURITY.md)).
+from CodexBar's **local** cost caches. Qwen Cloud's credits-used display text
+is published as `cost.cu`; its separate weekly `resetsAt` timestamp is formatted
+as the local `YYYY-MM-DD HH:MM:SS` `sr` reset hint. It can also append a
+first-class `pi` provider from `scripts/pi-agent-stats.sh`, reduced from Pi
+Agent session JSONL under `~/.pi/agent/sessions/` into max daily spend, max
+daily tokens, and a 30-day spend graph only. This is a **deliberately relaxed,
+private single-user channel**: account email / identity are never projected,
+CodexBar's per-project paths and Pi Agent raw sessions/prompts never leave the
+Mac, but real spend now transits Upstash, so its endpoint + token must be kept
+private (full rationale + residual NVS risk in [docs/SECURITY.md](docs/SECURITY.md)).
 If there's no fresh data — or a local cache/Pi source is absent/format-churned
 — the publish is skipped or falls back to the remaining reduced payload, so the
 toy keeps its last good value. The write token lives in the Keychain; the ESP32

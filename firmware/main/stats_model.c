@@ -91,7 +91,8 @@ static bool get_f(const cJSON *o, const char *key, float *dst)
 // ---- per-block static helpers (fix H: extracted from the provider loop) ----
 
 // v2 optional `cost` object. Absent on v1 and on providers with no cost data
-// -> has_cost stays false (memset'd).
+// -> has_cost stays false (memset'd). Qwen's `cost.cu` is a bounded display
+// string; the other cost fields are numeric.
 static void parse_cost(const cJSON *e, stats_provider_t *p)
 {
     const cJSON *c = cJSON_GetObjectItemCaseSensitive(e, "cost");
@@ -106,6 +107,9 @@ static void parse_cost(const cJSON *e, stats_provider_t *p)
     get_i32(c, "cw", &p->cost_week_c);
     get_i32(c, "cr", &p->credits_remaining_c);
     get_i32(c, "cl", &p->credits_limit_c);
+    if (strcmp(p->id, "qwencloud") == 0)
+        copy_json_string_safe(p->credits_used, sizeof p->credits_used,
+                              cJSON_GetObjectItemCaseSensitive(c, "cu"));
     const cJSON *h = cJSON_GetObjectItemCaseSensitive(c, "h");
     if (cJSON_IsArray(h)) {
         const cJSON *hv;

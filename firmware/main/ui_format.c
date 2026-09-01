@@ -75,6 +75,9 @@ uint32_t provider_metric_sig(const stats_provider_t *p)
         h = hash_mix_u32(h, (uint32_t)p->cost_week_c);
         h = hash_mix_u32(h, (uint32_t)p->credits_remaining_c);
         h = hash_mix_u32(h, (uint32_t)p->credits_limit_c);
+        h = hash_mix_u32(h, (uint32_t)strlen(p->credits_used));
+        for (size_t i = 0; p->credits_used[i]; i++)
+            h = hash_mix_u32(h, (uint8_t)p->credits_used[i]);
         h = hash_mix_u32(h, (uint32_t)p->hist_n);
         for (int i = 0; i < p->hist_n && i < STATS_HIST_MAX; i++)
             h = hash_mix_u32(h, (uint32_t)p->hist[i]);

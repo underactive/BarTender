@@ -39,6 +39,11 @@ a glanceable spend + limits monitor, not just a clipped headroom-% list.
       the reduced `pi.h` payload field, autoscaled so the highest point fills
       the chart. It reuses the existing provider page chrome and does not add
       a Pi-only navigation path.
+- [ ] **Qwen Cloud Cost page** shows the reduced credits-used display string
+      from `cost.cu` in addition to its Pi-derived token totals. The string is
+      not treated as a reset hint; Qwen's `sr` carries the actual weekly reset
+      hint in local `YYYY-MM-DD HH:MM:SS` format, derived from CodexBar's
+      separate secondary `resetsAt` timestamp.
 - [ ] **Claude Usage-Limits page** shows: `SESSION` + big remaining % + bar
       + reset; `WEEKLY <remaining %>` + bar + reset; `EXTRA USAGE <used> /
       <limit>` + bar; and a **24h SESSION remaining-% line sparkline** derived

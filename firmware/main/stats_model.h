@@ -5,10 +5,13 @@
 //   inner = {v,ts,providers:[{id,ok,p?,pr?,s?,sr?,t?,tr?,cost?}]} (our payload)
 // Field optionality matches the live contract verified against real bytes:
 // an `ok:false` provider carries ONLY id+ok; `p`/`s`/`t` may be int or float.
+// `cost.cu` is the Qwen Cloud credits-used display string; provider-level
+// `cu` remains the Cursor token-rollup object.
 //
 // Schema versions: v1 = {id,ok,p?,pr?,s?,sr?,t?,tr?}. v2 is a strict SUPERSET — same
-// fields plus an optional `cost` object (Claude and Pi providers this build). A v2 parser
-// reads v1 unchanged (no cost => has_cost=false); both v1 and v2 are accepted.
+// fields plus an optional `cost` object (provider-specific reduced cost/token fields in
+// this build). A v2 parser reads v1 unchanged (no cost => has_cost=false); both v1 and
+// v2 are accepted.
 #pragma once
 
 #include <stdbool.h>
@@ -54,6 +57,7 @@ typedef struct {
     int32_t  cost_week_c;             // spend this week, cents (OpenRouter keyUsageWeekly)
     int32_t  credits_remaining_c;     // account balance remaining, cents (OpenRouter balance)
     int32_t  credits_limit_c;         // total account credits, cents (OpenRouter totalCredits)
+    char     credits_used[STATS_TXT_MAX]; // cost.cu display string (Qwen Cloud)
     int      hist_n;                  // valid entries in hist[] (0 => no chart)
     int32_t  hist[STATS_HIST_MAX];    // per-day spend, cents, oldest -> newest
 

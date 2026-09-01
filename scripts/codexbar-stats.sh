@@ -164,11 +164,15 @@ if (!anyParsed && expected.length===0){ eprint("error: codexbar returned no usab
 
 if (env('CBAR_MODE')==='json'){
   // v2 projection. PII (accountEmail/loginMethod/identity) is structurally
-  // never read here. `p/pr/s/sr/t/tr` are usage %; the optional `cost` object
-  // carries only the extra-usage OVERAGE (providerCost: a $used/$limit figure,
-  // NOT total spend) as integer cents. Total spend/tokens and the per-day
-  // history are merged in by codexbar-publish.sh from CodexBar's local cost
-  // cache. Relaxed single-user privacy model: docs/SECURITY.md.
+  // never read here. `p/pr/s/sr/t/tr` are usage % and reset hints, except
+  // Qwen's current credits-used secondary text, which is moved to `cost.cu`;
+  // its separate `resetsAt` timestamp remains the local
+  // `YYYY-MM-DD HH:MM:SS` `sr` reset hint.
+  // The optional `cost` object carries only the extra-usage OVERAGE
+  // (providerCost: a $used/$limit figure, NOT total spend) as integer cents.
+  // Total spend/tokens and the per-day history are merged in by
+  // codexbar-publish.sh from CodexBar's local cost cache. Relaxed single-user
+  // privacy model: docs/SECURITY.md.
   var num=function(n){ if (n==null||isNaN(n)) return null;
     return parseFloat(Number(n).toFixed(1)); };
   var fmtReset=function(isoStr){
@@ -215,13 +219,31 @@ if (env('CBAR_MODE')==='json'){
     if (pr){ var pp=num(pr.usedPercent); if (pp!=null) o.p=pp;
       if (pr.resetDescription) o.pr=String(pr.resetDescription);
       else { var rfs=fmtReset(pr.resetsAt); if (rfs) o.pr=rfs; } }
+    var qwenCreditsUsed=null;
     if (se){ var sp=num(se.usedPercent); if (sp!=null) o.s=sp;
-      if (se.resetDescription) o.sr=String(se.resetDescription);
-      else { var rfs=fmtReset(se.resetsAt); if (rfs) o.sr=rfs; } }
+      var sreset=null;
+      if (se.resetDescription) sreset=String(se.resetDescription);
+      else { var rfs=fmtReset(se.resetsAt); if (rfs) sreset=rfs; }
+      // Qwen's secondary resetDescription is currently a credits-used
+      // display string, not a reset time. Keep it out of the reset-hint
+      // namespace and carry it in the v2 cost block instead. Its separate
+      // resetsAt field still supplies the actual weekly reset hint.
+      if (e.provider==="qwencloud" && sreset && /credits?/i.test(sreset)) {
+        qwenCreditsUsed=sreset;
+        var qwenDate=new Date(se.resetsAt);
+        if (!isNaN(qwenDate.getTime()))
+          o.sr=String(qwenDate.getFullYear()).padStart(4,'0')+'-'+
+            String(qwenDate.getMonth()+1).padStart(2,'0')+'-'+
+            String(qwenDate.getDate()).padStart(2,'0')+' '+
+            String(qwenDate.getHours()).padStart(2,'0')+':'+
+            String(qwenDate.getMinutes()).padStart(2,'0')+':'+
+            String(qwenDate.getSeconds()).padStart(2,'0');
+      } else if (sreset) o.sr=sreset; }
     if (te){ var tp=num(te.usedPercent); if (tp!=null) o.t=tp;
       if (te.resetDescription) o.tr=String(te.resetDescription);
       else { var rfs=fmtReset(te.resetsAt); if (rfs) o.tr=rfs; } }
     var cobj={};
+    if (qwenCreditsUsed!=null) cobj.cu=qwenCreditsUsed;
     var co=u.providerCost;
     if (co){ var xu=cents(co.used), xl=cents(co.limit);
       if (xu!=null) cobj.xu=xu;
