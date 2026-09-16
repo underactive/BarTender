@@ -221,7 +221,6 @@ static void test_up_id(void)
 
 static void test_is_hidden_provider(void)
 {
-    CHECK(is_hidden_provider("ollama") == false, "is_hidden: ollama visible");
     CHECK(is_hidden_provider("opencode") == true, "is_hidden: opencode hidden");
     CHECK(is_hidden_provider("claude") == false,  "is_hidden: claude visible");
 }

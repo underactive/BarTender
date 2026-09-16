@@ -82,18 +82,6 @@ static void render_lmstudio_chart(const stats_provider_t *p,
                             card_entered);
 }
 
-// Ollama TODAY card: tokens hero + requests line + 30-day bar chart (same layout as LM Studio).
-static void render_ollama_chart(const stats_provider_t *p,
-                                const ui_page_grid_t *g,
-                                const ui_rect_t *hero,
-                                bool card_entered)
-{
-    render_token_chart_card(p, g, hero, p->ol_tok_today, p->ol_tok_month_max,
-                            p->ol_ht, p->ol_ht_n, true,
-                            (int)p->ol_req_today, (int)p->ol_req_month_max,
-                            card_entered);
-}
-
 // Cursor TODAY card: token hero + 30-day bar chart (no requests, no $, no OR rows).
 static void render_cursor_chart(const stats_provider_t *p,
                                 const ui_page_grid_t *g,
@@ -555,7 +543,7 @@ static void render_cost_card(const stats_provider_t *p,
         });
     }
 
-    if (!p->has_cost && !p->has_lm && !p->has_ol && !p->has_cu && !p->has_oc && !p->has_mo) {
+    if (!p->has_cost && !p->has_lm && !p->has_cu && !p->has_oc && !p->has_mo) {
         lv_obj_clear_flag(cost.na, LV_OBJ_FLAG_HIDDEN);
         hide_hero_amount(&cost_hero);
         lv_obj_t *all[] = { cost.tok, cost.tok_unit, cost.cost_30, cost.cap,
@@ -581,12 +569,6 @@ static void render_cost_card(const stats_provider_t *p,
     case PK_LMSTUDIO:
         render_lmstudio_chart(p, g, hero, card_entered);
         return;
-    case PK_OLLAMA:
-        if (p->has_ol) {
-            render_ollama_chart(p, g, hero, card_entered);
-            return;
-        }
-        break;
     case PK_CURSOR:
         if (p->has_cu) {
             render_cursor_chart(p, g, hero, card_entered);
@@ -863,9 +845,9 @@ static void render_limits_card(const stats_provider_t *p,
     lv_obj_add_flag(cost.tok, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(cost.tok_unit, LV_OBJ_FLAG_HIDDEN);
 
-    // lim_hero is used by providers that use hero_amount (Pi, LM Studio,
-    // Ollama); hide by default so it can't leak onto the others. Those
-    // branches / the generic path re-show it.
+    // lim_hero is used by providers that use hero_amount (Pi, LM Studio);
+    // hide by default so it can't leak onto the others. Those branches /
+    // the generic path re-show it.
     hide_hero_amount(&lim_hero);
 
     if (pk == PK_LMSTUDIO) {

@@ -38,14 +38,14 @@ OUT_H = os.path.join(HERE, "..", "..", "firmware", "main", "provider_icons.h")
 # tones survive — A8 would flatten it to one tinted silhouette.
 # qwen's mark is a purple gradient hexagon whose white slashes are painted on
 # top rather than cut out — A8 would flatten both tones into one solid blob.
-FULL_COLOR_SVGS = {"claude", "lmstudio", "ollama", "mimo", "opencode", "qwen"}
+FULL_COLOR_SVGS = {"claude", "lmstudio", "mimo", "opencode", "qwen"}
 
 # Wide logos with heavy transparent padding: crop to opaque bounds, then
 # scale to fill ICON_PX. Optional boost >1.0 nudges wide marks to match
 # square silhouettes (lmstudio.png has ~35% vertical slack at 1.0).
 CONTENT_FIT_SVGS = {
     "lmstudio", "claude", "codex", "openrouter", "gemini", "cursor",
-    "pi", "copilot", "ollama", "opencode", "opencodego", "deepseek",
+    "pi", "copilot", "opencode", "opencodego", "deepseek",
     "alibaba", "amp", "antigravity", "augment", "elevenlabs",
     "factory", "jetbrains", "kilo", "kimi", "kimi-k2", "kiro",
     "minimax", "mistral", "perplexity", "vertexai", "synthetic",
@@ -89,7 +89,7 @@ ID_TO_SVG = {
     "claude": "claude", "codex": "codex", "openai": "codex", "pi": "pi",
     "cursor": "cursor", "openrouter": "openrouter",
     "opencode": "opencode", "opencodego": "opencode",
-    "ollama": "ollama", "gemini": "gemini", "copilot": "copilot",
+    "gemini": "gemini", "copilot": "copilot",
     "alibaba": "alibaba", "amp": "amp", "antigravity": "antigravity",
     "augment": "augment", "deepseek": "deepseek", "elevenlabs": "elevenlabs",
     "factory": "droid", "jetbrains": "jetbrains-ai", "kilo": "kilo",

@@ -73,7 +73,6 @@ CB_HISTORY_DIR = (HOME / "Library/Application Support/com.steipete.codexbar/hist
 TODAY_TOKEN_FIELDS = {
     "pi": ("pi", "tt"),
     "lmstudio": ("lm", "tk"),
-    "ollama": ("ol", "tk"),
     "cursor": ("cu", "tk"),
     "opencodego": ("oc", "tk"),
     "mimo": ("mo", "tk"),
@@ -404,7 +403,7 @@ RE_PUBLISH = re.compile(
 RE_FAILURE = re.compile(r"^\S+ (?:ERROR: .*|publish FAILED.*)$", re.M)
 RE_SKIP = re.compile(r"^\S+ skip: .*$", re.M)
 RE_HELPER_NOTE = re.compile(
-    r"^(?:\S+ )?(?:note|MiMo cookie|Ollama helper|Cursor stats helper|Pi Agent helper|"
+    r"^(?:\S+ )?(?:note|MiMo cookie|Cursor stats helper|Pi Agent helper|"
     r"LM Studio helper|Ramp helper|OpenCode Go helper): (.+)$", re.M)
 
 

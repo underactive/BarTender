@@ -126,7 +126,6 @@ static float secondary_pct(const stats_provider_t *p)
     provider_kind_t rpk = provider_kind(p->id);
     if (((rpk == PK_CLAUDE || rpk == PK_CODEX) && p->secondary.has)
         || rpk == PK_LMSTUDIO
-        || rpk == PK_OLLAMA
         || (rpk == PK_OPENCODEGO && p->tertiary.has)
         || (rpk == PK_CURSOR && p->tertiary.has)) {
         float pct = (rpk == PK_OPENCODEGO || rpk == PK_CURSOR)
@@ -162,7 +161,7 @@ static void layout_dual_pct_left(lv_obj_t *primary, lv_obj_t *secondary,
 }
 
 // Summary-row secondary bar (row_bar_w): Cursor Third Party API usage,
-// Claude/Codex weekly remaining %, LM Studio/Ollama activity, OpenCode Go's
+// Claude/Codex weekly remaining %, LM Studio activity, OpenCode Go's
 // tertiary tier, or OpenRouter budget headroom; hidden otherwise.
 // Extracted from render() (Fowler audit).
 //
@@ -173,7 +172,6 @@ static void render_summary_secondary_bar(int slot, const stats_provider_t *p)
     provider_kind_t rpk = provider_kind(p->id);
     if (((rpk == PK_CLAUDE || rpk == PK_CODEX) && p->secondary.has)
         || rpk == PK_LMSTUDIO
-        || rpk == PK_OLLAMA
         || (rpk == PK_OPENCODEGO && p->tertiary.has)
         || (rpk == PK_CURSOR && p->tertiary.has)) {
         float pct = (rpk == PK_OPENCODEGO || rpk == PK_CURSOR)

@@ -107,22 +107,6 @@ uint32_t provider_metric_sig(const stats_provider_t *p)
         h = hash_mix_u32(h, (uint32_t)p->lm_models_n);
         h = hash_mix_u32(h, (uint32_t)p->lm_week_n);
     }
-    h = hash_mix_u32(h, p->has_ol ? 1U : 0U);
-    if (p->has_ol) {
-        h = hash_mix_u32(h, (uint32_t)p->ol_req_today);
-        h = hash_mix_u32(h, (uint32_t)p->ol_tok_today);
-        h = hash_mix_u32(h, (uint32_t)(p->ol_tok_today >> 32));
-        h = hash_mix_u32(h, (uint32_t)p->ol_req_month_max);
-        h = hash_mix_u32(h, (uint32_t)p->ol_tok_month_max);
-        h = hash_mix_u32(h, (uint32_t)(p->ol_tok_month_max >> 32));
-        h = hash_mix_u32(h, (uint32_t)p->ol_hr_n);
-        for (int i = 0; i < p->ol_hr_n && i < STATS_HIST_MAX; i++)
-            h = hash_mix_u32(h, (uint32_t)p->ol_hr[i]);
-        h = hash_mix_u32(h, (uint32_t)p->ol_ht_n);
-        for (int i = 0; i < p->ol_ht_n && i < STATS_HIST_MAX; i++)
-            h = hash_mix_u32(h, (uint32_t)p->ol_ht[i]);
-        h = hash_mix_u32(h, (uint32_t)p->ol_week_n);
-    }
     h = hash_mix_u32(h, p->has_oc ? 1U : 0U);
     if (p->has_oc) {
         h = hash_mix_u32(h, (uint32_t)p->oc_tok_today);
@@ -151,8 +135,8 @@ uint32_t provider_metric_sig(const stats_provider_t *p)
 bool provider_card_available(const stats_provider_t *p, card_kind_t card)
 {
     switch (card) {
-        case CARD_COST:         return p->has_cost || p->has_lm || p->has_ol || p->has_cu || p->has_oc || p->has_mo;
-        case CARD_LIMITS:       return provider_has_limits_card(p) || p->has_lm || p->has_ol;
+        case CARD_COST:         return p->has_cost || p->has_lm || p->has_cu || p->has_oc || p->has_mo;
+        case CARD_LIMITS:       return provider_has_limits_card(p) || p->has_lm;
     }
     return false;
 }
@@ -170,8 +154,8 @@ lv_color_t pct_color(float p)   // green -> amber -> red
 // (Sources/CodexBarWidget/CodexBarWidgetViews.swift). The `id` keys are the
 // UsageProvider enum raw values (= the `provider` field in our payload).
 // Unknown ids fall back to the pct_color() usage ramp via bar_color().
-// NOTE: a few CodexBar colors are near-black (ollama/synthetic/manus/
-// commandcode); on this dark UI they read as a faint bar — kept faithful to
+// NOTE: a few CodexBar colors are near-black (synthetic/manus/commandcode);
+// on this dark UI they read as a faint bar — kept faithful to
 // CodexBar by intent (see docs). The user's live providers (claude/codex/
 // cursor/openrouter) are all high-contrast.
 bool prov_accent(const char *id, lv_color_t *out)
@@ -208,7 +192,6 @@ provider_kind_t provider_kind(const char *id)
     if (strcmp(id, "cursor")     == 0) return PK_CURSOR;
     if (strcmp(id, "opencodego") == 0) return PK_OPENCODEGO;
     if (strcmp(id, "openrouter") == 0) return PK_OPENROUTER;
-    if (strcmp(id, "ollama")     == 0) return PK_OLLAMA;
     if (strcmp(id, "mimo")       == 0) return PK_MIMO;
     if (strcmp(id, "moonshot")   == 0) return PK_MOONSHOT;
     if (strcmp(id, "deepseek")   == 0) return PK_DEEPSEEK;
@@ -334,7 +317,6 @@ int64_t provider_tok_today(const stats_provider_t *p)
 {
     switch (provider_kind(p->id)) {
     case PK_LMSTUDIO: return p->has_lm ? p->lm_tok_today : 0;
-    case PK_OLLAMA:   return p->has_ol ? p->ol_tok_today : 0;
     case PK_CURSOR:   return p->has_cu ? p->cu_tok_today : 0;
     case PK_OPENCODEGO: return p->has_oc ? p->oc_tok_today : 0;
     case PK_MIMO:    return p->has_mo ? p->mo_tok_today : 0;
@@ -352,7 +334,6 @@ const char *summary_provider_name(const char *id)
     case PK_CODEX:      return "Codex";
     case PK_CURSOR:     return "Cursor";
     case PK_OPENCODEGO: return "OpenCode Go";
-    case PK_OLLAMA:     return "Ollama";
     case PK_MIMO:       return "MiMo";
     case PK_MOONSHOT:   return "Moonshot";
     case PK_DEEPSEEK:   return "DeepSeek";

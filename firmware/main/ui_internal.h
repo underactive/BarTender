@@ -115,7 +115,6 @@ typedef enum {
     PK_CURSOR,
     PK_OPENCODEGO,
     PK_OPENROUTER,
-    PK_OLLAMA,
     PK_MIMO,
     PK_MOONSHOT,
     PK_DEEPSEEK,

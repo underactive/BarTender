@@ -28,7 +28,7 @@ static const prov_color_t PROV_COLORS[] = {
     { "kiro",        0xFF9900 }, { "vertexai",    0x4285F4 },
     { "augment",     0x6366F1 }, { "jetbrains",   0xFF3399 },
     { "kimik2",      0x4C00FF }, { "moonshot",    0x23BDD9 },
-    { "amp",         0xDC2626 }, { "ollama",      0xEBEBE6 },
+    { "amp",         0xDC2626 },
     { "synthetic",   0x141414 }, { "warp",        0x938BB4 },
     { "openrouter",  0xC8FF00 }, { "elevenlabs",  0xEBEBE6 },
     { "windsurf",    0x34E8BB }, { "perplexity",  0x20B2AA },

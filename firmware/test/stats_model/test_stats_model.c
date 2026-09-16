@@ -806,7 +806,7 @@ static void test_reorder_ramp_after_deepseek(void)
     TEST("reorder_ramp_after_deepseek");
 
     // ramp slots directly after deepseek, before unlisted providers.
-    // Canonical: ... moonshot=9, deepseek=10, ramp=11, ollama=12
+    // Canonical: ... moonshot=9, deepseek=10, ramp=11
     const char *inner =
         "{\"v\":1,\"ts\":\"2024-01-01T00:00:00Z\","
         "\"providers\":["
