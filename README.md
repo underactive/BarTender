@@ -165,8 +165,11 @@ Diagnose without publishing secrets:
 The **v2** payload carries usage % + reset hints + extra-usage $, and — for
 Claude/Codex — total spend, token counts, and per-day spend history rolled up
 from CodexBar's **local** cost caches. Qwen Cloud's credits-used display text
-is published as `cost.cu`; its separate weekly `resetsAt` timestamp is formatted
-as the local `YYYY-MM-DD HH:MM:SS` `sr` reset hint. It can also append a
+is published as `cost.cu`; Qwen's longest known quota window is normalized
+into the stable `s` slot, with optional `pw`/`sw`/`tw` durations in minutes and
+per-window `resetsAt` values formatted as local `YYYY-MM-DD HH:MM:SS` reset
+hints. OpenCode Go's aggregate token history carries `oc.fresh:false` when it
+is served from cache after an API failure. It can also append a
 first-class `pi` provider from `scripts/pi-agent-stats.sh`, reduced from Pi
 Agent session JSONL under `~/.pi/agent/sessions/` into max daily spend, max
 daily tokens, and a 30-day spend graph only. This is a **deliberately relaxed,

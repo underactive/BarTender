@@ -1,0 +1,16 @@
+[
+  {
+    "provider": "qwencloud",
+    "source": "web",
+    "usage": {
+      "primary": null,
+      "secondary": {
+        "usedPercent": 26.5,
+        "windowMinutes": 10080,
+        "resetDescription": "663.81 / 2,500 credits used",
+        "resetsAt": "2026-09-29T16:00:00Z"
+      },
+      "tertiary": null
+    }
+  }
+]

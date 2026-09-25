@@ -24,6 +24,9 @@ read it over WiFi without ever talking to my Mac directly.
       republishes every `PUBLISH_INTERVAL` seconds (default 300) and at load;
       `--uninstall` fully removes it.
 - [ ] `--status` reports job state, target, token readiness, and recent log.
+- [ ] OpenCode Go API failures retain the local history with `oc.fresh:false`;
+      the device marks that cached snapshot stale, and the publisher's
+      last-known-good cache preserves the last genuinely fresh timestamp.
 
 ## Edge cases
 
@@ -36,6 +39,7 @@ read it over WiFi without ever talking to my Mac directly.
 | Run under launchd (sparse env) | `CODEXBAR_BIN`/`PATH` baked into the plist at install |
 | Ctrl-C / early exit | Temp workdir and owned lock always cleaned (global EXIT trap) |
 | Orphaned publisher lock | Recover a dead PID immediately; recover ownerless legacy locks only after the configured age threshold |
+| OpenCode Go helper has cached history only | Merge `oc` before the final LKG pass; publish `oc.fresh:false`, retain the prior fresh LKG timestamp, and let the configured age limit expire the snapshot |
 
 ## Not in scope
 

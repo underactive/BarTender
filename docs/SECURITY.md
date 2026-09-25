@@ -65,9 +65,11 @@ Ramp Router (cents + aggregate spend/token rollups from the router.ramp.com
 dashboard API via `ramp-stats.sh`; no model names, request contents, or
 account identifiers),
 Claude/Codex total spend and token rollups, a 30-day per-day spend history where
-available, the Qwen Cloud credits-used display string as `cost.cu` (while its
-separate weekly `resetsAt` timestamp remains the `sr` reset-hint field in
-local `YYYY-MM-DD HH:MM:SS` format), aggregate Moonshot/Qwen Cloud daily
+available, the Qwen Cloud credits-used display string as `cost.cu` (while each
+quota window's own `resetsAt` becomes its `pr`/`sr`/`tr` reset-hint field in
+local `YYYY-MM-DD HH:MM:SS` format), the optional quota-window durations
+`pw`/`sw`/`tw` in minutes, aggregate OpenCode Go daily token/cost history plus
+boolean `oc.fresh` freshness state, aggregate Moonshot/Qwen Cloud daily
 token counts derived from local Pi Agent sessions (attributed by provider id
 only — model names, prompts, and session paths are still never projected; this
 widens the Pi reduction from purely aggregate to per-provider attribution for
@@ -128,8 +130,18 @@ Under v2 it leaks the owner's identity-adjacent **spend and 30-day spend
 shape**. NVS encryption is therefore upgraded from "nice-to-have" to a
 **tracked hardening item** (`docs/exec-plans/tech-debt-tracker.md`).
 
-Any FURTHER widening (e.g. per-model breakdown, the cache `files` map,
-account identifiers) MUST update this section and re-justify again.
+OpenCode Go's cookie, workspace identifier, server response body, record ids,
+model names, prompts, and account identity are not published. The cookie is
+passed to curl through a temporary mode-0600 config, never a process argument.
+Its parser uses static JSON extraction only; it never executes server-supplied
+JavaScript. Raw OpenCode captures are temporary `$TMPDIR` artifacts. Committed fixtures must
+contain no cookies, `wrk_…` workspace ids, record ids, account email, login
+method, or raw private response text; `OPENCODE_GO_DUMP` writes mode `0600`
+and prints only a local path.
+
+The additive `pw`/`sw`/`tw` integers and boolean `oc.fresh` add no private
+information. Any FURTHER widening (e.g. per-model breakdown, the cache `files`
+map, account identifiers) MUST update this section and re-justify again.
 
 ## Device boundary: the ESP32 toy (Prompt 3)
 

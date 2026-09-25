@@ -271,6 +271,10 @@ bool prov_accent(const char *id, lv_color_t *out);
 bool is_hidden_provider(const char *id);
 provider_kind_t provider_kind(const char *id);
 bool provider_pct_is_baseline(provider_kind_t k);
+// Quota tier slots use 0=primary, 1=secondary, 2=tertiary; -1 means none.
+const char *quota_window_label(int minutes);
+int quota_hero_slot(const stats_provider_t *p);
+int quota_second_slot(const stats_provider_t *p, int hero);
 bool provider_balance_c(const stats_provider_t *p, int32_t *out_c);
 int balance_bar_units(int32_t balance_c, int segs);
 // Number of completed $100 circles for a balance (0 when <= $100).

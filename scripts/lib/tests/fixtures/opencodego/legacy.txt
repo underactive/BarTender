@@ -1,0 +1,1 @@
+0:fixture;1:fixture;2:self.$R['server-fn:3'] = [[{"id":"fixture-a","timeCreated":"2026-01-01T00:00:00Z","inputTokens":10,"outputTokens":7,"cost":1200},{"id":"fixture-b","timeCreated":"2026-01-01T01:00:00Z","inputTokens":3,"outputTokens":2,"cost":300}]];

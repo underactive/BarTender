@@ -41,9 +41,17 @@ a glanceable spend + limits monitor, not just a clipped headroom-% list.
       a Pi-only navigation path.
 - [ ] **Qwen Cloud Cost page** shows the reduced credits-used display string
       from `cost.cu` in addition to its Pi-derived token totals. The string is
-      not treated as a reset hint; Qwen's `sr` carries the actual weekly reset
-      hint in local `YYYY-MM-DD HH:MM:SS` format, derived from CodexBar's
-      separate secondary `resetsAt` timestamp.
+      not treated as a reset hint; each Qwen tier's `pr`/`sr`/`tr` comes from
+      that tier's own `resetsAt` timestamp in local `YYYY-MM-DD HH:MM:SS`
+      format.
+- [ ] **Qwen Cloud Usage-Limits page** derives the label from the published
+      window minutes: a monthly-only plan shows `MONTHLY` as the hero and no
+      duplicate row; a legacy weekly-only plan shows `WEEKLY`; a complete
+      5-hour + weekly + monthly plan shows the longest window as the hero and
+      each remaining window in its own labeled row. The summary keeps the
+      longest Qwen window in the hero slot and shows the next-longest window
+      only when one exists.
+- [ ] Qwen credits-used text appears only in `cost.cu`, never in a reset label.
 - [ ] **Claude Usage-Limits page** shows: `SESSION` + big remaining % + bar
       + reset; `WEEKLY <remaining %>` + bar + reset; `EXTRA USAGE <used> /
       <limit>` + bar; and a **24h SESSION remaining-% line sparkline** derived

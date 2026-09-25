@@ -157,7 +157,14 @@ static void render_opencodego_today(const stats_provider_t *p,
     lv_obj_clear_flag(cost.cap, LV_OBJ_FLAG_HIDDEN);
     lv_obj_set_pos(cost.cap, footer_r.x + 12, footer_r.y + 26);
     if (p->primary.has && p->primary.reset[0]) {
-        lv_label_set_text_fmt(cost.cap, "Resets %s", p->primary.reset);
+        if (p->oc_fresh) {
+            lv_label_set_text_fmt(cost.cap, "Resets %s", p->primary.reset);
+        } else {
+            lv_label_set_text_fmt(cost.cap, "Resets %s  " LV_SYMBOL_BULLET "  cached",
+                                  p->primary.reset);
+        }
+    } else if (!p->oc_fresh) {
+        lv_label_set_text(cost.cap, "cached");
     } else {
         lv_obj_add_flag(cost.cap, LV_OBJ_FLAG_HIDDEN);
     }
@@ -830,6 +837,84 @@ static void render_limits_sparkline(const stats_provider_t *p, bool card_entered
     }
 }
 
+static void render_qwen_tier_row(const stats_provider_t *p, int slot,
+                                 lv_obj_t *lbl, lv_obj_t *big,
+                                 lv_obj_t *bar, lv_obj_t *rst)
+{
+    const usage_tier_t *tiers[] = { &p->primary, &p->secondary, &p->tertiary };
+    const usage_tier_t *tier = tiers[slot];
+    char pct[12];
+    const char *label = quota_window_label(tier->window_min);
+    show_tier_row(lbl, big, bar);
+    lv_label_set_text(lbl, label ? label : "WEEKLY");
+    fmt_pct(pct, sizeof pct, tier->has, tier->pct);
+    lv_label_set_text(big, pct);
+    set_bar(bar, tier->has, tier->pct, p);
+    set_reset_lbl(rst, tier->reset);
+}
+
+// Qwen LIMITS card: rank its quota windows by publisher-provided duration,
+// while keeping each remaining tier's label, percentage, and reset together.
+static void render_qwen_limits(const stats_provider_t *p,
+                               const ui_page_grid_t *g,
+                               const ui_rect_t *hero,
+                               const ui_rect_t *footer,
+                               bool card_entered)
+{
+    char up[STATS_ID_MAX];
+    up_id(up, sizeof up, p->id);
+    render_page_chrome(lim.hdr, lim.logo, lim.bg_logo, s_scr_w,
+                       &(ui_page_chrome_desc_t){
+                           .title = up, .subtitle = "LIMITS", .icon_id = p->id,
+                       });
+
+    hide_hero_amount(&lim_hero);
+    lv_obj_add_flag(lim.s_bar, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(lim.s_rst, LV_OBJ_FLAG_HIDDEN);
+    hide_tier_row(lim.a_lbl, lim.a_big, lim.a_bar, lim.a_rst);
+    hide_tier_row(lim.w_lbl, lim.w_big, lim.w_bar, lim.w_rst);
+    hide_tier_row(lim.x_lbl, lim.x_val, lim.x_bar, NULL);
+    lv_obj_add_flag(lim.chart, LV_OBJ_FLAG_HIDDEN);
+
+    lv_obj_set_pos(lim.s_bar, hero->x + 12, hero->y + 84);
+    lv_obj_set_pos(lim.s_rst, hero->x + 12, hero->y + 96);
+    const ui_rect_t second_r = ui_grid_span(g, 0, 4, 2, 1);
+    lv_obj_set_pos(lim.a_lbl, second_r.x + 12, second_r.y + 4);
+    lv_obj_set_pos(lim.a_big, second_r.x + 12, second_r.y + 18);
+    lv_obj_set_pos(lim.a_bar, second_r.x + 12, second_r.y + 44);
+    lv_obj_set_pos(lim.a_rst, second_r.x + 12, second_r.y + 54);
+    lv_obj_set_pos(lim.w_lbl, footer->x + 12, footer->y + 4);
+    lv_obj_set_pos(lim.w_big, footer->x + 12, footer->y + 18);
+    lv_obj_set_pos(lim.w_bar, footer->x + 12, footer->y + 44);
+    lv_obj_set_pos(lim.w_rst, footer->x + 12, footer->y + 54);
+
+    const usage_tier_t *tiers[] = { &p->primary, &p->secondary, &p->tertiary };
+    const int hero_slot = quota_hero_slot(p);
+    const int second_slot = quota_second_slot(p, hero_slot);
+    const usage_tier_t *hero_tier = tiers[hero_slot];
+    const char *hero_label = quota_window_label(hero_tier->window_min);
+    place_hero_amount(&lim_hero, hero,
+                      hero_label ? hero_label : "WEEKLY");
+    if (card_entered) {
+        anim_count_up(lim_hero.num,
+                      pct_remaining_tenths(hero_tier->pct), count_pct_cb);
+    } else {
+        set_hero_pct(&lim_hero, hero_tier->has, hero_tier->pct);
+    }
+    lv_obj_clear_flag(lim.s_bar, LV_OBJ_FLAG_HIDDEN);
+    set_bar(lim.s_bar, hero_tier->has, hero_tier->pct, p);
+    set_reset_lbl(lim.s_rst, hero_tier->reset);
+
+    if (second_slot >= 0)
+        render_qwen_tier_row(p, second_slot, lim.a_lbl, lim.a_big,
+                             lim.a_bar, lim.a_rst);
+    for (int slot = 0; slot < 3; slot++) {
+        if (slot == hero_slot || slot == second_slot || !tiers[slot]->has) continue;
+        render_qwen_tier_row(p, slot, lim.w_lbl, lim.w_big, lim.w_bar, lim.w_rst);
+        break;
+    }
+}
+
 static void render_limits_card(const stats_provider_t *p,
                                const ui_page_grid_t *g,
                                const ui_rect_t *hero,
@@ -862,6 +947,11 @@ static void render_limits_card(const stats_provider_t *p,
 
     if (pk == PK_RAMP && has_balance) {
         render_ramp_limits(p, g, hero, card_entered);
+        return;
+    }
+
+    if (pk == PK_QWENCLOUD && quota_hero_slot(p) >= 0) {
+        render_qwen_limits(p, g, hero, footer, card_entered);
         return;
     }
 

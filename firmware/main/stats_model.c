@@ -88,6 +88,19 @@ static bool get_f(const cJSON *o, const char *key, float *dst)
     return true;
 }
 
+// Untrusted store: accept only a finite integer within the contract range.
+// Invalid values leave the duration unreported rather than becoming a
+// plausible-but-wrong device-owned window label.
+static bool get_window_min(const cJSON *o, const char *key, int *dst)
+{
+    const cJSON *x = cJSON_GetObjectItemCaseSensitive(o, key);
+    if (!cJSON_IsNumber(x)) return false;
+    double d = x->valuedouble;
+    if (!isfinite(d) || d < 1.0 || d > 1000000.0 || round(d) != d) return false;
+    *dst = (int)d;
+    return true;
+}
+
 // ---- per-block static helpers (fix H: extracted from the provider loop) ----
 
 // v2 optional `cost` object. Absent on v1 and on providers with no cost data
@@ -273,6 +286,8 @@ static void parse_oc(const cJSON *e, stats_provider_t *p)
     const cJSON *oc = cJSON_GetObjectItemCaseSensitive(e, "oc");
     if (strcmp(p->id, "opencodego") != 0 || !cJSON_IsObject(oc)) return;
     bool any_oc = false;
+    const cJSON *fresh = cJSON_GetObjectItemCaseSensitive(oc, "fresh");
+    if (cJSON_IsBool(fresh) && cJSON_IsFalse(fresh)) p->oc_fresh = false;
     if (get_i64(oc, "tk",  &p->oc_tok_today))    any_oc = true;
     if (get_i32(oc, "ct",  &p->oc_cost_today_c)) any_oc = true;
     if (get_i64(oc, "mxt", &p->oc_tok_month_max)) any_oc = true;
@@ -382,18 +397,22 @@ stats_parse_t stats_model_parse(const char *body, stats_t *out)
         cJSON_ArrayForEach(e, ps) {
             if (out->n >= STATS_MAX_PROVIDERS) break;
             stats_provider_t *p = &out->p[out->n];
+            p->oc_fresh = true;
             copy_json_string_safe(p->id, sizeof p->id, cJSON_GetObjectItemCaseSensitive(e, "id"));
             const cJSON *ok = cJSON_GetObjectItemCaseSensitive(e, "ok");
             p->ok = cJSON_IsTrue(ok);
             // p/pr/s/sr are absent on !ok entries — handle gracefully.
             const cJSON *pp = cJSON_GetObjectItemCaseSensitive(e, "p");
             if (cJSON_IsNumber(pp)) { p->primary.has = true; p->primary.pct = f_sanitize(pp->valuedouble); }
+            get_window_min(e, "pw", &p->primary.window_min);
             copy_json_string_safe(p->primary.reset, sizeof p->primary.reset, cJSON_GetObjectItemCaseSensitive(e, "pr"));
             const cJSON *sp = cJSON_GetObjectItemCaseSensitive(e, "s");
             if (cJSON_IsNumber(sp)) { p->secondary.has = true; p->secondary.pct = f_sanitize(sp->valuedouble); }
+            get_window_min(e, "sw", &p->secondary.window_min);
             copy_json_string_safe(p->secondary.reset, sizeof p->secondary.reset, cJSON_GetObjectItemCaseSensitive(e, "sr"));
             const cJSON *tp = cJSON_GetObjectItemCaseSensitive(e, "t");
             if (cJSON_IsNumber(tp)) { p->tertiary.has = true; p->tertiary.pct = f_sanitize(tp->valuedouble); }
+            get_window_min(e, "tw", &p->tertiary.window_min);
             copy_json_string_safe(p->tertiary.reset, sizeof p->tertiary.reset, cJSON_GetObjectItemCaseSensitive(e, "tr"));
 
             // All per-provider parse_* functions below depend on p->id being

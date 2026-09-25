@@ -74,13 +74,23 @@ void balance_bar_ext_size_cb(lv_event_t *e)
         e, circles * BALANCE_CIRCLE_PITCH + BALANCE_CIRCLE_GAP + 2);
 }
 
-// Providers whose hero metric is the secondary tier (s) rather than the primary
-// session window (p). OpenCode Go has 3 tiers and the publisher marks secondary
-// as the hero. Qwen publishes a weekly tier only, so without this its absent
-// primary drops the tile through to a grey "--".
+// OpenCode Go has 3 tiers and the publisher marks secondary as the hero.
+// Qwen normally normalizes its longest known quota window into secondary; the
+// summary uses the duration-ranked tier directly for malformed partial input.
 static bool secondary_is_hero(provider_kind_t k)
 {
-    return k == PK_OPENCODEGO || k == PK_QWENCLOUD;
+    return k == PK_OPENCODEGO;
+}
+
+static const usage_tier_t *qwen_hero_tier(const stats_provider_t *p)
+{
+    if (!p || provider_kind(p->id) != PK_QWENCLOUD) return NULL;
+    switch (quota_hero_slot(p)) {
+        case 0: return &p->primary;
+        case 1: return &p->secondary;
+        case 2: return &p->tertiary;
+        default: return NULL;
+    }
 }
 
 static int summary_pct_int(provider_kind_t k, float source_pct)
@@ -109,8 +119,8 @@ static void fmt_summary_pct(char *buf, size_t n, bool has, float source_pct,
 // CodexBar uses for Third Party API usage. OpenCode Go also shows its tertiary
 // tier instead of the secondary tier because the summary page swaps its
 // primary/secondary display (secondary replaces the top bar, tertiary becomes
-// the smaller bottom bar). Qwen has no tertiary tier, so it returns -1 and the
-// small bar stays hidden.
+// the smaller bottom bar). Qwen shows the next-longest normalized quota window
+// when one exists; a single-window plan keeps the small bar hidden.
 // Cursor's `t` value is displayed as remaining headroom. Round after the
 // subtraction so 87.5% used matches the dashboard's 13% remaining display.
 // Other providers retain the existing summary rounding behavior.
@@ -121,9 +131,19 @@ static int summary_secondary_pct_int(provider_kind_t k, float source_pct)
     return summary_pct_int(k, source_pct);
 }
 
+static float qwen_second_pct(const stats_provider_t *p)
+{
+    const int slot = quota_second_slot(p, quota_hero_slot(p));
+    const usage_tier_t *tiers[] = { &p->primary, &p->secondary, &p->tertiary };
+    if (slot < 0) return -1.0f;
+    return clampi((int)(tiers[slot]->pct + 0.5f), 0, 100);
+}
+
 static float secondary_pct(const stats_provider_t *p)
 {
     provider_kind_t rpk = provider_kind(p->id);
+    if (rpk == PK_QWENCLOUD)
+        return qwen_second_pct(p);
     if (((rpk == PK_CLAUDE || rpk == PK_CODEX) && p->secondary.has)
         || rpk == PK_LMSTUDIO
         || (rpk == PK_OPENCODEGO && p->tertiary.has)
@@ -162,7 +182,8 @@ static void layout_dual_pct_left(lv_obj_t *primary, lv_obj_t *secondary,
 
 // Summary-row secondary bar (row_bar_w): Cursor Third Party API usage,
 // Claude/Codex weekly remaining %, LM Studio activity, OpenCode Go's
-// tertiary tier, or OpenRouter budget headroom; hidden otherwise.
+// tertiary tier, Qwen's next-longest quota window, or OpenRouter budget
+// headroom; hidden otherwise.
 // Extracted from render() (Fowler audit).
 //
 // Cursor and OpenCode Go use the tertiary tier (t/tr) for this smaller bar;
@@ -170,6 +191,22 @@ static void layout_dual_pct_left(lv_obj_t *primary, lv_obj_t *secondary,
 static void render_summary_secondary_bar(int slot, const stats_provider_t *p)
 {
     provider_kind_t rpk = provider_kind(p->id);
+    if (rpk == PK_QWENCLOUD) {
+        float pct = qwen_second_pct(p);
+        if (pct < 0.0f) {
+            lv_obj_add_flag(row_bar_w[slot], LV_OBJ_FLAG_HIDDEN);
+            return;
+        }
+        int v = clampi((int)(pct + 0.5f), 0, 100);
+        lv_bar_set_value(row_bar_w[slot], bar_fill(v), LV_ANIM_OFF);
+        if (!bar_should_pulse(pct) || !bar_pulse_uses_color_cycle(p->id)) {
+            lv_obj_set_style_bg_color(row_bar_w[slot], bar_color(p, pct),
+                                      LV_PART_INDICATOR);
+        }
+        update_bar_pulse(row_bar_w[slot], pct, p->id);
+        lv_obj_clear_flag(row_bar_w[slot], LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
     if (((rpk == PK_CLAUDE || rpk == PK_CODEX) && p->secondary.has)
         || rpk == PK_LMSTUDIO
         || (rpk == PK_OPENCODEGO && p->tertiary.has)
@@ -252,20 +289,23 @@ void render_summary_row(int slot, const stats_provider_t *p,
 
     // Top-bar source depends on provider. Quota-backed values render as
     // remaining headroom; Pi/MiMo/LM Studio baseline ratios stay as used %:
-    //  - OpenCode Go / Qwen: secondary tier (s) — see secondary_is_hero();
-    //    for OpenCode Go tertiary (t) fills the smaller bottom bar.
+    //  - OpenCode Go: secondary tier (s); its tertiary (t) fills the smaller
+    //    bottom bar. Qwen uses its duration-ranked quota hero (normally s).
     //  - MiMo / Pi / LM Studio: today's tokens vs the 30-day daily average
     //    (excluding zero-use days) via provider_avg_bar() — a "today vs your
     //    typical active day" reading that can exceed 100% on a heavy day.
     //  - everyone else: the windowed primary tier (p).
     provider_kind_t rpk_oc = provider_kind(p->id);
+    const usage_tier_t *qwen_top = qwen_hero_tier(p);
     bool oc_swap = secondary_is_hero(rpk_oc);
     float avg_pct = 0.0f;
     bool avg_swap = provider_avg_bar(p, &avg_pct);
-    bool top_has = oc_swap ? p->secondary.has
-                           : (avg_swap ? true : p->primary.has);
-    float top_pct = oc_swap ? p->secondary.pct
-                            : (avg_swap ? avg_pct : p->primary.pct);
+    bool top_has = qwen_top ? qwen_top->has
+                            : (oc_swap ? p->secondary.has
+                                       : (avg_swap ? true : p->primary.has));
+    float top_pct = qwen_top ? qwen_top->pct
+                             : (oc_swap ? p->secondary.pct
+                                        : (avg_swap ? avg_pct : p->primary.pct));
 
     if (!p->ok || !top_has) {
         update_bar_pulse(row_bar[slot], 0.0f, NULL);
@@ -328,20 +368,23 @@ void render_grid_tile(int slot, const stats_provider_t *p,
 
     // Top-bar source depends on provider. Quota-backed values render as
     // remaining headroom; Pi/MiMo/LM Studio baseline ratios stay as used %:
-    //  - OpenCode Go / Qwen: secondary tier (s) — see secondary_is_hero();
-    //    for OpenCode Go tertiary (t) fills the smaller bottom bar.
+    //  - OpenCode Go: secondary tier (s); its tertiary (t) fills the smaller
+    //    bottom bar. Qwen uses its duration-ranked quota hero (normally s).
     //  - MiMo / Pi / LM Studio: today's tokens vs the 30-day daily average
     //    (excluding zero-use days) via provider_avg_bar() — a "today vs your
     //    typical active day" reading that can exceed 100% on a heavy day.
     //  - everyone else: the windowed primary tier (p).
     provider_kind_t rpk_oc = provider_kind(p->id);
+    const usage_tier_t *qwen_top = qwen_hero_tier(p);
     bool oc_swap = secondary_is_hero(rpk_oc);
     float avg_pct = 0.0f;
     bool avg_swap = provider_avg_bar(p, &avg_pct);
-    bool top_has = oc_swap ? p->secondary.has
-                           : (avg_swap ? true : p->primary.has);
-    float top_pct = oc_swap ? p->secondary.pct
-                            : (avg_swap ? avg_pct : p->primary.pct);
+    bool top_has = qwen_top ? qwen_top->has
+                            : (oc_swap ? p->secondary.has
+                                       : (avg_swap ? true : p->primary.has));
+    float top_pct = qwen_top ? qwen_top->pct
+                             : (oc_swap ? p->secondary.pct
+                                        : (avg_swap ? avg_pct : p->primary.pct));
     // Independent of top_has: e.g. Codex's weekly (secondary) window can be
     // known even when the 5h primary/session window has no recent data.
     float sv = secondary_pct(p);

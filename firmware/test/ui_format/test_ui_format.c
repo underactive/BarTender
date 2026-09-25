@@ -272,6 +272,77 @@ static void test_provider_metric_sig_includes_credits(void)
     strcpy(p.credits_used, "663.81 / 2,500 credits used");
     uint32_t after = provider_metric_sig(&p);
     CHECK(before != after, "metric_sig: Qwen credits-used changes signature");
+
+    before = provider_metric_sig(&p);
+    p.primary.window_min = 60;
+    after = provider_metric_sig(&p);
+    CHECK(before != after, "metric_sig: window duration changes signature");
+
+    memset(&p, 0, sizeof p);
+    strcpy(p.id, "opencodego");
+    p.has_oc = true;
+    p.oc_fresh = true;
+    before = provider_metric_sig(&p);
+    p.oc_fresh = false;
+    after = provider_metric_sig(&p);
+    CHECK(before != after, "metric_sig: OpenCode freshness changes signature");
+}
+
+static void test_quota_window_labels(void)
+{
+    CHECK(quota_window_label(-5) == NULL, "quota label: negative unknown");
+    CHECK(quota_window_label(0) == NULL, "quota label: zero unknown");
+    EQ_STR(quota_window_label(1), "5-HOUR", "quota label: five-hour lower");
+    EQ_STR(quota_window_label(360), "5-HOUR", "quota label: five-hour boundary");
+    EQ_STR(quota_window_label(361), "DAILY", "quota label: daily lower");
+    EQ_STR(quota_window_label(1440), "DAILY", "quota label: daily boundary");
+    EQ_STR(quota_window_label(1441), "WEEKLY", "quota label: weekly lower");
+    EQ_STR(quota_window_label(20160), "WEEKLY", "quota label: weekly boundary");
+    CHECK(quota_window_label(20161) == NULL, "quota label: gap lower unknown");
+    CHECK(quota_window_label(40319) == NULL, "quota label: gap upper unknown");
+    EQ_STR(quota_window_label(40320), "MONTHLY", "quota label: monthly boundary");
+}
+
+static void test_quota_slot_selection(void)
+{
+    stats_provider_t p;
+    memset(&p, 0, sizeof p);
+    CHECK(quota_hero_slot(&p) == -1, "quota slots: empty hero");
+    CHECK(quota_second_slot(&p, -1) == -1, "quota slots: empty second");
+
+    p.primary.has = true; p.primary.window_min = 10080;
+    CHECK(quota_hero_slot(&p) == 0, "quota slots: weekly-only hero");
+    CHECK(quota_second_slot(&p, 0) == -1, "quota slots: weekly-only second");
+
+    memset(&p, 0, sizeof p);
+    p.secondary.has = true; p.secondary.window_min = 43200;
+    CHECK(quota_hero_slot(&p) == 1, "quota slots: monthly-only hero");
+    CHECK(quota_second_slot(&p, 1) == -1, "quota slots: monthly-only second");
+
+    p.primary.has = true; p.primary.window_min = 10080;
+    CHECK(quota_hero_slot(&p) == 1, "quota slots: monthly beats weekly");
+    CHECK(quota_second_slot(&p, 1) == 0, "quota slots: weekly second");
+
+    memset(&p, 0, sizeof p);
+    p.primary.has = true; p.primary.window_min = 360;
+    p.secondary.has = true; p.secondary.window_min = 10080;
+    p.tertiary.has = true; p.tertiary.window_min = 43200;
+    CHECK(quota_hero_slot(&p) == 2, "quota slots: largest duration hero");
+    CHECK(quota_second_slot(&p, 2) == 1, "quota slots: middle duration second");
+
+    memset(&p, 0, sizeof p);
+    p.primary.has = true; p.secondary.has = true; p.tertiary.has = true;
+    CHECK(quota_hero_slot(&p) == 1, "quota slots: unknown prefers secondary");
+    CHECK(quota_second_slot(&p, 1) == 0, "quota slots: unknown then primary");
+
+    p.secondary.window_min = 43200;
+    p.tertiary.window_min = 43200;
+    CHECK(quota_hero_slot(&p) == 1, "quota slots: tie prefers secondary");
+    CHECK(quota_second_slot(&p, 1) == 2, "quota slots: tie then tertiary");
+
+    memset(&p, 0, sizeof p);
+    p.primary.window_min = 43200;
+    CHECK(quota_hero_slot(&p) == -1, "quota slots: duration without tier ignored");
 }
 
 static void test_provider_avg_bar(void)
@@ -370,6 +441,8 @@ int main(void)
     test_i64_hist_to_i32();
     test_provider_tok_today();
     test_provider_metric_sig_includes_credits();
+    test_quota_window_labels();
+    test_quota_slot_selection();
     test_provider_avg_bar();
     test_colors();
 

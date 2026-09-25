@@ -13,7 +13,7 @@ Layout:
 |------|------|
 | `*.sh` (this directory) | User-facing CLIs: stats, publish, setup, uninstall |
 | [`build/`](build/) | Asset generators, serial screenshot tools, dev tests |
-| [`lib/`](lib/) | Shared Python helpers (`_stats_history.py`) imported by stats scripts |
+| [`lib/`](lib/) | Shared Python helpers (`_stats_history.py`, non-executing `_trpc_extract.py`) imported by stats scripts |
 
 ## User-facing (repo root `scripts/`)
 
@@ -48,3 +48,18 @@ payload age + byte integrity, and per-provider movement between runs (local
 snapshot diff). Read-only; exit code is scriptable (`0` healthy, `1`
 failures, `2` warnings only); `--json` for machine output, `--skip-producer`
 to skip the local `codexbar-stats.sh --json` run.
+
+
+### Provider contract tests
+
+Qwen projection and OpenCode Go parsing/freshness tests are hermetic and use
+synthetic fixtures with no credentials, identities, or workspace ids:
+
+```sh
+python3 scripts/lib/tests/test_qwen_projection.py -v
+python3 scripts/lib/tests/test_opencodego_parser.py -v
+```
+
+Use `scripts/opencodego-stats.sh --debug` for count-only pagination diagnostics.
+`OPENCODE_GO_DUMP` writes a mode-0600 local response dump for diagnosis; never
+commit that file.

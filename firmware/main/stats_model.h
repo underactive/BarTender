@@ -27,19 +27,20 @@
 
 // One usage tier: a present-flag, the used %, and its reset hint. Groups what
 // were three loose `has_x / x / xr` primitive triples (Fowler audit: Primitive
-// Obsession / data clump). primary=p/pr, secondary=s/sr, tertiary=t/tr.
+// Obsession / data clump). primary=p/pr/pw, secondary=s/sr/sw, tertiary=t/tr/tw.
 typedef struct {
     bool  has;                        // tier present in payload
     float pct;                        // used %
+    int   window_min;                 // window duration in minutes (0 if unreported)
     char  reset[STATS_TXT_MAX];       // reset hint ("" if absent)
 } usage_tier_t;
 
 typedef struct {
     char  id[STATS_ID_MAX];
     bool  ok;
-    usage_tier_t primary;             // p / pr  — primary used % + reset hint
-    usage_tier_t secondary;           // s / sr  — secondary used % + reset hint
-    usage_tier_t tertiary;            // t / tr  — tertiary used % + reset hint
+    usage_tier_t primary;             // p / pr / pw — primary used % + reset hint
+    usage_tier_t secondary;           // s / sr / sw — secondary used % + reset hint
+    usage_tier_t tertiary;             // t / tr / tw — tertiary used % + reset hint
 
     // v2 cost-card-capable fields — present when publisher merged a generic
     // `cost` object (Claude/OpenRouter) or the Pi provider's sibling `pi` block.
@@ -124,6 +125,7 @@ typedef struct {
     // v2 optional `oc` block: OpenCode Go token/cost data from opencode.ai API.
     // Token-only history chart, single today's cost value.
     bool     has_oc;
+    bool     oc_fresh;                // false => publisher served a cached response
     int64_t  oc_tok_today;              // tokens today
     int32_t  oc_cost_today_c;           // cost today in cents
     int64_t  oc_tok_month_max;          // 30-day max daily tokens

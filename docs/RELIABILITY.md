@@ -10,6 +10,7 @@ Requirements and practices for keeping the system reliable.
 | Publisher interrupted with lock held | Medium | Record the owner PID, preserve live locks, recover dead PID locks immediately; age-gate ownerless legacy locks (`codexbar-publish.sh`) |
 | Upstash auth failure (401/403) | Low | Distinct "auth (token?)" status; never log the bearer token; refuses non-`https://` URLs before sending |
 | Malformed / oversized payload | Medium | Parse + clamp at the boundary (`stats_model.c`: NaN/range guards, forward version gate); oversize → "response too big"; never crash, show "bad data from store" |
+| OpenCode Go API unavailable or cookie expired | Medium | Retain the local 30-day history and publish `oc.fresh:false`; the publisher preserves the last genuinely fresh LKG timestamp, so cached values remain visible but still age out |
 | WiFi association lost / AP flaps | Medium | Reconnect with escalating backoff; roam the ≤5 remembered networks; self-heal to add-network portal only after grace + zero known SSIDs |
 | Corrupt NVS blob (`wnets`) | Low | Validate magic/size/version/count; treat invalid as "zero networks"; never erase or brick on a bad blob |
 | Heap fragmentation (long uptime) | Low | Static/long-lived buffers for the fetch/parse path; avoid per-poll churn where practical |

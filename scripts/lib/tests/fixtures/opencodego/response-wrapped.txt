@@ -1,0 +1,1 @@
+prefix:self.$R["server-fn:3"] = new Response(JSON.parse("[[{\"id\":\"fixture-c\",\"timeCreated\":\"2026-01-02T00:00:00Z\",\"inputTokens\":4,\"outputTokens\":6,\"cost\":500}]]"), {status: 200, headers: new Headers({"content-type":"application/json"})});

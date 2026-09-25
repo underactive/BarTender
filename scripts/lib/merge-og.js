@@ -25,11 +25,13 @@ var ht=[];
 if(Array.isArray(src.oc.ht)){
   for(var i=0;i<src.oc.ht.length && ht.length<31;i++){
     var hv=i64(src.oc.ht[i]); if(hv!==null) ht.push(hv); } }
+var oc={tk:tk, ct:ct, mxt:mxt, ht:ht};
+if(typeof src.oc.fresh==='boolean') oc.fresh=src.oc.fresh;
 var did=false;
 for(var i=0;i<pay.providers.length;i++){
   var pr=pay.providers[i];
   if(pr && pr.id==='opencodego'){
-    pr.oc={tk:tk, ct:ct, mxt:mxt, ht:ht};
+    pr.oc=oc;
     did=true;
   }
 }

@@ -1,0 +1,1 @@
+self.$R[0] = new Response("", {status: 302, headers: new Headers({"location":"/login"})}); self.$R[1] = $R[0];

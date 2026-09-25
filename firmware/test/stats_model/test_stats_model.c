@@ -1221,6 +1221,62 @@ static void test_pi_hist_resets_on_pi_block(void)
     CHECK_EQ_INT(st.p[0].hist[1], 88);
 }
 
+static void test_usage_window_bounds(void)
+{
+    TEST("usage_window_bounds");
+    const char *inner =
+        "{\"v\":2,\"ts\":\"2024-01-01T00:00:00Z\",\"providers\":["
+        "{\"id\":\"valid\",\"ok\":true,\"p\":10,\"pw\":1,"
+            "\"s\":20,\"sw\":1000000,\"t\":30,\"tw\":60.0},"
+        "{\"id\":\"range\",\"ok\":true,\"p\":11,\"pw\":0,"
+            "\"s\":21,\"sw\":-1,\"t\":31,\"tw\":1000001},"
+        "{\"id\":\"type\",\"ok\":true,\"p\":12,\"pw\":60.5,"
+            "\"s\":22,\"sw\":\"60\",\"t\":32,\"tw\":true},"
+        "{\"id\":\"null\",\"ok\":true,\"p\":13,\"pw\":null,"
+            "\"s\":23,\"sw\":1.5,\"t\":33,\"tw\":false}]}";
+    char *env = make_envelope(inner);
+    stats_t st;
+    stats_parse_t r = stats_model_parse(env, &st);
+    free(env);
+
+    CHECK_EQ_INT(r, STATS_PARSE_OK);
+    CHECK_EQ_INT(st.p[0].primary.window_min, 1);
+    CHECK_EQ_INT(st.p[0].secondary.window_min, 1000000);
+    CHECK_EQ_INT(st.p[0].tertiary.window_min, 60);
+    CHECK_EQ_INT(st.p[1].primary.window_min, 0);
+    CHECK_EQ_INT(st.p[1].secondary.window_min, 0);
+    CHECK_EQ_INT(st.p[1].tertiary.window_min, 0);
+    CHECK_EQ_INT(st.p[2].primary.window_min, 0);
+    CHECK_EQ_INT(st.p[2].secondary.window_min, 0);
+    CHECK_EQ_INT(st.p[2].tertiary.window_min, 0);
+    CHECK_EQ_INT(st.p[3].primary.window_min, 0);
+    CHECK_EQ_INT(st.p[3].secondary.window_min, 0);
+    CHECK_EQ_INT(st.p[3].tertiary.window_min, 0);
+    CHECK(st.p[2].primary.has && st.p[2].primary.pct == 12.0f);
+}
+
+static void test_opencode_fresh_default_and_marker(void)
+{
+    TEST("opencode_fresh_default_and_marker");
+    const char *inner =
+        "{\"v\":2,\"ts\":\"2024-01-01T00:00:00Z\",\"providers\":["
+        "{\"id\":\"claude\",\"ok\":true},"
+        "{\"id\":\"opencodego\",\"ok\":true,\"oc\":{\"tk\":1}},"
+        "{\"id\":\"opencodego\",\"ok\":true,\"oc\":{\"tk\":2,\"fresh\":true}},"
+        "{\"id\":\"opencodego\",\"ok\":true,\"oc\":{\"tk\":3,\"fresh\":false}}]}";
+    char *env = make_envelope(inner);
+    stats_t st;
+    stats_parse_t r = stats_model_parse(env, &st);
+    free(env);
+
+    CHECK_EQ_INT(r, STATS_PARSE_OK);
+    CHECK(st.p[0].oc_fresh == true);
+    CHECK(st.p[1].oc_fresh == true);
+    CHECK(st.p[2].oc_fresh == true);
+    CHECK(st.p[3].oc_fresh == false);
+    CHECK(st.p[3].has_oc == true);
+}
+
 // ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
@@ -1231,6 +1287,8 @@ int main(void)
 
     test_valid_v1_payload();
     test_valid_v2_with_cost();
+    test_usage_window_bounds();
+    test_opencode_fresh_default_and_marker();
     test_moonshot_credit_balance_parsed();
     test_result_null_gives_no_data();
     test_result_absent_gives_no_data();

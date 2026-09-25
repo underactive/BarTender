@@ -164,10 +164,10 @@ if (!anyParsed && expected.length===0){ eprint("error: codexbar returned no usab
 
 if (env('CBAR_MODE')==='json'){
   // v2 projection. PII (accountEmail/loginMethod/identity) is structurally
-  // never read here. `p/pr/s/sr/t/tr` are usage % and reset hints, except
-  // Qwen's current credits-used secondary text, which is moved to `cost.cu`;
-  // its separate `resetsAt` timestamp remains the local
-  // `YYYY-MM-DD HH:MM:SS` `sr` reset hint.
+  // never read here. `p/pr/s/sr/t/tr` are usage % and reset hints. Qwen's
+  // quota windows are normalized so the longest known window is `s` (the
+  // firmware's hero slot); `pw/sw/tw` carry their reported durations in
+  // minutes. Credits-used text is moved to `cost.cu`, never a reset hint.
   // The optional `cost` object carries only the extra-usage OVERAGE
   // (providerCost: a $used/$limit figure, NOT total spend) as integer cents.
   // Total spend/tokens and the per-day history are merged in by
@@ -199,10 +199,48 @@ if (env('CBAR_MODE')==='json'){
     if (typeof s!=="string") return null;
     var m=s.match(re); return m ? cents(m[1]) : null;
   };
+  var winMin=function(w){
+    if (!w || w.windowMinutes==null) return null;
+    var n=Number(w.windowMinutes);
+    return isFinite(n) && n>0 && n<=1000000 && Math.floor(n)===n ? n : null;
+  };
+  var absReset=function(isoStr){
+    if (!isoStr) return null;
+    var d=new Date(isoStr); if (isNaN(d.getTime())) return null;
+    return String(d.getFullYear()).padStart(4,'0')+'-'+
+      String(d.getMonth()+1).padStart(2,'0')+'-'+
+      String(d.getDate()).padStart(2,'0')+' '+
+      String(d.getHours()).padStart(2,'0')+':'+
+      String(d.getMinutes()).padStart(2,'0')+':'+
+      String(d.getSeconds()).padStart(2,'0');
+  };
   var project=function(e){
     var o={id:e.provider||"?"};
     if (e.error){ o.ok=false; return o; }
+    var qwen=e.provider==="qwencloud";
     var u=e.usage||{}, pr=u.primary, se=u.secondary, te=u.tertiary;
+    if (qwen){
+      // CodexBar 0.66+ reports a monthly-only Token Plan as a lone primary
+      // window. Keep the firmware's stable hero slot (`s`) while preserving
+      // all window fields together. With multiple complete durations, sort
+      // shortest -> primary, middle -> tertiary, longest -> secondary.
+      var qwins=[];
+      if (pr && typeof pr==="object") qwins.push(pr);
+      if (se && typeof se==="object") qwins.push(se);
+      if (te && typeof te==="object") qwins.push(te);
+      if (qwins.length===1){ pr=null; se=qwins[0]; te=null; }
+      else if (qwins.length>=2){
+        var allDurations=true;
+        for (var qi=0; qi<qwins.length; qi++)
+          if (winMin(qwins[qi])==null) allDurations=false;
+        if (allDurations){
+          qwins.sort(function(a,b){ return winMin(a)-winMin(b); });
+          pr=qwins[0];
+          se=qwins[qwins.length-1];
+          te=qwins.length===3 ? qwins[1] : null;
+        }
+      }
+    }
     var oru=u.openRouterUsage;
     var hasCredits=(e.credits && e.credits.remaining!=null && !isNaN(e.credits.remaining));
     // CodexBar currently surfaces these providers' API balances as display
@@ -216,32 +254,52 @@ if (env('CBAR_MODE')==='json'){
       ? dollarInText(u.loginMethod || (u.identity&&u.identity.loginMethod), /Balance:\s*\$([0-9]+(?:\.[0-9]+)?)/i) : null;
     if (!pr && !se && !te && !(oru && oru.keyDataFetched) && !hasCredits && moonshotBalance==null && openrouterBalance==null){ o.ok=false; return o; }
     o.ok=true;
-    if (pr){ var pp=num(pr.usedPercent); if (pp!=null) o.p=pp;
-      if (pr.resetDescription) o.pr=String(pr.resetDescription);
-      else { var rfs=fmtReset(pr.resetsAt); if (rfs) o.pr=rfs; } }
     var qwenCreditsUsed=null;
-    if (se){ var sp=num(se.usedPercent); if (sp!=null) o.s=sp;
-      var sreset=null;
-      if (se.resetDescription) sreset=String(se.resetDescription);
-      else { var rfs=fmtReset(se.resetsAt); if (rfs) sreset=rfs; }
-      // Qwen's secondary resetDescription is currently a credits-used
-      // display string, not a reset time. Keep it out of the reset-hint
-      // namespace and carry it in the v2 cost block instead. Its separate
-      // resetsAt field still supplies the actual weekly reset hint.
-      if (e.provider==="qwencloud" && sreset && /credits?/i.test(sreset)) {
-        qwenCreditsUsed=sreset;
-        var qwenDate=new Date(se.resetsAt);
-        if (!isNaN(qwenDate.getTime()))
-          o.sr=String(qwenDate.getFullYear()).padStart(4,'0')+'-'+
-            String(qwenDate.getMonth()+1).padStart(2,'0')+'-'+
-            String(qwenDate.getDate()).padStart(2,'0')+' '+
-            String(qwenDate.getHours()).padStart(2,'0')+':'+
-            String(qwenDate.getMinutes()).padStart(2,'0')+':'+
-            String(qwenDate.getSeconds()).padStart(2,'0');
-      } else if (sreset) o.sr=sreset; }
-    if (te){ var tp=num(te.usedPercent); if (tp!=null) o.t=tp;
-      if (te.resetDescription) o.tr=String(te.resetDescription);
-      else { var rfs=fmtReset(te.resetsAt); if (rfs) o.tr=rfs; } }
+    var tierReset=function(w){
+      if (!w) return null;
+      var desc=w.resetDescription ? String(w.resetDescription) : null;
+      if (qwen && desc && /credits?/i.test(desc)){
+        if (qwenCreditsUsed===null) qwenCreditsUsed=desc;
+        return absReset(w.resetsAt);
+      }
+      if (qwen){
+        var qreset=absReset(w.resetsAt);
+        if (qreset) return qreset;
+      }
+      if (desc) return desc;
+      return fmtReset(w.resetsAt);
+    };
+    var emitTier=function(w, pctKey, resetKey, minKey){
+      if (!w) return;
+      var pct=num(w.usedPercent); if (pct!=null) o[pctKey]=pct;
+      var reset=tierReset(w); if (reset) o[resetKey]=reset;
+      var minutes=winMin(w); if (minutes!=null) o[minKey]=minutes;
+    };
+    if (qwen){
+      emitTier(pr, "p", "pr", "pw");
+      emitTier(se, "s", "sr", "sw");
+      emitTier(te, "t", "tr", "tw");
+      // Defense in depth: credits text must never reach a reset-hint field,
+      // even if a future CodexBar wrapper changes which value we inspect.
+      ["pr","sr","tr"].forEach(function(k){
+        if (typeof o[k]==="string" && /credits?/i.test(o[k])){
+          if (qwenCreditsUsed===null) qwenCreditsUsed=o[k];
+          delete o[k];
+        }
+      });
+    } else {
+      if (pr){ var pp=num(pr.usedPercent); if (pp!=null) o.p=pp;
+        if (pr.resetDescription) o.pr=String(pr.resetDescription);
+        else { var rfs=fmtReset(pr.resetsAt); if (rfs) o.pr=rfs; } }
+      if (se){ var sp=num(se.usedPercent); if (sp!=null) o.s=sp;
+        var sreset=null;
+        if (se.resetDescription) sreset=String(se.resetDescription);
+        else { var rfs=fmtReset(se.resetsAt); if (rfs) sreset=rfs; }
+        if (sreset) o.sr=sreset; }
+      if (te){ var tp=num(te.usedPercent); if (tp!=null) o.t=tp;
+        if (te.resetDescription) o.tr=String(te.resetDescription);
+        else { var rfs=fmtReset(te.resetsAt); if (rfs) o.tr=rfs; } }
+    }
     var cobj={};
     if (qwenCreditsUsed!=null) cobj.cu=qwenCreditsUsed;
     var co=u.providerCost;

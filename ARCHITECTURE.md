@@ -33,14 +33,19 @@ payload minimization (see SECURITY.md; NVS-encryption is logged tech debt).
 Data contract (stable across stages; full JSON Schema in
 [docs/generated/codexbar-payload.schema.json](docs/generated/codexbar-payload.schema.json)):
 `GET {url}/get/{key}` → `{"result":"<escaped-json>"}` →
-`{v,ts,providers:[{id,ok,p?,pr?,s?,sr?,cost?,ph?}]}` where the optional
-`cost = {xu?,xl?,ct?,cm?,tt?,tm?,cr?,cl?,cu?,h?}` (cents / token counts;
-`cr` is a prepaid balance from OpenRouter, generic CodexBar
-`credits.remaining`, or the reduced Moonshot/DeepSeek balance display strings;
-`cu` is Qwen Cloud's credits-used display string; Qwen's separate weekly
-`resetsAt` timestamp is formatted into `sr` as local `YYYY-MM-DD HH:MM:SS`)
-and `ph` = ~24h
-session usage-% history (0..100; Claude only).
+`{v,ts,providers:[{id,ok,p?,pr?,pw?,s?,sr?,sw?,t?,tr?,tw?,cost?,ph?,oc?}]}`
+where `pw`/`sw`/`tw` are optional source quota-window durations in minutes.
+Qwen windows are normalized by duration so its longest known window is always
+in `s` (the stable summary hero slot); the device derives words such as
+`MONTHLY` or `WEEKLY`. The optional `cost =
+{xu?,xl?,ct?,cm?,tt?,tm?,cr?,cl?,cu?,h?}` (cents / token counts; `cr` is a
+prepaid balance from OpenRouter, generic CodexBar `credits.remaining`, or the
+reduced Moonshot/DeepSeek balance display strings; `cu` is Qwen Cloud's
+credits-used display string and is never a reset hint) and `oc =
+{tk,ct,mxt,ht,fresh?}` (OpenCode Go token rollup; `fresh:false` means cached
+history) are documented in the schema. Qwen reset hints come from each
+window's own `resetsAt`; `ph` is ~24h session usage-% history (0..100; Claude
+only).
 **v1** is the pre-cost shape `{id,ok,p?,pr?,s?,sr?}`; v2 is a strict superset
 and the firmware accepts both (`v1‖v2`).
 

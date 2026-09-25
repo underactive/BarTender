@@ -55,13 +55,76 @@ uint32_t hash_mix_u32(uint32_t h, uint32_t v)
     return h;
 }
 
+// Device-owned labels use only the quota windows with an agreed vocabulary.
+// Values in the gap between the weekly and monthly buckets are unknown rather
+// than guessed; callers choose their legacy fallback when needed.
+const char *quota_window_label(int minutes)
+{
+    if (minutes <= 0) return NULL;
+    if (minutes <= 360) return "5-HOUR";
+    if (minutes <= 1440) return "DAILY";
+    if (minutes <= 20160) return "WEEKLY";
+    if (minutes >= 40320) return "MONTHLY";
+    return NULL;
+}
+
+static int quota_slot_window(const stats_provider_t *p, int slot)
+{
+    const usage_tier_t *tiers[] = { &p->primary, &p->secondary, &p->tertiary };
+    return tiers[slot]->window_min > 0 ? tiers[slot]->window_min : 0;
+}
+
+static int quota_slot_order(const stats_provider_t *p, int out[3])
+{
+    // Secondary wins ties and all-unknown cases; this preserves the existing
+    // Qwen summary hero preference while making duration ranking deterministic.
+    static const int preference[] = { 1, 0, 2 };
+    int n = 0;
+    for (size_t i = 0; i < sizeof preference / sizeof preference[0]; i++) {
+        int slot = preference[i];
+        const usage_tier_t *tiers[] = { &p->primary, &p->secondary, &p->tertiary };
+        if (tiers[slot]->has) out[n++] = slot;
+    }
+    for (int i = 1; i < n; i++) {
+        int slot = out[i];
+        int j = i;
+        while (j > 0 && quota_slot_window(p, out[j - 1]) < quota_slot_window(p, slot)) {
+            out[j] = out[j - 1];
+            j--;
+        }
+        out[j] = slot;
+    }
+    return n;
+}
+
+int quota_hero_slot(const stats_provider_t *p)
+{
+    if (!p) return -1;
+    int order[3];
+    return quota_slot_order(p, order) > 0 ? order[0] : -1;
+}
+
+int quota_second_slot(const stats_provider_t *p, int hero)
+{
+    if (!p || hero < 0 || hero > 2) return -1;
+    int order[3];
+    int n = quota_slot_order(p, order);
+    for (int i = 0; i < n; i++) {
+        if (order[i] != hero) return order[i];
+    }
+    return -1;
+}
+
 uint32_t provider_metric_sig(const stats_provider_t *p)
 {
     uint32_t h = 2166136261U;
     h = hash_mix_u32(h, p->ok ? 1U : 0U);
     h = hash_mix_u32(h, (uint32_t)pct_tenths(p->primary.has, p->primary.pct));
+    h = hash_mix_u32(h, (uint32_t)p->primary.window_min);
     h = hash_mix_u32(h, (uint32_t)pct_tenths(p->secondary.has, p->secondary.pct));
+    h = hash_mix_u32(h, (uint32_t)p->secondary.window_min);
     h = hash_mix_u32(h, (uint32_t)pct_tenths(p->tertiary.has, p->tertiary.pct));
+    h = hash_mix_u32(h, (uint32_t)p->tertiary.window_min);
     h = hash_mix_u32(h, p->has_cost ? 1U : 0U);
     if (p->has_cost) {
         h = hash_mix_u32(h, (uint32_t)p->cost_today_c);
@@ -109,6 +172,7 @@ uint32_t provider_metric_sig(const stats_provider_t *p)
     }
     h = hash_mix_u32(h, p->has_oc ? 1U : 0U);
     if (p->has_oc) {
+        h = hash_mix_u32(h, p->oc_fresh ? 1U : 0U);
         h = hash_mix_u32(h, (uint32_t)p->oc_tok_today);
         h = hash_mix_u32(h, (uint32_t)(p->oc_tok_today >> 32));
         h = hash_mix_u32(h, (uint32_t)p->oc_cost_today_c);

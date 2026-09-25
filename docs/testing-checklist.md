@@ -100,9 +100,18 @@ Rendering:
       credits-used string from `cost.cu`. The bar chart stays empty (that chart
       plots spend, which Qwen's prepaid Credits plan reports as $0), and the
       card must no longer read "COST DATA NOT AVAILABLE YET". The Usage-Limits
-      page also shows Qwen's weekly reset hint in `sr` as local
-      `YYYY-MM-DD HH:MM:SS`, derived from the separate `resetsAt` timestamp;
-      the credits string remains only in `cu`.
+      page also shows Qwen's per-window reset hints from the matching
+      `resetsAt` values as local `YYYY-MM-DD HH:MM:SS`; the credits string
+      remains only in `cu`. A monthly-only payload reads `MONTHLY`; a legacy
+      weekly-only payload reads `WEEKLY`; and a complete 5-hour + weekly +
+      monthly payload shows the longest window as the hero and the other
+      windows in their own labeled rows. The summary's second bar is hidden
+      for a single window and shows the next-longest window otherwise.
+- [ ] **OpenCode Go cached history is visibly stale.** Force an API failure
+      after a successful history fetch; the Cost card keeps the cached token
+      history but shows the `CACHED` marker. A cached-only publish must not
+      refresh the last-known-good timestamp; a later helper failure therefore
+      carries the same stale snapshot only until the configured LKG age limit.
 - [ ] **Derived token counts are a floor, not a total.** Both numbers above
       count only traffic that went through Pi Agent and will read low against
       the providers' own consoles — measured at 41% coverage on the DeepSeek
@@ -156,6 +165,21 @@ Rendering:
       live 240×320 orientation.
 - [ ] **End-to-end**: `curl GET {url}/get/{key}` → device Cost numbers +
       chart shape match the payload's `cost` block.
+
+## Host — provider contract and parser tests
+
+Automated (hermetic; no Keychain/network/device required):
+- [ ] `python3 scripts/lib/tests/test_qwen_projection.py -v` passes the legacy
+      weekly-only, CodexBar 0.66 monthly-only, complete multi-window,
+      primary/tertiary credits-text, malformed-duration, no-duration, privacy,
+      and JSON-schema cases.
+- [ ] `python3 scripts/lib/tests/test_opencodego_parser.py -v` passes static
+      legacy/Response-wrapped extraction, HTML/login and malformed failures,
+      pagination overlap/dedupe, cache fallback freshness, LKG timestamp
+      retention, `--check`, cookie-argv, and secret/workspace/raw-body leak
+      assertions.
+- [ ] `scripts/opencodego-stats.sh --debug` prints counts only; no response
+      body, cookie, workspace id, model name, or record id appears.
 
 ## Host (deferred — recipe, not yet built)
 

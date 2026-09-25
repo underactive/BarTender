@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://bartender/docs/generated/codexbar-payload.schema.json",
   "title": "CodexBar toy Upstash payload (inner, decoded from the {\"result\":\"...\"} envelope)",
-  "description": "Hand-maintained. Producer: scripts/codexbar-stats.sh --json (usage % + extra-usage $) augmented by scripts/codexbar-publish.sh (Claude/Codex cost rollups from CodexBar's local cost caches plus the reduced Pi Agent provider from scripts/pi-agent-stats.sh, the LM Studio provider from scripts/lmstudio-stats.sh, and optional per-provider `cu` on `cursor` from scripts/cursor-stats.sh). Consumer: firmware/main/stats_model.{h,c}. v1 = pre-cost {id,ok,p?,pr?,s?,sr?,t?,tr?}; v2 is a strict superset adding optional per-provider `cost`, `ph`, `pi`, `lm`, and `cu` objects. Firmware accepts v1 and v2; rejects other versions.",
+  "description": "Hand-maintained. Producer: scripts/codexbar-stats.sh --json (usage % + extra-usage $) augmented by scripts/codexbar-publish.sh (Claude/Codex cost rollups from CodexBar's local cost caches plus the reduced Pi Agent provider from scripts/pi-agent-stats.sh, the LM Studio provider from scripts/lmstudio-stats.sh, and optional per-provider `cu` on `cursor` from scripts/cursor-stats.sh). Consumer: firmware/main/stats_model.{h,c}. v1 = pre-cost {id,ok,p?,pr?,s?,sr?,t?,tr?}; v2 is a strict superset adding optional per-provider `cost`, `ph`, `pi`, `lm`, and `cu` objects plus optional quota-window durations and OpenCode Go freshness. Firmware accepts v1 and v2; rejects other versions.",
   "type": "object",
   "required": ["v", "ts", "providers"],
   "properties": {
@@ -17,11 +17,14 @@
           "id": { "type": "string", "description": "Provider id, e.g. claude/codex/cursor/openrouter." },
           "ok": { "type": "boolean", "description": "Provider returned usable usage data." },
           "p":  { "type": "number", "description": "Primary/session used %. Typically 0-100; Pi compares today to the prior 29-day peak and may exceed 100." },
-          "pr": { "type": "string", "description": "Primary reset hint." },
-          "s":  { "type": "number", "description": "Secondary/weekly used %, 0-100." },
-          "sr": { "type": "string", "description": "Secondary reset hint." },
+          "pr": { "type": "string", "description": "Primary reset hint; never Qwen credits-used text." },
+          "pw": { "type": "integer", "minimum": 1, "description": "Optional primary quota-window length in minutes, used by Qwen's normalized p tier. The device labels known ranges 5-HOUR, DAILY, WEEKLY, or MONTHLY; the weekly/monthly gap is unknown and falls back to WEEKLY only at presentation; absent when the source reports no duration." },
+          "s":  { "type": "number", "description": "Secondary/hero used %, 0-100. Qwen normalizes its longest known quota window here." },
+          "sr": { "type": "string", "description": "Secondary reset hint; never Qwen credits-used text." },
+          "sw": { "type": "integer", "minimum": 1, "description": "Optional secondary/hero quota-window length in minutes, used by Qwen's normalized longest tier. The device labels known ranges 5-HOUR, DAILY, WEEKLY, or MONTHLY; the weekly/monthly gap is unknown and falls back to WEEKLY only at presentation; absent when the source reports no duration." },
           "t":  { "type": "number", "description": "Tertiary used %, 0-100 (Cursor's Third Party API pool)." },
-          "tr": { "type": "string", "description": "Tertiary reset hint." },
+          "tr": { "type": "string", "description": "Tertiary reset hint; never Qwen credits-used text." },
+          "tw": { "type": "integer", "minimum": 1, "description": "Optional tertiary quota-window length in minutes, used by Qwen's normalized middle tier. The device labels known ranges 5-HOUR, DAILY, WEEKLY, or MONTHLY; the weekly/monthly gap is unknown and falls back to WEEKLY only at presentation; absent when the source reports no duration." },
           "cost": {
             "type": "object",
             "description": "v2 optional. Present for providers with a generic cost payload (Claude/Codex cost-cache rollups; OpenRouter live keyDataFetched fields; Ramp Router dashboard-API rollups via ramp-stats.sh; DeepSeek platform-dashboard rollups via deepseek-stats.sh; Moonshot/Qwen Cloud token slices DERIVED from local Pi Agent sessions via pi-agent-stats.sh). Money is integer CENTS (LVGL has no float printf). Pi uses the sibling `pi` block instead; firmware still maps it into cost-card-capable fields.",
@@ -35,7 +38,7 @@
               "cw": { "type": "integer", "description": "Spend this week, cents (OpenRouter: keyUsageWeekly; DeepSeek: trailing 7 days inclusive of today, summed from the daily cost series)." },
               "cr": { "type": "integer", "description": "Account balance remaining, cents (OpenRouter dedicated balance or Balance display string; generic credits.remaining where provided; Moonshot/DeepSeek balance display strings; Ramp remaining_credit_usd). Firmware credits_remaining_c." },
               "cl": { "type": "integer", "description": "Total account credits, cents (OpenRouter: totalCredits; Ramp total_credits_usd). Firmware credits_limit_c." },
-              "cu": { "type": "string", "description": "Credits-used display string (Qwen Cloud's secondary usage text, e.g. '663.81 / 2,500 credits used')." },
+              "cu": { "type": "string", "description": "Credits-used display string (Qwen Cloud's quota-window usage text, e.g. '663.81 / 2,500 credits used'). Never a reset hint; each Qwen tier's reset comes from that tier's own resetsAt." },
               "h":  {
                 "type": "array",
                 "items": { "type": "integer" },
@@ -137,7 +140,8 @@
                 "items": { "type": "integer" },
                 "maxItems": 31,
                 "description": "Daily token totals, oldest -> newest. Firmware caps at STATS_HIST_MAX."
-              }
+              },
+              "fresh": { "type": "boolean", "description": "true when this cycle fetched OpenCode Go usage successfully; false when the token history is cached after an API failure. Absent means fresh for backward compatibility." }
             },
             "additionalProperties": false
           },

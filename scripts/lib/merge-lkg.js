@@ -10,11 +10,14 @@
 // publish so the store keeps its last good value). This helper extends that
 // same "a transient failure must not blank the toy" guarantee down to the
 // per-provider level: it keeps a tiny LOCAL cache of each provider's last
-// ok:true snapshot and, for any provider that is ok:false in the outgoing
-// payload, substitutes its last good snapshot — provided that snapshot is still
-// fresh enough (CBPUB_LKG_MAX_AGE_S, default 24h; <=0 = never expire). After a
-// snapshot ages past the limit the provider falls back to "--" again, a real
-// signal that it has been down a long time rather than a brief blip.
+// usable snapshot, stamped at the last genuinely fresh cycle. For any provider
+// that is ok:false in the outgoing payload, it substitutes that snapshot —
+// provided its fresh stamp is still within CBPUB_LKG_MAX_AGE_S (default 24h;
+// <=0 = never expire). After a snapshot ages past the limit the provider falls
+// back to "--" again, a real signal that it has been down a long time rather
+// than a brief blip. OpenCode Go cached-only snapshots may update the values
+// while retaining their prior fresh stamp, so a later carry-forward stays
+// visually continuous without extending the age limit.
 //
 // A carried-forward provider is reverted to its COMPLETE prior snapshot (usage
 // %, reset hints, cost, history), so the toy renders it exactly as it last
@@ -67,7 +70,7 @@ if(isNaN(maxAge)) maxAge=86400;
 var now=Date.parse(pay.ts);
 if(isNaN(now)) now=Date.now();
 
-// Load the cache (id -> last ok:true snapshot, each stamped with _ts). An
+// Load the cache (id -> last usable snapshot, each stamped with _ts). An
 // absent/corrupt cache is fine: nothing to carry forward, but we still refresh
 // it below from this cycle's healthy providers.
 var cacheById={};
@@ -102,22 +105,42 @@ for(var i=0;i<pay.providers.length;i++){
   var snap=cacheById[pr.id];
   if(!snap || snap.ok!==true || !freshEnough(snap._ts)) continue;
   var restored=clone(snap); delete restored._ts;
+  if(restored.id==='opencodego' && restored.oc && typeof restored.oc==='object'){
+    restored.oc=clone(restored.oc);
+    restored.oc.fresh=false;
+  }
   pay.providers[i]=restored;
   carriedIds[pr.id]=true;
   var ageMin=Math.round((now-Date.parse(snap._ts))/60000);
   carried.push(pr.id+(isNaN(ageMin)?'':'('+ageMin+'m)'));
 }
 
-// 2) Refresh the cache from this cycle's GENUINELY fresh providers (ok===true
-//    and NOT carried-forward). A carried-forward provider keeps its existing
-//    stamp, so a persistently-failing provider ages out and eventually shows
-//    "--" again instead of pinning a stale value forever.
+// 2) Refresh the cache from this cycle's providers. Genuinely fresh providers
+//    (ok===true and not carried-forward) get a new stamp. OpenCode Go reports
+//    cached history as ok:true with oc.fresh:false; retain its current values
+//    for continuity, but keep the previous fresh stamp so the snapshot still
+//    ages out. If there is no prior stamp, do not create an LKG entry from
+//    cached-only data.
 var nowIso=new Date(now).toISOString();
 var newCache=clone(cacheById);          // preserve carried/absent providers' entries
 for(var i=0;i<pay.providers.length;i++){
   var pr=pay.providers[i];
   if(!pr || !pr.id || pr.ok!==true || carriedIds[pr.id]) continue;
-  var snapObj=clone(pr); delete snapObj._ts; snapObj._ts=nowIso;
+  var prior=cacheById[pr.id];
+  // A failed OpenCode helper leaves the CodexBar limits row intact. Do not
+  // replace a complete cached `oc` block with that limits-only snapshot.
+  if(pr.id==='opencodego' && (!pr.oc || typeof pr.oc!=='object') &&
+     prior && prior.oc && typeof prior.oc==='object') continue;
+  var snapObj=clone(pr); delete snapObj._ts;
+  if(pr.id==='opencodego' && pr.oc && typeof pr.oc==='object' &&
+     pr.oc.fresh===false){
+    if(prior && prior._ts) {
+      snapObj._ts=prior._ts;
+      newCache[pr.id]=snapObj;
+    }
+    continue;
+  }
+  snapObj._ts=nowIso;
   newCache[pr.id]=snapObj;
 }
 

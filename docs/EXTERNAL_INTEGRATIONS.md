@@ -32,12 +32,44 @@ process.
   reduced projection maps generic `credits.remaining` to `cost.cr` (integer
   cents) when available; it also reduces Moonshot's `Balance: $…` display
   string and DeepSeek's leading `$…` balance/reset string to `cost.cr`, while
-  OpenRouter retains its dedicated balance source. Qwen Cloud's secondary
+  OpenRouter retains its dedicated balance source. Qwen Cloud's quota window
   `resetDescription` is currently a credits-used display string rather than a
-  reset time, so it is published as `cost.cu`; its separate `resetsAt` timestamp
-  is formatted into the actual weekly reset hint `sr` as local
-  `YYYY-MM-DD HH:MM:SS`. See memory
+  reset time, so it is published as `cost.cu`; its own `resetsAt` is formatted
+  into the corresponding reset hint as local `YYYY-MM-DD HH:MM:SS`. CodexBar
+  ≤0.65 reported Qwen's single (weekly) window as `secondary`; 0.66+ reports a
+  monthly-only Token Plan as a lone `primary` window. The projection keeps
+  Qwen's longest known window in `s` (the stable firmware hero slot), sorts
+  complete multi-window plans by `windowMinutes`, emits `pw`/`sw`/`tw`, and
+  never leaves credits text in `pr`/`sr`/`tr`. See memory
   `codexbar-cli-behavior`.
+
+## OpenCode Go console API
+
+- **What:** the OpenCode Go usage history endpoint at `opencode.ai/_server`,
+  used only for aggregate daily token/cost history. CodexBar supplies the
+  quota windows; this helper supplies the OpenCode Go token chart.
+- **Loaded via:** `scripts/opencodego-stats.sh`, using the Keychain cookie
+  `codexbar-toy/opencodego-session` (or `OPENCODE_GO_COOKIE` in hermetic
+  tests). The helper passes it to curl through a temporary mode-0600 config,
+  never as a process argument. The workspace is configurable with
+  `OPENCODE_GO_WORKSPACE`; the default is the configured OpenCode workspace
+  and is never published.
+- **Parsing boundary:** the response is a SolidStart/tRPC `$R` serialization.
+  The helper uses `scripts/lib/_trpc_extract.py` to locate and parse static
+  JSON literals, including the observed `new Response`/`new Headers` redirect
+  wrapper. It never executes server-provided JavaScript and treats HTML,
+  redirects, malformed shapes, and empty pages as API failures.
+- **Pagination and resilience:** pages are fetched with the endpoint's
+  recorded server-function routing headers, deduplicated by record id (or a
+  stable timestamp/token/cost tuple), and merged into a 30-day local history.
+  A partial multi-page fetch is discarded. If the API fails, the last local
+  history is retained and emitted with `oc.fresh:false`; a successful fetch
+  emits `oc.fresh:true`. `--check` reports credential/API/freshness status.
+- **Diagnostics and privacy:** `--debug` prints only page and dedupe counts.
+  `OPENCODE_GO_DUMP` may write a `0600` raw response to a temporary path for
+  local diagnosis, printing only that path. Cookies, workspace ids, record
+  ids, raw response bodies, model names, prompts, and account identity never
+  enter the payload, fixtures, or logs.
 
 ## Upstash Redis (REST)
 
