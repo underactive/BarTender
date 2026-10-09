@@ -301,7 +301,7 @@ if cookie:
         try:
             balance_c = max(0, int(round(float(bd.get("cashBalance", "0")) * 100)))
             gift_balance_c = max(0, int(round(float(bd.get("giftBalance", "0")) * 100)))
-            eprint(f"balance: \${balance_c/100:.2f} cash, \${gift_balance_c/100:.2f} gift")
+            eprint(f"balance: \\${balance_c/100:.2f} cash, \\${gift_balance_c/100:.2f} gift")
         except (ValueError, TypeError):
             pass
 else:
