@@ -90,7 +90,8 @@ process.
   `docs/SECURITY.md`). `MOCK_SINK_URL` redirects to a local sink for tests.
 - **Key env vars / CLI flags:** config keys `UPSTASH_REST_URL`, `UPSTASH_KEY`,
   `PUBLISH_INTERVAL`, `MOCK_SINK_URL`; test overrides `CBPUB_CONFIG`,
-  `CBPUB_LOG_DIR`, `CBPUB_KC_SERVICE`; subcommands `--once/--set-token/
+  `CBPUB_LOG_DIR`, `CBPUB_KC_SERVICE`, `CBPUB_LOG_MAX_BYTES`,
+  `CBPUB_LOG_KEEP`; subcommands `--once/--rotate-log/--set-token/
   --set-cursor-session/--set-cursor-session-clipboard/--install/--uninstall/
   --status/--print-plist`.
 - **Gotchas:** launchd has a sparse env — the installer bakes `CODEXBAR_BIN`

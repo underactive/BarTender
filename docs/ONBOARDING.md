@@ -148,6 +148,11 @@ by older versions without a PID are recovered only after one hour (override with
 `CBPUB_LOCK_MAX_AGE_S`), so an interrupted publisher cannot freeze updates
 indefinitely.
 
+The publisher automatically rotates `publish.log` when it exceeds
+`CBPUB_LOG_MAX_BYTES` (default 8 MiB), gzip-archives it, and keeps three archives.
+Run `./scripts/codexbar-publish.sh --rotate-log` to rotate it manually when
+needed.
+
 ### Stage 3: Firmware (`firmware/`)
 
 ```
@@ -222,16 +227,40 @@ python3 scripts/build/screenshot.py
 Install CodexBar from [steipete/CodexBar](https://github.com/steipete/CodexBar) or set `CODEXBAR_BIN`.
 
 ### Publish skips silently
-Check the launchd log: `cat ~/Library/Logs/codexbar-toy/publish.log`.
+Check the newest compressed launchd log archive:
+`zcat "$(ls -t ~/Library/Logs/codexbar-toy/publish.log.*.gz | head -1)" | tail`.
 Run manually: `./scripts/codexbar-publish.sh --once` to see stdout.
+
+### `publish FAILED (HTTP 000)` / transport errors
+`HTTP 000` means curl got **no HTTP response** — a transport problem, not an
+Upstash status. Newer logs classify it directly, e.g. `publish transport FAILED
+(curl exit 28, class timeout, http_code 000)` followed by the raw `curl: (N) …`
+line. Triage:
+1. `python3 scripts/build/pipeline-check.py --skip-producer` — the
+   `publish-failures` and `launchd` rows name the class and hint the next step.
+2. `./scripts/codexbar-publish.sh --check-transport` — a **read-only** GET with
+   the same curl/flags; its verdict says whether the fault is publisher-local,
+   in the launchd environment, in the curl/TLS stack, or http-auth.
+3. `./scripts/codexbar-publish.sh --status` — shows the resolved curl path,
+   proxy-env names, and the last log lines.
+
+A transient timeout cluster that recovers on its own is expected (the toy keeps
+the last good payload; the next cycle republishes). A **persistent** transport
+failure under launchd but not interactively usually means the launchd PATH
+resolves a different curl, or a proxy is exported only in `~/.zshrc` (which
+non-interactive `/bin/zsh` never sources — move it to `~/.zshenv`). If curl is
+unreachable on the launchd PATH, set `CURL_BIN=<abs path>` in
+`~/.config/codexbar-toy/config`.
 
 ### Firmware won't connect to WiFi
 Long-press on the summary screen → captive portal opens. Add network via phone/laptop
 at `http://192.168.4.1/`. The device remembers ≤5 networks in MRU order.
 
 ### Upstash returns 401/403
-Write token may have been revoked. Run `./scripts/codexbar-publish.sh --set-token` to
-replace it. For the device, re-provision via the captive portal.
+The publisher logs this as `publish HTTP FAILED (HTTP 401…)` and exits 7 (the
+store is left untouched). The write token may have been revoked — run
+`./scripts/codexbar-publish.sh --set-token` to replace it. For the device,
+re-provision via the captive portal.
 
 ### ESP-IDF not found
 Export the ESP-IDF path: `export PATH=$HOME/esp/esp-idf:$PATH` or use `source

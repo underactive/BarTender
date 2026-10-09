@@ -3,13 +3,16 @@
 
 Checks every stage of macOS -> Upstash -> device without an LLM in the loop:
 
-  A. Host config      config file, Keychain token, launchd schedule
+  A. Host config      config file, Keychain token (+ shape), launchd schedule,
+                      installed-plist/PATH sanity (stale install, curl divergence)
   B. Producer inputs  CodexBar app alive, cost-cache scan freshness vs real
                       session-file activity (the "frozen tile" root cause),
                       sqlite ingestion recency
-  C. Publish loop     publish.log freshness, cadence, failures, helper notes,
-                      log growth
-  D. Upstash          GET live payload, ts freshness, byte-integrity vs log,
+  C. Publish loop     publish.log freshness, cadence, newest-cycle outcome,
+                      classified failures (curl transport class), whether the
+                      job is cycling at all, helper notes, log growth
+  D. Upstash          GET live payload (classified transport errors), ts
+                      freshness, byte-integrity vs log, writer/clock consistency,
                       per-provider movement via a local snapshot diff
   E. Local producer   runs codexbar-stats.sh --json and compares provider
                       coverage against the published payload
@@ -30,10 +33,14 @@ import argparse
 import json
 import os
 import re
+import shutil
+import socket
 import sqlite3
+import ssl
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -43,7 +50,7 @@ STALL_THRESHOLD_S = 15 * 60     # session activity newer than last cache scan by
                                 # this much => scanner stalled
 FRESH_FACTOR = 2.5              # publish/payload age budget, multiples of interval
 LOG_TAIL_BYTES = 2 * 1024 * 1024
-LOG_WARN_BYTES = 50 * 1024 * 1024
+LOG_ROTATE_BYTES = int(os.environ.get("CBPUB_LOG_MAX_BYTES", str(8 * 1024 * 1024)))
 CADENCE_WARN_FACTOR = 1.8       # effective cadence worse than this x interval => warn
 SUBPROC_TIMEOUT_S = 15
 PRODUCER_TIMEOUT_S = 150
@@ -125,6 +132,17 @@ def parse_log_ts(raw):
         return datetime.strptime(raw.strip(), "%Y-%m-%dT%H:%M:%S%z")
     except ValueError:
         return None
+
+
+def _newest_log_ts(text):
+    """Newest timestamp of ANY log line (published/failed/note/raw). Answers
+    'is the job cycling at all', distinct from 'is it publishing successfully'."""
+    best = None
+    for raw in RE_ANY_TS.findall(text or ""):
+        dt = parse_log_ts(raw)
+        if dt and (best is None or dt > best):
+            best = dt
+    return best
 
 
 def parse_iso_ts(raw):
@@ -262,10 +280,26 @@ def check_config(cfg):
 
 def check_token():
     tok = get_keychain_token()
-    if tok:
-        return Check("keychain-token", "PASS", f"present ({len(tok)} chars, not shown)")
-    return Check("keychain-token", "FAIL", "no Upstash write token in Keychain",
-                 f"run: codexbar-publish.sh --set-token (service {KC_SERVICE})")
+    if not tok:
+        return Check("keychain-token", "FAIL", "no Upstash write token in Keychain",
+                     f"run: codexbar-publish.sh --set-token (service {KC_SERVICE})")
+    # Shape guard (non-secret facts only): the token is written into a curl -K
+    # config as header = "Authorization: Bearer <tok>". A quote, CR/LF, or
+    # control char there corrupts the header and yields an opaque transport
+    # failure. Report the offending class + length, never the value.
+    problems = []
+    if any(c in tok for c in ("\r", "\n")):
+        problems.append("embedded CR/LF")
+    if '"' in tok or "'" in tok:
+        problems.append("quote char")
+    if any(ord(c) < 0x20 or ord(c) == 0x7f for c in tok):
+        problems.append("control char")
+    if problems:
+        return Check("keychain-token", "WARN",
+                     f"present ({len(tok)} chars) but shape risks -K corruption: "
+                     + ", ".join(problems),
+                     "re-enter the token: codexbar-publish.sh --set-token")
+    return Check("keychain-token", "PASS", f"present ({len(tok)} chars, not shown)")
 
 
 def check_launchd(cfg):
@@ -282,11 +316,27 @@ def check_launchd(cfg):
     exit_code = m_exit.group(1) if m_exit else "?"
 
     problems = []
-    if state != "not running" and exit_code not in ("0", "?"):
-        # a finished cycle with nonzero exit is the interesting case
-        problems.append(f"last exit code {exit_code}")
+    hint = ("inspect publish.log; restart with: "
+            "launchctl kickstart -k gui/$UID/" + LABEL)
+    # Decode the last exit code REGARDLESS of `state`. A StartInterval job sits
+    # in state=not running between cycles, so the old `state != not running`
+    # gate hid a chronically failing job. 0/3 are healthy (published / no-fresh-
+    # data skip); 4-7 are the publisher's failure codes (codexbar-publish.sh
+    # --help): 4 producer, 5 config/token, 6 transport, 7 HTTP.
+    exit_meaning = {
+        "4": "last cycle: producer failure (or legacy publish failure)",
+        "5": "last cycle: config/token error",
+        "6": "last cycle: publish transport failure (no HTTP response)",
+        "7": "last cycle: publish HTTP error (non-2xx)",
+    }
+    if exit_code not in ("0", "3", "?"):
+        problems.append(exit_meaning.get(exit_code, f"last exit code {exit_code}"))
+        if exit_code == "6":
+            hint = ("run: codexbar-publish.sh --check-transport to classify the "
+                    "transport failure, then inspect publish.log")
 
     interval_cfg = int(cfg["PUBLISH_INTERVAL"] or "300")
+    plist_interval = None
     # Regex, not plistlib: the shipped plist template carries "--" inside an
     # XML comment (legal for launchd/plutil, rejected by strict expat parsers).
     try:
@@ -299,11 +349,89 @@ def check_launchd(cfg):
         problems.append(f"plist StartInterval={plist_interval}s != config {interval_cfg}s")
 
     detail = f"state={state} runs={runs} last_exit={exit_code} interval={plist_interval}s"
+    if exit_code == "3":
+        detail += " (last cycle skipped: no fresh data)"
     if problems:
-        return Check("launchd", "WARN", detail + " | " + "; ".join(problems),
-                     "inspect publish.log; restart with: "
-                     "launchctl kickstart -k gui/$UID/" + LABEL)
+        return Check("launchd", "WARN", detail + " | " + "; ".join(problems), hint)
     return Check("launchd", "PASS", detail)
+
+
+def _plist_program_args(text):
+    m = re.search(r"<key>ProgramArguments</key>\s*<array>(.*?)</array>", text, re.S)
+    if not m:
+        return []
+    return re.findall(r"<string>(.*?)</string>", m.group(1), re.S)
+
+
+def _plist_path_env(text):
+    m = re.search(r"<key>PATH</key>\s*<string>(.*?)</string>", text, re.S)
+    return m.group(1) if m else None
+
+
+def _which_in_path(binary, path_str):
+    for d in (path_str or "").split(":"):
+        cand = os.path.join(d, binary)
+        if os.path.isfile(cand) and os.access(cand, os.X_OK):
+            return cand
+    return None
+
+
+def check_launchd_env():
+    """Installed plist vs reality: a stale install (plist runs a moved/old
+    script) or a launchd PATH resolving a different curl than the interactive
+    session both cause silent, hard-to-diagnose publish failures. Regex-parsed
+    (the template's `--` in an XML comment breaks strict plist parsers); never
+    edits the plist."""
+    try:
+        text = PLIST_PATH.read_text()
+    except OSError:
+        return Check("launchd-env", "SKIP", f"plist unreadable at {PLIST_PATH}")
+
+    problems, notes = [], []
+    args = _plist_program_args(text)
+    if args and not (os.path.isfile(args[0]) and os.access(args[0], os.X_OK)):
+        problems.append(f"interpreter missing/not executable: {args[0]}")
+
+    script = next((a for a in args if a.endswith("codexbar-publish.sh")), None)
+    repo_script = SCRIPT_DIR.parent / "codexbar-publish.sh"
+    if not script:
+        problems.append("ProgramArguments has no codexbar-publish.sh entry")
+    elif not Path(script).is_file():
+        problems.append(f"plist script path missing: {script}")
+    elif not os.access(script, os.X_OK):
+        problems.append(f"plist script not executable: {script}")
+    else:
+        try:
+            same = Path(script).resolve() == repo_script.resolve()
+        except OSError:
+            same = False
+        if not same:
+            problems.append(
+                f"stale install: plist runs {Path(script).resolve()} but repo "
+                f"script is {repo_script.resolve()} — re-run --install")
+        else:
+            notes.append(f"script={script}")
+
+    path_env = _plist_path_env(text)
+    if path_env is None:
+        notes.append("plist sets no PATH")
+    else:
+        launchd_curl = _which_in_path("curl", path_env)
+        interactive_curl = shutil.which("curl")
+        if launchd_curl is None:
+            problems.append(f"curl not resolvable under plist PATH ({path_env})")
+        elif interactive_curl and \
+                os.path.realpath(launchd_curl) != os.path.realpath(interactive_curl):
+            problems.append(
+                f"launchd resolves curl to {launchd_curl} but interactive is "
+                f"{interactive_curl} — a different TLS backend may behave differently")
+        else:
+            notes.append(f"curl={launchd_curl}")
+
+    if problems:
+        return Check("launchd-env", "WARN", "; ".join(problems),
+                     "fix the stale install / PATH, then kickstart the job")
+    return Check("launchd-env", "PASS", "; ".join(notes) or "plist matches repo")
 
 
 # ── Stage B: producer inputs (CodexBar health) ───────────────────────────────
@@ -400,8 +528,22 @@ def check_cost_sqlite_recency():
 RE_PUBLISH = re.compile(
     r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{4}) published (\d+)B to (\S+) "
     r"\(HTTP (\d+)\)", re.M)
-RE_FAILURE = re.compile(r"^\S+ (?:ERROR: .*|publish FAILED.*)$", re.M)
+# Matches ERROR lines and every publish-failure shape: the legacy
+# `publish FAILED (HTTP n)` plus the split `publish transport FAILED` (exit 6)
+# and `publish HTTP FAILED` (exit 7) lines.
+RE_FAILURE = re.compile(
+    r"^\S+ (?:ERROR: .*|publish (?:transport |HTTP )?FAILED.*)$", re.M)
 RE_SKIP = re.compile(r"^\S+ skip: .*$", re.M)
+# curl's own error line (appended to the log by the publisher via 2>): the
+# discriminating `curl: (28) Connection timed out ...` transport diagnosis.
+RE_CURL_ERR = re.compile(r"^(curl: \(\d+\).*)$", re.M)
+# Any timestamped log line (freshness = is the job cycling at all).
+RE_ANY_TS = re.compile(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{4})\b", re.M)
+# The terminal verdict line of a cycle (newest wins).
+RE_OUTCOME = re.compile(
+    r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{4}) "
+    r"(published .*|skip: .*|publish transport FAILED.*|publish HTTP FAILED.*|"
+    r"publish FAILED.*|ERROR: .*)$", re.M)
 RE_HELPER_NOTE = re.compile(
     r"^(?:\S+ )?(?:note|MiMo cookie|Cursor stats helper|Pi Agent helper|"
     r"LM Studio helper|Ramp helper|OpenCode Go helper): (.+)$", re.M)
@@ -450,11 +592,49 @@ def check_publish_log(cfg):
 
         fails = RE_FAILURE.findall(text)
         if fails:
-            results.append(Check("publish-failures", "WARN",
-                                 f"{len(fails)} failure lines in tail; last: "
-                                 f"{fails[-1][:160]}"))
+            detail = (f"{len(fails)} failure lines in tail; last: "
+                      f"{fails[-1][:160]}")
+            curl_errs = RE_CURL_ERR.findall(text)
+            if curl_errs:
+                detail += f" | newest curl error: {curl_errs[-1][:120]}"
+            results.append(Check("publish-failures", "WARN", detail,
+                                 "classify with: codexbar-publish.sh --check-transport"))
         else:
             results.append(Check("publish-failures", "PASS", "none in tail"))
+
+    # Newest terminal cycle line, decoded — removes the exit-code ambiguity from
+    # the operator's view (published / skipped / transport / HTTP / error).
+    outs = list(RE_OUTCOME.finditer(text))
+    if outs:
+        line = f"{outs[-1].group(1)} {outs[-1].group(2)}"[:180]
+        verdict = outs[-1].group(2)
+        if verdict.startswith("published"):
+            results.append(Check("publish-cycle-outcome", "PASS", line))
+        elif verdict.startswith("skip:"):
+            results.append(Check("publish-cycle-outcome", "INFO", line))
+        elif verdict.startswith("publish transport FAILED"):
+            results.append(Check("publish-cycle-outcome", "WARN", line,
+                                 "classify with: codexbar-publish.sh --check-transport"))
+        else:  # publish HTTP FAILED / legacy publish FAILED / ERROR:
+            results.append(Check("publish-cycle-outcome", "WARN", line,
+                                 "inspect publish.log for the failing cycle"))
+
+    # log-freshness: is the job cycling AT ALL? (separates 'stopped' from
+    # 'running but failing'; publish-log above tracks successful publishes.)
+    newest = _newest_log_ts(text)
+    if newest:
+        age = now - newest.timestamp()
+        budget = FRESH_FACTOR * max(interval, 60) + 90
+        if age > budget:
+            results.append(Check(
+                "log-freshness", "FAIL",
+                f"newest log line {fmt_age(age)} ago (budget {fmt_age(budget)}) — "
+                f"job is not cycling",
+                "check launchd stage above; kickstart with: "
+                f"launchctl kickstart -k gui/$UID/{LABEL}"))
+        else:
+            results.append(Check("log-freshness", "PASS",
+                                 f"newest log line {fmt_age(age)} ago"))
 
     skips = RE_SKIP.findall(text)
     if len(skips) > 20:
@@ -473,17 +653,52 @@ def check_publish_log(cfg):
             "; ".join(f"{k} x{n}" for k, n in top),
             "fail-safe merge skips — affected providers publish stale/limits-only"))
 
-    if size > LOG_WARN_BYTES:
-        results.append(Check("log-size", "WARN",
-                             f"publish.log is {size // (1024 * 1024)} MB, no rotation",
-                             "archive/truncate it; dominated by per-page "
-                             "opencodego-stats lines"))
+    archives = []
+    try:
+        for archive in LOG_DIR.glob("publish.log.*.gz"):
+            try:
+                archives.append((archive.stat().st_mtime, archive))
+            except OSError:
+                continue
+    except OSError:
+        pass
+    archives.sort(key=lambda item: (item[0], item[1].name))
+    n = len(archives)
+    newest = archives[-1][1].name if archives else "none"
+    if size > 2 * LOG_ROTATE_BYTES and not archives:
+        results.append(Check(
+            "log-size", "WARN",
+            f"publish.log is {size // 1024} KB; {n} archive(s), newest {newest}",
+            "rotation is not running — check CBPUB_LOG_MAX_BYTES, then run "
+            "codexbar-publish.sh --rotate-log"))
     else:
-        results.append(Check("log-size", "PASS", f"{size // 1024} KB"))
+        results.append(Check(
+            "log-size", "PASS",
+            f"{size // 1024} KB; {n} archive(s), newest {newest}"))
     return results
 
 
 # ── Stage D: Upstash round-trip ──────────────────────────────────────────────
+
+def classify_net_exc(exc):
+    """Coarse network-failure class for a urllib exception, comparable to the
+    publisher's curl_err_class. Never includes the token (it rides in a header,
+    not the URL, and urllib does not echo headers in exceptions)."""
+    if isinstance(exc, urllib.error.HTTPError):
+        return f"http {exc.code}"
+    reason = getattr(exc, "reason", exc)
+    if isinstance(reason, ssl.SSLError):
+        return "tls"
+    if isinstance(reason, socket.gaierror):
+        return "dns"
+    if isinstance(reason, (socket.timeout, TimeoutError)):
+        return "timeout"
+    if isinstance(reason, ConnectionRefusedError):
+        return "connect"
+    if isinstance(reason, OSError):
+        return f"os-errno-{getattr(reason, 'errno', '?')}"
+    return type(exc).__name__
+
 
 def check_upstash(cfg, log_text):
     mock = cfg["MOCK_SINK_URL"]
@@ -496,9 +711,11 @@ def check_upstash(cfg, log_text):
         raw, payload = fetch_upstash_payload(cfg["UPSTASH_REST_URL"],
                                              cfg["UPSTASH_KEY"], tok)
     except Exception as exc:  # noqa: BLE001 — report any transport failure
+        cls = classify_net_exc(exc)
         return [Check("upstash-get", "FAIL",
-                      f"GET failed: {type(exc).__name__}: {exc}",
-                      "check UPSTASH_REST_URL reachability / token validity")], None
+                      f"GET failed [{cls}]: {type(exc).__name__}",
+                      "check UPSTASH_REST_URL reachability / token validity; "
+                      "compare with: codexbar-publish.sh --check-transport")], None
     if payload is None:
         return [Check("upstash-get", "FAIL",
                       f"key '{cfg['UPSTASH_KEY']}' has no value yet")], None
@@ -545,6 +762,40 @@ def check_upstash(cfg, log_text):
                 f"log says {logged_bytes}B, store holds {actual}B",
                 "another writer may have replaced the key between publish and check"))
     return results, payload
+
+
+def check_writer_consistency(payload, cfg, log_text):
+    """Residual integrity: a stored payload ts far newer than the newest logged
+    success suggests a second writer owns the key; log timestamps ahead of the
+    local clock indicate skew that would make the freshness budgets misfire."""
+    if payload is None:
+        return Check("writer-consistency", "SKIP", "no payload available")
+    interval = int(cfg["PUBLISH_INTERVAL"] or "300")
+    problems = []
+
+    pubs = [parse_log_ts(m.group(1)) for m in RE_PUBLISH.finditer(log_text or "")]
+    pubs = [p for p in pubs if p]
+    ts = parse_iso_ts(payload.get("ts"))
+    if ts and pubs:
+        lead = ts.timestamp() - max(pubs).timestamp()
+        if lead > max(interval, 60) + 60:
+            problems.append(
+                f"stored payload ts is {fmt_age(lead)} newer than the newest "
+                f"logged success — another writer may own the key")
+
+    newest = _newest_log_ts(log_text)
+    if newest:
+        ahead = newest.timestamp() - time.time()
+        if ahead > 120:
+            problems.append(
+                f"log timestamps are {fmt_age(ahead)} ahead of the local clock — "
+                f"clock skew (freshness budgets may misfire)")
+
+    if problems:
+        return Check("writer-consistency", "WARN", "; ".join(problems),
+                     "confirm only this host publishes the key; check the system clock")
+    return Check("writer-consistency", "PASS",
+                 "single writer, clock in sync" if ts else "no anomalies")
 
 
 def check_movement(payload, cfg):
@@ -653,12 +904,12 @@ def check_producer(payload):
 
 # ── Orchestration ────────────────────────────────────────────────────────────
 
-ORDER = ["config", "keychain-token", "launchd", "codexbar-app",
+ORDER = ["config", "keychain-token", "launchd", "launchd-env", "codexbar-app",
          "claude-cache-fresh", "codex-cache-fresh", "cost-sqlite-recency",
-         "publish-log", "publish-failures", "publish-skips",
-         "helper-notes", "log-size",
+         "publish-log", "publish-cycle-outcome", "log-freshness",
+         "publish-failures", "publish-skips", "helper-notes", "log-size",
          "upstash-get", "payload-version", "payload-ts", "payload-integrity",
-         "producer", "provider-movement"]
+         "writer-consistency", "producer", "provider-movement"]
 
 
 def main(argv=None):
@@ -674,6 +925,7 @@ def main(argv=None):
     checks.extend(check_config(cfg))
     checks.append(check_token())
     checks.append(check_launchd(cfg))
+    checks.append(check_launchd_env())
     checks.append(check_codexbar_app())
     checks.append(check_claude_cache_freshness())
     checks.append(check_codex_cache_freshness())
@@ -688,6 +940,7 @@ def main(argv=None):
                             f"MOCK_SINK_URL={cfg['MOCK_SINK_URL']} set — store not checked"))
     else:
         checks.extend(stash)
+    checks.append(check_writer_consistency(payload, cfg, log_text))
 
     if not args.skip_producer:
         checks.append(check_producer(payload))

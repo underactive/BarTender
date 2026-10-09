@@ -178,8 +178,38 @@ Automated (hermetic; no Keychain/network/device required):
       pagination overlap/dedupe, cache fallback freshness, LKG timestamp
       retention, `--check`, cookie-argv, and secret/workspace/raw-body leak
       assertions.
+- [ ] `python3 -m unittest discover -s scripts/lib/tests -p 'test_*.py' -v`
+      is green.
 - [ ] `scripts/opencodego-stats.sh --debug` prints counts only; no response
       body, cookie, workspace id, model name, or record id appears.
+
+## Host — publish transport diagnostics (2026-09-16)
+
+Automated (hermetic, no Keychain/network/launchd):
+- [ ] `python3 -m unittest discover -s scripts/lib/tests -p 'test_*.py'` is green
+      (`test_publish_transport.py` + `test_pipeline_check.py`).
+
+Manual (host, read-only unless noted):
+- [ ] `./scripts/codexbar-publish.sh --help` lists exit codes 0/2/3/4/5/6/7.
+- [ ] `./scripts/codexbar-publish.sh --status` shows the resolved curl path and
+      `proxy env:` names; no token value is printed.
+- [ ] `./scripts/codexbar-publish.sh --check-transport` prints `http_code`,
+      curl exit class, `ssl_verify_result`, `time_total`, and a verdict; on a
+      healthy network the verdict is `OK` and exit is 0; the token never appears.
+- [ ] `python3 scripts/build/pipeline-check.py --skip-producer` includes
+      `launchd-env`, `publish-cycle-outcome`, `log-freshness`, and
+      `writer-consistency`; a stale `publish FAILED (HTTP 000)` in the tail
+      surfaces the `curl: (N)` class in `publish-failures`.
+- [ ] Secret self-test: `security find-generic-password -s codexbar-toy -a
+      publish -w | grep -F -c -f - ~/Library/Logs/codexbar-toy/publish.log`
+      prints `0` (token never logged).
+
+Live (one write + launchd):
+- [ ] `./scripts/codexbar-publish.sh --once` → `rc=0` and `published NB … (HTTP
+      200)`; a failure line is classified (transport class / HTTP code).
+- [ ] `launchctl kickstart -k gui/$UID/com.codexbar-toy.publish` then
+      `launchctl print gui/$UID/com.codexbar-toy.publish` shows `last exit code
+      = 0` and `runs` incrementing across an interval.
 
 ## Host (deferred — recipe, not yet built)
 

@@ -23,23 +23,38 @@ read it over WiFi without ever talking to my Mac directly.
 - [ ] `codexbar-publish.sh --install` registers a launchd LaunchAgent that
       republishes every `PUBLISH_INTERVAL` seconds (default 300) and at load;
       `--uninstall` fully removes it.
-- [ ] `--status` reports job state, target, token readiness, and recent log.
+- [ ] `--status` reports job state, target, token readiness, resolved curl
+      path, proxy-env names, and recent log.
 - [ ] OpenCode Go API failures retain the local history with `oc.fresh:false`;
       the device marks that cached snapshot stale, and the publisher's
       last-known-good cache preserves the last genuinely fresh timestamp.
+- [ ] The publisher keeps `publish.log` bounded by automatically rotating above
+      `CBPUB_LOG_MAX_BYTES`, gzip-archiving the old file, and pruning old archives.
+- [ ] A failed publish is **self-describing and classified**: transport
+      failures (no HTTP response) capture curl's exit code + `%{errormsg}` and
+      keep the raw `curl: (N) …` line, log `publish transport FAILED (curl exit
+      N, class …, http_code 000)`, and exit **6**; a non-2xx HTTP response logs
+      `publish HTTP FAILED (HTTP N…)` and exits **7**. Neither writes to the store.
+- [ ] `--check-transport` runs a **read-only** `GET /get/<key>` with the same
+      curl binary/flags used to publish (writing nothing) and prints a verdict
+      locating the fault (publisher-local / launchd-environment / curl-stack /
+      http-auth); the token never appears in its output.
 
 ## Edge cases
 
 | Scenario | Expected behavior |
 |----------|-------------------|
-| No fresh data (stats rc≠0) | Skip the publish, keep the store's last good value, log it, exit ≠0 |
-| Missing Upstash token | Actionable error pointing at `--set-token`, no publish |
-| Missing/empty config URL | Clear error naming the config file |
-| HTTP non-2xx from Upstash | Log failure + response head, exit ≠0; launchd retries next interval |
+| No fresh data (stats rc≠0) | Skip the publish, keep the store's last good value, log it, exit 3/4 |
+| Missing Upstash token | Actionable error pointing at `--set-token`, no publish (exit 5) |
+| Missing/empty config URL | Clear error naming the config file (exit 5) |
+| Invalid `CURL_BIN`/`CBPUB_CURL` | Fail loudly (exit 5), never silently fall back to another curl |
+| curl transport failure (`HTTP 000`, no response) | Classify by curl exit code (dns/connect/timeout/tls/local-curl-config), log `publish transport FAILED` + raw `curl: (N)` line, **store untouched**, exit 6; launchd retries next interval |
+| HTTP non-2xx from Upstash | Log `publish HTTP FAILED (HTTP N)` + response head, **store untouched**, exit 7; launchd retries next interval |
 | Run under launchd (sparse env) | `CODEXBAR_BIN`/`PATH` baked into the plist at install |
 | Ctrl-C / early exit | Temp workdir and owned lock always cleaned (global EXIT trap) |
 | Orphaned publisher lock | Recover a dead PID immediately; recover ownerless legacy locks only after the configured age threshold |
 | OpenCode Go helper has cached history only | Merge `oc` before the final LKG pass; publish `oc.fresh:false`, retain the prior fresh LKG timestamp, and let the configured age limit expire the snapshot |
+| Log reaches rotation threshold | Rename and gzip-archive the live log, prune old archives, recreate `publish.log`, and reopen stdout/stderr on the fresh inode; never write to the rotated inode |
 
 ## Not in scope
 

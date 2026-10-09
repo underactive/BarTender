@@ -23,6 +23,8 @@
 #   codexbar-publish.sh --install       # install + start the launchd schedule
 #   codexbar-publish.sh --uninstall     # stop + remove the launchd schedule
 #   codexbar-publish.sh --status        # job state + recent log + readiness
+#   codexbar-publish.sh --rotate-log    # archive + truncate publish.log now
+#   codexbar-publish.sh --check-transport # read-only curl probe (diagnose HTTP 000)
 #   codexbar-publish.sh --print-plist   # render the launchd plist to stdout
 #   codexbar-publish.sh --help
 #
@@ -49,6 +51,18 @@
 #   UPSTASH_KEY=codexbar            # Redis key (default: codexbar)
 #   PUBLISH_INTERVAL=300            # launchd seconds (default: 300)
 #   MOCK_SINK_URL=                  # test override; if set, used instead of Upstash
+#   CURL_BIN=                       # absolute path to curl (default: PATH `curl`)
+#
+# Exit codes:
+#   0  published (or nothing to do after a successful cycle)
+#   2  usage error (unknown argument)
+#   3  skip: no fresh data — store keeps its last good value
+#   4  producer failure — codexbar-stats.sh could not produce a payload
+#   5  config/token error (missing URL, missing/invalid token or CURL_BIN)
+#   6  publish TRANSPORT failure — no HTTP response (curl exit != 0, http_code
+#      000); the store is left untouched. See --check-transport.
+#   7  publish HTTP failure — a non-2xx HTTP response (auth/rate-limit/server);
+#      the store is left untouched.
 #
 # Test hooks (env, default to real user paths — never modify CodexBar state):
 #   CBPUB_COST_CACHE_DIR  CodexBar cost-usage dir
@@ -66,9 +80,16 @@
 #                         (default 86400; <=0 disables the age limit)
 #   CBPUB_LOCK_MAX_AGE_S max age for an ownerless lock before recovery
 #                         (default 3600; live PID-owned locks are never removed)
+#   CBPUB_LOG_MAX_BYTES  rotate publish.log above this size (default 8388608)
+#   CBPUB_LOG_KEEP       gzip archives retained after rotation (default 3)
+#   CBPUB_CURL           absolute path to curl for the publish request; overrides
+#                         PATH and the CURL_BIN config key. Invalid path fails
+#                         loudly (exit 5), never silently falls back.
+#   CBPUB_STATS          codexbar-stats.sh producer (default: sibling script) —
+#                         lets hermetic tests stub the producer
 #
 # Zero third-party deps: codexbar-stats.sh + base-macOS security/curl/launchctl/
-# osascript/awk/date/mktemp + zsh builtins.
+# osascript/awk/date/mktemp/gzip + zsh builtins.
 set -u
 
 LABEL="com.codexbar-toy.publish"
@@ -80,7 +101,7 @@ LOG_DIR="${CBPUB_LOG_DIR:-$HOME/Library/Logs/codexbar-toy}"; LOG="$LOG_DIR/publi
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 SELF_PATH="${0:A}"
 SELF_DIR="${SELF_PATH:h}"
-STATS="$SELF_DIR/codexbar-stats.sh"
+STATS="${CBPUB_STATS:-$SELF_DIR/codexbar-stats.sh}"
 PI_STATS="${CBPUB_PI_STATS:-$SELF_DIR/pi-agent-stats.sh}"
 LM_STATS="${CBPUB_LM_STATS:-$SELF_DIR/lmstudio-stats.sh}"
 CURSOR_STATS="${CBPUB_CURSOR_STATS:-$SELF_DIR/cursor-stats.sh}"
@@ -98,9 +119,15 @@ KC_ACCOUNT_RAMP="${CBPUB_KC_ACCOUNT_RAMP:-ramp-session}"
 LKG="${CBPUB_LKG:-$HOME/Library/Caches/codexbar-toy/last-good.json}"
 LOCK_MAX_AGE_S="${CBPUB_LOCK_MAX_AGE_S:-3600}"
 [[ "$LOCK_MAX_AGE_S" == <-> ]] || LOCK_MAX_AGE_S=3600
+LOG_MAX_BYTES="${CBPUB_LOG_MAX_BYTES:-8388608}"   # rotate publish.log above 8 MiB
+LOG_KEEP="${CBPUB_LOG_KEEP:-3}"                   # gzip archives retained
+[[ "$LOG_MAX_BYTES" == <-> ]] || LOG_MAX_BYTES=8388608
+[[ "$LOG_KEEP" == <-> ]] || LOG_KEEP=3
 lockdir=""
 lock_owned=0
 work=""   # temp dir for cmd_once; referenced by its global EXIT trap
+check_work=""   # temp dir for cmd_check_transport; referenced by its EXIT trap
+curl_bin=""   # resolved curl path (set by resolve_curl)
 TPL="$SELF_DIR/../launchd/$LABEL.plist.template"
 
 log()  { print -r -- "$(date '+%Y-%m-%dT%H:%M:%S%z') $*"; }
@@ -108,7 +135,7 @@ die()  { log "ERROR: $*"; exit "${2:-1}"; }
 help() { awk 'NR>=2 && /^#/{sub(/^# ?/,"");print;next} NR>=2{exit}' "$SELF_PATH"; }
 
 # Parse known KEY=VALUE pairs from $CFG without eval/source (SECURITY.md).
-UPSTASH_REST_URL=""; UPSTASH_KEY="codexbar"; PUBLISH_INTERVAL="300"; MOCK_SINK_URL=""
+UPSTASH_REST_URL=""; UPSTASH_KEY="codexbar"; PUBLISH_INTERVAL="300"; MOCK_SINK_URL=""; CURL_BIN=""
 read_config() {
   [[ -r "$CFG" ]] || return 0
   local line k v
@@ -121,11 +148,56 @@ read_config() {
       UPSTASH_KEY)      UPSTASH_KEY="${v:-codexbar}" ;;
       PUBLISH_INTERVAL) PUBLISH_INTERVAL="${v:-300}" ;;
       MOCK_SINK_URL)    MOCK_SINK_URL="$v" ;;
+      CURL_BIN)         CURL_BIN="$v" ;;
     esac
   done < "$CFG"
 }
 
 get_token() { security find-generic-password -s "$KC_SERVICE" -a "$KC_ACCOUNT" -w 2>/dev/null; }
+
+# Resolve the curl binary once per invocation into the global `curl_bin`.
+# Precedence: CBPUB_CURL env hook > CURL_BIN config key > PATH `curl`. An
+# explicit override that is not an absolute executable path fails loudly (5)
+# rather than silently falling back — a misconfigured CURL_BIN under launchd is
+# exactly the failure this must surface. An empty result (no curl on PATH and
+# no override) is left for the call site to report as a transport failure.
+resolve_curl() {
+  local want="${CBPUB_CURL:-$CURL_BIN}"
+  if [[ -n "$want" ]]; then
+    [[ "$want" == /* && -x "$want" ]] \
+      || die "CURL_BIN/CBPUB_CURL is not an absolute executable path: $want" 5
+    curl_bin="$want"
+    return 0
+  fi
+  curl_bin="$(command -v curl 2>/dev/null)" || curl_bin=""
+  return 0
+}
+
+# Map a curl exit code to a coarse transport class for the failure log line.
+# (curl 51 = peer certificate not OK => tls; 26 = -K/data read error => local.)
+curl_err_class() {
+  case "$1" in
+    6)  print -r -- dns ;;
+    7)  print -r -- connect ;;
+    28) print -r -- timeout ;;
+    26) print -r -- local-curl-config ;;
+    35|51|53|54|58|60|66|77|80|83|90|91) print -r -- tls ;;
+    22) print -r -- http ;;
+    0)  print -r -- none ;;
+    *)  print -r -- "curl-exit-$1" ;;
+  esac
+}
+
+# Report proxy/TLS env var NAMES only (never values) as `NAME=set|unset`, so a
+# launchd-vs-interactive environment divergence is visible without leaking a
+# proxy URL or CA path.
+proxy_env_names() {
+  local n out=""
+  for n in HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY CURL_CA_BUNDLE SSL_CERT_FILE; do
+    if [[ -n "${(P)n:-}" ]]; then out+="$n=set "; else out+="$n=unset "; fi
+  done
+  print -r -- "${out% }"
+}
 
 # Confirm that a lock owner is still this publisher, not merely a reused PID.
 # `kill -0` alone is insufficient because macOS may recycle a dead PID.
@@ -155,6 +227,77 @@ release_lock() {
   rm -f "${lockdir:-}/pid"
   rmdir "${lockdir:-/nonexistent/x}" 2>/dev/null
   lock_owned=0
+}
+
+prune_log_archives() {
+  local keep="$1" archive i count
+  [[ "$keep" == <-> ]] || return 0
+  local -a archives
+  # (NOm) is oldest-first; retain the newest `keep` gzip archives.
+  archives=("$LOG".*.gz(NOm))
+  count=${#archives}
+  (( count > keep )) || return 0
+  for (( i = 1; i <= count - keep; i++ )); do
+    archive="${archives[i]}"
+    rm -f -- "$archive" 2>/dev/null || :
+  done
+}
+
+rotate_log() {
+  local size stamp raw marker stdout_tty=0 repoint_stdout=0 repoint_stderr=0
+  [[ -f "$LOG" ]] || return 0
+  size="$(stat -f %z "$LOG" 2>/dev/null)" || return 0
+  [[ "$size" == <-> ]] || return 0
+  # A zero cap is the explicit --rotate-log force path; an empty log needs no
+  # archive even then.
+  if (( LOG_MAX_BYTES > 0 && size <= LOG_MAX_BYTES )) || (( LOG_MAX_BYTES == 0 && size == 0 )); then
+    return 0
+  fi
+
+  [[ -t 1 ]] && stdout_tty=1
+  if [[ /dev/fd/1 -ef "$LOG" ]] 2>/dev/null; then
+    repoint_stdout=1
+  elif [[ ! -e /dev/fd/1 && $stdout_tty -eq 0 ]]; then
+    repoint_stdout=1
+  fi
+  if [[ /dev/fd/2 -ef "$LOG" ]]; then
+    repoint_stderr=1
+  elif [[ ! -e /dev/fd/2 && ! -t 2 ]]; then
+    repoint_stderr=1
+  fi
+
+  stamp="$(date '+%Y%m%dT%H%M%S')" || return 0
+  raw="$LOG.$stamp"
+  local suffix=0
+  while [[ -e "$raw" || -e "$raw.gz" ]]; do
+    (( suffix++ ))
+    (( suffix <= 100 )) || return 0
+    raw="$LOG.$stamp.$suffix"
+  done
+  mv -f -- "$LOG" "$raw" 2>/dev/null || return 0
+  if ! : >"$LOG" 2>/dev/null; then
+    mv -f -- "$raw" "$LOG" 2>/dev/null || :
+    return 0
+  fi
+
+  if (( repoint_stdout )); then
+    exec 1>>"$LOG" || return 0
+  fi
+  if (( repoint_stderr )); then
+    exec 2>>"$LOG" || return 0
+  fi
+
+  marker="$(date '+%Y-%m-%dT%H:%M:%S%z') log rotated: archived ${size}B to ${raw:t}"
+  print -r -- "$marker" >>"$LOG" 2>/dev/null || return 0
+  (( stdout_tty )) && print -r -- "$marker"
+
+  if ! gzip -f "$raw" 2>/dev/null; then
+    local note="$(date '+%Y-%m-%dT%H:%M:%S%z') note: gzip failed for ${raw:t}"
+    print -r -- "$note" >>"$LOG" 2>/dev/null || :
+    (( stdout_tty )) && print -r -- "$note"
+  fi
+  prune_log_archives "$LOG_KEEP"
+  return 0
 }
 
 acquire_lock() {
@@ -585,6 +728,7 @@ cmd_once() {
   # scope after this function returns; a local would be unset there (set -u).
   work=""
   trap 'rm -rf "${work:-}"; release_lock' EXIT INT TERM
+  rotate_log
   work="$(mktemp -d "${TMPDIR:-/tmp}/cbpub.XXXXXX")" || die "mktemp failed"
   local json="$work/p.json" resp="$work/resp" kcfg="$work/curl.cfg"
 
@@ -898,21 +1042,62 @@ cmd_once() {
   local tok; tok="$(get_token)"
   [[ -n "$tok" ]] || die "no Upstash token in Keychain — run: codexbar-publish.sh --set-token" 5
 
-  # Secret goes in a 0600 -K config, not argv (no token in `ps`).
-  ( umask 077; print -r -- "header = \"Authorization: Bearer $tok\"" >"$kcfg" )
+  resolve_curl
+
+  # Secret goes in a 0600 -K config, not argv (no token in `ps`). Content-Type
+  # declares the JSON body explicitly (correct for a JSON POST; avoids a proxy/
+  # WAF guessing the type). The token never appears in argv, the write-out, or
+  # the error text below.
+  ( umask 077
+    print -r -- "header = \"Authorization: Bearer $tok\"" >"$kcfg"
+    print -r -- "header = \"Content-Type: application/json\"" >>"$kcfg" )
   local url="${base%/}/set/${UPSTASH_KEY}"
-  local code
-  code=$(curl -sS -K "$kcfg" -o "$resp" -w '%{http_code}' --max-time 15 \
-           -X POST --data-binary @"$json" "$url" 2>>"$LOG") || true
+  local dest="Upstash"; [[ -n "$MOCK_SINK_URL" ]] && dest="mock sink"
+
+  if [[ -z "$curl_bin" ]]; then
+    rm -f "$kcfg"
+    log "publish transport FAILED (curl not found on PATH, class local-curl-config, http_code 000)"
+    log "  fix: install curl on the launchd PATH, or set CURL_BIN=<abs path> in $CFG"
+    exit 6
+  fi
+
+  # Capture http_code + curl's own exit code + TLS verify result + error text on
+  # one machine-readable write-out line; curl stderr goes to a temp file that is
+  # appended to the log so the raw `curl: (N) ...` line stays greppable. The
+  # authoritative curl exit code is the shell $? (works on any curl version);
+  # %{exitcode}/%{errormsg} are best-effort extras (curl >= 7.75).
+  local errfile="$work/curl.err" wout code curl_rc
+  wout=$("$curl_bin" -sS -K "$kcfg" -o "$resp" \
+           -w '%{http_code} %{exitcode} %{ssl_verify_result} %{errormsg}' \
+           --connect-timeout 10 --max-time 30 \
+           -X POST --data-binary @"$json" "$url" 2>"$errfile")
+  curl_rc=$?
   rm -f "$kcfg"
+  code="${wout%% *}"
+  [[ -s "$errfile" ]] && cat "$errfile" >>"$LOG"
 
   if [[ "$code" == 2* ]]; then
-    local dest="Upstash"; [[ -n "$MOCK_SINK_URL" ]] && dest="mock sink"
     log "published ${bytes}B to ${UPSTASH_KEY} (HTTP $code) via $dest"
     exit 0
   fi
-  log "publish FAILED (HTTP ${code:-none}); response: $(head -c 200 "$resp" 2>/dev/null)"
-  exit 4
+
+  # No HTTP response at all: a transport failure. Classify from curl's exit code
+  # and surface non-secret diagnostics (curl identity, error text, env names).
+  if [[ -z "$code" || "$code" == 000 ]]; then
+    local class; class="$(curl_err_class "$curl_rc")"
+    log "publish transport FAILED (curl exit $curl_rc, class $class, http_code 000)"
+    local emsg; emsg="$(print -r -- "$wout" | cut -d' ' -f4-)"
+    [[ "$emsg" == *'%{'* ]] && emsg=""   # legacy curl: %{errormsg} unsupported
+    [[ -z "$emsg" && -s "$errfile" ]] && emsg="$(head -c 200 "$errfile")"
+    log "  curl: $("$curl_bin" --version 2>/dev/null | head -1)"
+    log "  error: ${emsg:-no error text}"
+    log "  env: $(proxy_env_names)"
+    exit 6
+  fi
+
+  # A real HTTP response with a non-2xx status (auth, rate-limit, server error).
+  log "publish HTTP FAILED (HTTP $code, curl exit $curl_rc); response: $(head -c 200 "$resp" 2>/dev/null)"
+  exit 7
 }
 
 render_plist() {
@@ -967,8 +1152,95 @@ cmd_uninstall() {
   log "uninstalled launchd job $LABEL"
 }
 
+cmd_rotate_log() {
+  mkdir -p "$LOG_DIR" || die "could not create log directory: $LOG_DIR"
+  lockdir="$LOG_DIR/.publish.lock"
+  acquire_lock
+  trap 'release_lock' EXIT INT TERM
+  LOG_MAX_BYTES=0
+  rotate_log
+  if [[ -t 1 ]]; then
+    local log_size="missing" newest="none"
+    [[ -f "$LOG" ]] && log_size="$(stat -f %z "$LOG" 2>/dev/null || print -r -- '?')"
+    local -a archives
+    archives=("$LOG".*.gz(Nom))
+    (( ${#archives} )) && newest="${archives[1]:t}"
+    print -r -- "live log:    ${log_size}B ($LOG)"
+    print -r -- "newest archive: $newest"
+  fi
+}
+
+# Read-only transport probe: run the same curl binary/flags used for publishing
+# against GET {base}/get/{key} with the body discarded. Writes nothing to the
+# store; prints only non-secret diagnostics and a verdict locating the failure.
+cmd_check_transport() {
+  read_config
+  local base="${MOCK_SINK_URL:-$UPSTASH_REST_URL}"
+  [[ -n "$base" ]] || die "no UPSTASH_REST_URL (or MOCK_SINK_URL) in $CFG — see --help" 5
+  local tok; tok="$(get_token)"
+  [[ -n "$tok" ]] || die "no Upstash token in Keychain — run: codexbar-publish.sh --set-token" 5
+  resolve_curl
+
+  print -r -- "curl:      ${curl_bin:-NOT FOUND on PATH (set CURL_BIN in $CFG)}"
+  [[ -n "$curl_bin" ]] && print -r -- "           $("$curl_bin" --version 2>/dev/null | head -1)"
+  print -r -- "endpoint:  GET ${base%/}/get/${UPSTASH_KEY}"
+  print -r -- "proxy env: $(proxy_env_names)"
+  if [[ -z "$curl_bin" ]]; then
+    print -r -- "verdict:   curl-stack — no curl binary resolvable"
+    exit 6
+  fi
+
+  check_work="$(mktemp -d "${TMPDIR:-/tmp}/cbchk.XXXXXX")" || die "mktemp failed"
+  trap 'rm -rf "${check_work:-}"' EXIT INT TERM
+  local kcfg="$check_work/curl.cfg" errfile="$check_work/curl.err"
+  ( umask 077
+    print -r -- "header = \"Authorization: Bearer $tok\"" >"$kcfg"
+    print -r -- "header = \"Content-Type: application/json\"" >>"$kcfg" )
+  local wout code curl_rc ssl_res ttime
+  wout=$("$curl_bin" -sS -K "$kcfg" -o /dev/null \
+           -w '%{http_code} %{exitcode} %{ssl_verify_result} %{time_total}' \
+           --connect-timeout 10 --max-time 30 "${base%/}/get/${UPSTASH_KEY}" 2>"$errfile")
+  curl_rc=$?
+  rm -f "$kcfg"
+  code="${wout%% *}"
+  ssl_res="$(print -r -- "$wout" | cut -d' ' -f3)"
+  ttime="$(print -r -- "$wout" | cut -d' ' -f4)"
+  local class; class="$(curl_err_class "$curl_rc")"
+  print -r -- "http_code: ${code:-000}"
+  print -r -- "curl exit: $curl_rc (class $class)"
+  print -r -- "ssl_verify_result: ${ssl_res:-?}"
+  print -r -- "time_total: ${ttime:-?}s"
+  [[ -s "$errfile" ]] && print -r -- "curl err:  $(head -c 200 "$errfile")"
+
+  local rc=0
+  if [[ "$code" == 2* ]]; then
+    print -r -- "verdict:   OK — transport healthy (HTTP $code)"
+  elif [[ -z "$code" || "$code" == 000 ]]; then
+    case "$class" in
+      timeout|connect|dns)
+        print -r -- "verdict:   launchd-environment — $class (compare interactive vs launchd; check network/proxy/DNS)" ;;
+      tls)
+        print -r -- "verdict:   curl-stack — TLS failure (check CA bundle / curl backend / CURL_BIN)" ;;
+      local-curl-config)
+        print -r -- "verdict:   publisher-local — curl config/read error (check CURL_BIN and -K token shape)" ;;
+      *)
+        print -r -- "verdict:   transport failure — $class" ;;
+    esac
+    rc=6
+  else
+    print -r -- "verdict:   http-auth — endpoint reachable but HTTP $code (check write token / key)"
+    rc=7
+  fi
+  exit $rc
+}
+
 cmd_status() {
   read_config
+  local log_size="missing" archive_count=0
+  [[ -f "$LOG" ]] && log_size="$(stat -f %z "$LOG" 2>/dev/null || print -r -- '?')"
+  local -a archives
+  archives=("$LOG".*.gz(N))
+  archive_count=${#archives}
   print -r -- "label:        $LABEL"
   print -r -- "plist:        $([[ -f $PLIST ]] && echo present || echo absent)"
   print -r -- "loaded:       $(launchctl print "gui/$UID/$LABEL" >/dev/null 2>&1 && echo yes || echo no)"
@@ -988,6 +1260,15 @@ cmd_status() {
   print -r -- "deepsk token: $([[ -n "$(get_deepseek_token)" ]] && echo 'in Keychain' || echo 'MISSING — run --set-deepseek-token')"
   print -r -- "deepsk stat:  $([[ -x "$DEEPSEEK_STATS" ]] && echo "$DEEPSEEK_STATS" || echo "MISSING/not executable — $DEEPSEEK_STATS")"
   print -r -- "lkg cache:    $([[ -r "$LKG" ]] && echo "$LKG ($(grep -o '"id"' "$LKG" 2>/dev/null | wc -l | tr -d ' ') providers)" || echo "none yet — $LKG")"
+  print -r -- "log:          $LOG (${log_size}B; cap ${LOG_MAX_BYTES}B; keep ${LOG_KEEP}; ${archive_count} gzip archive(s))"
+  local curl_show="${CBPUB_CURL:-$CURL_BIN}"
+  if [[ -n "$curl_show" ]]; then
+    [[ "$curl_show" == /* && -x "$curl_show" ]] || curl_show="INVALID: $curl_show"
+  else
+    curl_show="$(command -v curl 2>/dev/null || print -r -- 'NOT FOUND on PATH')"
+  fi
+  print -r -- "curl:         $curl_show"
+  print -r -- "proxy env:    $(proxy_env_names)"
   print -r -- "--- last log lines ---"
   [[ -f "$LOG" ]] && tail -n 8 "$LOG" || print -r -- "(no log yet)"
 }
@@ -1009,6 +1290,8 @@ case "${1:---once}" in
   --install)   cmd_install ;;
   --uninstall) cmd_uninstall ;;
   --status)    cmd_status ;;
+  --rotate-log) cmd_rotate_log ;;
+  --check-transport) cmd_check_transport ;;
   --print-plist) read_config; render_plist ;;
   -h|--help)   help ;;
   *)           print -r -- "unknown argument: $1 (try --help)" >&2; exit 2 ;;

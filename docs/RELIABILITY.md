@@ -14,6 +14,42 @@ Requirements and practices for keeping the system reliable.
 | WiFi association lost / AP flaps | Medium | Reconnect with escalating backoff; roam the ≤5 remembered networks; self-heal to add-network portal only after grace + zero known SSIDs |
 | Corrupt NVS blob (`wnets`) | Low | Validate magic/size/version/count; treat invalid as "zero networks"; never erase or brick on a bad blob |
 | Heap fragmentation (long uptime) | Low | Static/long-lived buffers for the fetch/parse path; avoid per-poll churn where practical |
+| Unbounded `publish.log` growth | Medium | Rename and gzip-archive above `CBPUB_LOG_MAX_BYTES`, prune to `CBPUB_LOG_KEEP` (default 3), and repoint publisher stdio to a fresh live inode; `--rotate-log` forces it manually |
+| Publisher curl transport failure under launchd (`HTTP 000`, empty body) | Medium | curl's exit code + `%{errormsg}` are captured and its `curl: (N) …` stderr line is kept in the log; the failure is classified (dns/connect/timeout/tls/local-curl-config) and logged as `publish transport FAILED (curl exit N, class …)` with **exit 6**; the store is left untouched (fail-soft) and the next cycle retries. `--check-transport` runs a read-only GET with the same curl/flags to locate the fault (publisher-local vs launchd-environment vs curl-stack vs http-auth) |
+
+## Publisher exit codes
+
+`codexbar-publish.sh` uses distinct exit codes so launchd's *last exit code* (and
+`pipeline-check.py`) can name the failing stage without log archaeology:
+
+| Code | Meaning | Store effect |
+|------|---------|--------------|
+| 0 | published (or nothing to do after a clean cycle) | updated / unchanged |
+| 2 | usage error (unknown argument) | untouched |
+| 3 | skip: no fresh data — keeps last good | untouched |
+| 4 | producer failure (`codexbar-stats.sh` could not produce a payload) | untouched |
+| 5 | config/token error (missing URL, missing/invalid token or `CURL_BIN`) | untouched |
+| 6 | publish **transport** failure — no HTTP response (`http_code 000`) | untouched |
+| 7 | publish **HTTP** failure — a non-2xx response (auth/rate-limit/server) | untouched |
+
+### curl transport classes (`HTTP 000`)
+
+`HTTP 000` is curl's `%{http_code}` for "no HTTP response at all" — it is never an
+Upstash status. The publisher (and checker) map curl's exit code to a class:
+
+| curl exit | class | likely cause |
+|-----------|-------|--------------|
+| 6 | `dns` | name resolution failed |
+| 7 | `connect` | TCP connect refused/failed |
+| 28 | `timeout` | connect or transfer exceeded `--connect-timeout 10` / `--max-time 30` (flaky network, captive portal) |
+| 26 | `local-curl-config` | could not read the `-K` config or `--data-binary` file |
+| 35/51/53/54/58/60/66/77/80/83/90/91 | `tls` | TLS handshake / certificate / CA-bundle problem |
+
+A transient timeout cluster that self-recovers (the toy keeps showing the last
+good payload and the next cycle republishes) is expected fail-soft behavior, not
+a defect. Per-invocation `--retry` is deliberately **not** used: the `StartInterval`
+cycle already provides recovery at cadence, and retries would only lengthen a
+failing cycle without bridging a multi-minute outage.
 
 ## Invariants
 
