@@ -167,5 +167,5 @@
     }
   },
   "additionalProperties": false,
-  "$comment": "Cost source is CodexBar's local cache ~/Library/Caches/CodexBar/cost-usage/claude-v*.json days[date][model]=[input,cacheRead,cacheCreate,output,costNanos,rows,rows] (verified 2026-05-18). Only the `days` aggregate is read; the cache `files` map (private project paths) never leaves the Mac. Relaxed single-user privacy model: docs/SECURITY.md."
+  "$comment": "Cost source is CodexBar's local cache ~/Library/Caches/CodexBar/cost-usage/claude-v*.json days[date][model]=[input,cacheRead,cacheCreate,output,costNanos,rows,rows] (verified 2026-05-18; CodexBar 0.79 appends an 8th element and wraps the object as base64 in a sharded manifest's `header`, verified 2026-10-22). Only the `days` aggregate is read; the cache `files` map (private project paths) never leaves the Mac. Relaxed single-user privacy model: docs/SECURITY.md."
 }

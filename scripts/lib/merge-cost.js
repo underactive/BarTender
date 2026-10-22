@@ -21,6 +21,14 @@ if(!best){ eprint("no claude-v*.json in "+dir); $.exit(3); }
 var cTxt=rf(dir+"/"+best); if(!cTxt){ eprint("unreadable "+best); $.exit(3); }
 var cache; try{cache=JSON.parse(cTxt);}catch(e){ eprint("parse fail "+best); $.exit(3); }
 var days=cache&&cache.days;
+// CodexBar >=0.79 rewrites the same claude-vN.json name as a sharded manifest
+// {format,header,shards}; `header` is base64 of the legacy JSON object. Take
+// only its `days` aggregate (its `files` map holds private project paths).
+if(!days&&cache&&typeof cache.header==='string'){
+  var hd=$.NSData.alloc.initWithBase64EncodedStringOptions(cache.header,0);
+  var hs=(hd&&!hd.isNil())?$.NSString.alloc.initWithDataEncoding(hd,4):null;
+  try{ days=(hs&&!hs.isNil())?JSON.parse(hs.js).days:null; }catch(e){ days=null; }
+}
 if(!days||typeof days!=='object'||Array.isArray(days)){ eprint("no days map (schema churn?)"); $.exit(3); }
 var dk=Object.keys(days).filter(function(k){return /^\d{4}-\d{2}-\d{2}$/.test(k);}).sort();
 if(dk.length===0){ eprint("empty days"); $.exit(3); }

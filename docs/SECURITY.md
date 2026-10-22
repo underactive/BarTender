@@ -93,7 +93,8 @@ session JSONL rows.
   `codexbar-publish.sh` from CodexBar's local caches
   (`~/Library/Caches/CodexBar/cost-usage/claude-v*.json`, Codex cache files).
   Those caches may contain private project-path maps; the publisher reads only
-  aggregate day maps and forwards rolled-up numbers. Pi Agent is reduced by
+  aggregate day maps and forwards rolled-up numbers (for CodexBar ≥0.79's
+  sharded manifest it decodes the base64 `header` and keeps only its `days`). Pi Agent is reduced by
   `scripts/pi-agent-stats.sh` from `~/.pi/agent/sessions/**/*.jsonl`; it reads
   assistant `usage` counters and timestamps, then emits only max spend/tokens
   plus daily spend history. Raw prompts, cwd/project paths, model/provider

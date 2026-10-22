@@ -44,7 +44,13 @@ by targeted cleanup tasks on a regular cadence — not accumulated for a
   filename version churns (`-v1/-v2/-v4/-v6` observed). Guarded: unknown shape
   → publish usage-only (fail-safe), but a silent CodexBar format change
   degrades the Cost card with no alert. Fix: pin/snapshot the schema in CI, or
-  petition CodexBar for a stable `cost --json` CLI.
+  petition CodexBar for a stable `cost --json` CLI. **Recurred (2026-10-22):**
+  CodexBar 0.79 kept the `claude-v6.json` name but rewrote it as a sharded
+  manifest `{format,header,shards}` (`header` = base64 of the legacy object,
+  per-model arrays now 8 elements). The merge silently dropped Claude cost, and
+  the summary I/O TOKENS hero read 0 until `merge-cost.js` learned to decode
+  `header`. CodexBar ≥0.78 now ships `codexbar cost --provider claude --format
+  json` (`daily[]{date,totalTokens,totalCost}`), the stable path to migrate to.
 
 ### No host test harness for the v2 parser/pipeline
 
@@ -56,7 +62,8 @@ by targeted cleanup tasks on a regular cadence — not accumulated for a
   cost-merge JXA were verified manually against live data + sanitized
   fixtures, not in an automated harness. The `firmware/test/host/` seam should
   compile `stats_model.c` against host cJSON and assert the v2 fixture; the
-  JXA merge needs a mock-cache test. **Extended (2026-05-18):** the new
+  JXA merge needs a mock-cache test (Claude `merge-cost.js` now has one:
+  `scripts/lib/tests/test_merge_cost.py`, 2026-10-22). **Extended (2026-05-18):** the new
   `config_store` WiFi-list logic (LRU rotate/evict, blob validation,
   same-SSID-in-place update, legacy migration) is pure, host-testable C with
   no hardware deps and is currently only on-device-verifiable — a strong
