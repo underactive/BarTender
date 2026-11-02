@@ -11,10 +11,10 @@
 # Cookie: normally read from Keychain (set via codexbar-publish.sh --set-mimo-cookie).
 # For one-shot runs, pass --cookie with the raw Cookie header from DevTools.
 #
-# Uses the summary endpoint (GET /api/v1/usage) for today's token and cost
-# totals, plus the detail/list endpoint (POST) for per-date history. Both
-# require cookie auth. Falls back to accumulating today's data into the history
-# file over daily runs when the detail/list endpoint is unreachable.
+# Uses the detail/list endpoint (POST) for dated daily usage. The summary
+# endpoint (GET /api/v1/usage) is an auth fallback only: its undated totals
+# must never be stored as daily usage. On detail failure, retain cached history.
+# --check probes connectivity without writing history. Both endpoints require cookie auth.
 #
 # Reads:
 #   Keychain  service=codexbar-toy  account=mimo-session
@@ -25,8 +25,8 @@
 #   {"id":"mimo","ok":true,"mo":{"tk":...,"ct":...,"mxt":...,"ht":[...]}}
 #
 # Fields:
-#   mo.tk    tokens today (totalToken from /api/v1/usage)
-#   mo.ct    cost today in cents (USD totalCost × 100)
+#   mo.tk    tokens today (dated detail/list records)
+#   mo.ct    cost today in cents (dated consumedAmount × 100)
 #   mo.mxt   30-day max daily tokens
 #   mo.ht[]  daily token totals, oldest -> newest, up to 31 chart points
 #
@@ -142,7 +142,7 @@ def _request(url: str, method: str = "GET", body: bytes | None = None, cookie: s
 
 
 def fetch_summary(cookie: str) -> tuple[int, int] | None:
-    """Fetch today's token total and cost from the summary endpoint.
+    """Probe the summary endpoint; its undated totals are not daily usage.
     Returns (totalToken, costCents) or None."""
     data = _request(f"{API_BASE}/usage", cookie=cookie)
     if not data or data.get("code") != 0:
@@ -284,13 +284,11 @@ if cookie:
                 continue
             history[date_str] = data
     else:
-        # Fall back to summary endpoint for today's data only
-        eprint("detail/list failed; trying summary endpoint")
+        # Summary proves connectivity only; never assign undated totals to today.
+        eprint("detail/list failed; probing summary endpoint, retaining cached history")
         summary = fetch_summary(cookie)
         if summary is not None:
             api_succeeded = True
-            tk, ct = summary
-            history[today_str] = {"tk": tk, "ct": ct}
         else:
             eprint("API calls failed — using cached history")
 
@@ -309,7 +307,8 @@ else:
 
 # Prune to 30 calendar days
 history = _hist.prune_history(history, 30)
-save_history(history)
+if not os.environ.get("MIMO_CHECK_ONLY"):
+    save_history(history)
 
 sorted_asc = sorted(k for k in history.keys() if k <= today_str)
 tok_hist = [history[d].get("tk", 0) for d in sorted_asc]

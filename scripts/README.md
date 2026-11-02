@@ -37,6 +37,14 @@ codes: `0` published, `3` no-fresh-data skip, `4` producer failure, `5`
 config/token, `6` transport failure (`HTTP 000`), `7` HTTP failure (see
 `--help`).
 
+### MiMo daily history
+
+`scripts/mimo-stats.sh` uses dated detail/list records for daily tokens and
+spend. If detail retrieval fails, it retains cached daily history; undated
+summary totals are used only to check connectivity, never as today's usage.
+`--check` never creates or modifies the history file. Offline regression check:
+`python3 scripts/build/test-mimo-history.py`.
+
 ## Build / dev (`scripts/build/`)
 
 ```sh
