@@ -59,6 +59,7 @@ typedef struct {
     int32_t  credits_remaining_c;     // account balance remaining, cents (OpenRouter balance)
     int32_t  credits_limit_c;         // total account credits, cents (OpenRouter totalCredits)
     char     credits_used[STATS_TXT_MAX]; // cost.cu display string (Qwen Cloud)
+    char     credits_expires[STATS_TXT_MAX]; // cost.ex prepaid-credit expiry, UTC "YYYY-MM-DD" ("" if absent)
     int      hist_n;                  // valid entries in hist[] (0 => no chart)
     int32_t  hist[STATS_HIST_MAX];    // per-day spend, cents, oldest -> newest
 

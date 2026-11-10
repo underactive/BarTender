@@ -204,6 +204,38 @@ if (env('CBAR_MODE')==='json'){
     var n=Number(w.windowMinutes);
     return isFinite(n) && n>0 && n<=1000000 && Math.floor(n)===n ? n : null;
   };
+  // Claude Platform (Anthropic API console) prepaid credit. CodexBar renders
+  // the grant as free text in primary.resetDescription, e.g.
+  //   "$172.09 of $200.00 left · Expires Nov 23 (UTC)"
+  // and its providerCost.used/balance is the prepaid BALANCE (all grants
+  // combined), not an overage. Returns {cr,cl,ex?}: remaining + total in
+  // integer cents and the expiry as a UTC "YYYY-MM-DD" date. The text may omit
+  // the year ("Nov 23"); infer the next such date on/after yesterday (UTC),
+  // since an already-expired grant is not reported as remaining credit. Any
+  // text that does not match yields null, so the tile degrades to `pr` only.
+  var claudePlatformCredit=function(desc){
+    if (typeof desc!=="string") return null;
+    var m=desc.match(/\$([0-9][0-9,]*(?:\.[0-9]+)?)\s+of\s+\$([0-9][0-9,]*(?:\.[0-9]+)?)\s+left/i);
+    if (!m) return null;
+    var cr=cents(m[1].replace(/,/g,'')), cl=cents(m[2].replace(/,/g,''));
+    if (cr==null || cl==null) return null;
+    var r={cr:cr, cl:cl};
+    var x=desc.match(/Expires\s+([A-Za-z]{3})[A-Za-z]*\s+(\d{1,2})(?:,\s*(\d{4}))?/i);
+    if (x){
+      var mi=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'].indexOf(x[1].toLowerCase());
+      var day=parseInt(x[2],10), yr=x[3] ? parseInt(x[3],10) : null;
+      if (mi>=0 && day>=1 && day<=31){
+        var now=new Date();
+        var floor=Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())-86400000;
+        if (yr==null){ yr=now.getUTCFullYear();
+          if (Date.UTC(yr,mi,day)<floor) yr+=1; }
+        var d=new Date(Date.UTC(yr,mi,day));
+        if (d.getUTCMonth()===mi && d.getUTCDate()===day)   // reject Feb 30 etc.
+          r.ex=String(yr).padStart(4,'0')+'-'+String(mi+1).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+      }
+    }
+    return r;
+  };
   var absReset=function(isoStr){
     if (!isoStr) return null;
     var d=new Date(isoStr); if (isNaN(d.getTime())) return null;
@@ -252,6 +284,7 @@ if (env('CBAR_MODE')==='json'){
       ? dollarInText(pr.resetDescription, /^\s*\$([0-9]+(?:\.[0-9]+)?)/) : null;
     var openrouterBalance=(e.provider==="openrouter")
       ? dollarInText(u.loginMethod || (u.identity&&u.identity.loginMethod), /Balance:\s*\$([0-9]+(?:\.[0-9]+)?)/i) : null;
+    var cpCredit=(e.provider==="claudeplatform" && pr) ? claudePlatformCredit(pr.resetDescription) : null;
     if (!pr && !se && !te && !(oru && oru.keyDataFetched) && !hasCredits && moonshotBalance==null && openrouterBalance==null){ o.ok=false; return o; }
     o.ok=true;
     var qwenCreditsUsed=null;
@@ -289,7 +322,11 @@ if (env('CBAR_MODE')==='json'){
       });
     } else {
       if (pr){ var pp=num(pr.usedPercent); if (pp!=null) o.p=pp;
-        if (pr.resetDescription) o.pr=String(pr.resetDescription);
+        // Claude Platform: the description is fully captured by cost.cr/cl/ex,
+        // so the raw string is not duplicated into pr. An unparseable
+        // description (cpCredit null) still falls through as the fallback.
+        if (cpCredit) { /* structured fields carry it */ }
+        else if (pr.resetDescription) o.pr=String(pr.resetDescription);
         else { var rfs=fmtReset(pr.resetsAt); if (rfs) o.pr=rfs; } }
       if (se){ var sp=num(se.usedPercent); if (sp!=null) o.s=sp;
         var sreset=null;
@@ -303,7 +340,9 @@ if (env('CBAR_MODE')==='json'){
     var cobj={};
     if (qwenCreditsUsed!=null) cobj.cu=qwenCreditsUsed;
     var co=u.providerCost;
-    if (co){ var xu=cents(co.used), xl=cents(co.limit);
+    // Claude Platform's providerCost is the prepaid balance, not an overage;
+    // publishing it as xu/xl would mislabel it. Its credit goes in cr/cl/ex.
+    if (co && e.provider!=="claudeplatform"){ var xu=cents(co.used), xl=cents(co.limit);
       if (xu!=null) cobj.xu=xu;
       if (xl!=null) cobj.xl=xl; }
     var oru=u.openRouterUsage;
@@ -321,6 +360,8 @@ if (env('CBAR_MODE')==='json'){
     if (cobj.cr==null && moonshotBalance!=null) cobj.cr=moonshotBalance;
     if (cobj.cr==null && deepseekBalance!=null) cobj.cr=deepseekBalance;
     if (cobj.cr==null && openrouterBalance!=null) cobj.cr=openrouterBalance;
+    if (cpCredit){ cobj.cr=cpCredit.cr; cobj.cl=cpCredit.cl;
+      if (cpCredit.ex) cobj.ex=cpCredit.ex; }
     if (Object.keys(cobj).length>0) o.cost=cobj;
     return o;
   };

@@ -123,6 +123,8 @@ static void parse_cost(const cJSON *e, stats_provider_t *p)
     if (strcmp(p->id, "qwencloud") == 0)
         copy_json_string_safe(p->credits_used, sizeof p->credits_used,
                               cJSON_GetObjectItemCaseSensitive(c, "cu"));
+    copy_json_string_safe(p->credits_expires, sizeof p->credits_expires,
+                          cJSON_GetObjectItemCaseSensitive(c, "ex"));
     const cJSON *h = cJSON_GetObjectItemCaseSensitive(c, "h");
     if (cJSON_IsArray(h)) {
         const cJSON *hv;

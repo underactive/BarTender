@@ -1143,6 +1143,35 @@ static void test_pi_derived_tokens(void)
     CHECK_EQ_INT(st.p[1].tok_hist_n, 0);
 }
 
+static void test_claudeplatform_credit(void)
+{
+    TEST("claudeplatform_credit");
+
+    // codexbar-stats.sh projects Claude Platform's prepaid grant into
+    // cost.cr/cl (cents) plus cost.ex, the UTC expiry date.
+    const char *inner =
+        "{\"v\":2,\"ts\":\"2024-01-01T00:00:00Z\","
+        "\"providers\":["
+        "{\"id\":\"claudeplatform\",\"ok\":true,\"p\":14,"
+        "\"pr\":\"$172.09 of $200.00 left \\u00b7 Expires Nov 23 (UTC)\","
+        "\"cost\":{\"cr\":17209,\"cl\":20000,\"ex\":\"2026-11-23\"}},"
+        "{\"id\":\"deepseek\",\"ok\":true,\"cost\":{\"cr\":3811}}"
+        "]}";
+    char *env = make_envelope(inner);
+    stats_t st;
+    stats_parse_t r = stats_model_parse(env, &st);
+    free(env);
+
+    CHECK_EQ_INT(r, STATS_PARSE_OK);
+    CHECK_EQ_INT(st.n, 2);
+    CHECK(st.p[0].has_cost == true);
+    CHECK_EQ_INT(st.p[0].credits_remaining_c, 17209);
+    CHECK_EQ_INT(st.p[0].credits_limit_c, 20000);
+    CHECK_STR(st.p[0].credits_expires, "2026-11-23");
+    // No expiry published -> empty string, not stale/garbage.
+    CHECK_STR(st.p[1].credits_expires, "");
+}
+
 static void test_cost_tok_hist_cap(void)
 {
     TEST("cost_tok_hist_cap");
@@ -1330,6 +1359,7 @@ int main(void)
     test_cost_tok_hist_absent();
     test_deepseek_tokens_and_spend();
     test_pi_derived_tokens();
+    test_claudeplatform_credit();
     test_cost_tok_hist_cap();
     test_tertiary_field_parsed();
     test_pi_hist_resets_on_pi_block();

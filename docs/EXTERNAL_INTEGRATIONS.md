@@ -32,7 +32,16 @@ process.
   reduced projection maps generic `credits.remaining` to `cost.cr` (integer
   cents) when available; it also reduces Moonshot's `Balance: $…` display
   string and DeepSeek's leading `$…` balance/reset string to `cost.cr`, while
-  OpenRouter retains its dedicated balance source. Qwen Cloud's quota window
+  OpenRouter retains its dedicated balance source. Claude Platform (the
+  Anthropic API console, CodexBar id `claudeplatform`) reports its prepaid
+  grant only as `primary.resetDescription` text
+  (`$172.09 of $200.00 left · Expires Nov 23 (UTC)`); the projection parses it
+  into `cost.cr` (remaining), `cost.cl` (grant total) and `cost.ex` (UTC
+  `YYYY-MM-DD` expiry; a year-less date resolves to the next occurrence), and
+  the raw string is then *not* copied into `pr`. Its
+  `providerCost` is the prepaid balance across *all* grants rather than an
+  overage, so it is deliberately not published as `cost.xu`/`xl`. Text that
+  does not match is published as `pr` instead, as a fallback. Qwen Cloud's quota window
   `resetDescription` is currently a credits-used display string rather than a
   reset time, so it is published as `cost.cu`; its own `resetsAt` is formatted
   into the corresponding reset hint as local `YYYY-MM-DD HH:MM:SS`. CodexBar

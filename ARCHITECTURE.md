@@ -38,9 +38,10 @@ where `pw`/`sw`/`tw` are optional source quota-window durations in minutes.
 Qwen windows are normalized by duration so its longest known window is always
 in `s` (the stable summary hero slot); the device derives words such as
 `MONTHLY` or `WEEKLY`. The optional `cost =
-{xu?,xl?,ct?,cm?,tt?,tm?,cr?,cl?,cu?,h?}` (cents / token counts; `cr` is a
+{xu?,xl?,ct?,cm?,tt?,tm?,cr?,cl?,ex?,cu?,h?}` (cents / token counts; `cr` is a
 prepaid balance from OpenRouter, generic CodexBar `credits.remaining`, or the
-reduced Moonshot/DeepSeek balance display strings; `cu` is Qwen Cloud's
+reduced Moonshot/DeepSeek balance display strings or the Claude Platform
+grant text, whose expiry is `ex`, a UTC `YYYY-MM-DD`; `cu` is Qwen Cloud's
 credits-used display string and is never a reset hint) and `oc =
 {tk,ct,mxt,ht,fresh?}` (OpenCode Go token rollup; `fresh:false` means cached
 history) are documented in the schema. Qwen reset hints come from each
